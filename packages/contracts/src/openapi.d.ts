@@ -419,7 +419,11 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /**
+         * プログラムのバージョン一覧
+         * @description 許可ロール: admin/teacher。新しい順。
+         */
+        get: operations["get_programs_id_versions"];
         put?: never;
         /**
          * 新しいdraftバージョン
@@ -527,7 +531,11 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /**
+         * 教材詳細
+         * @description 許可ロール: admin/teacher/student。受講者は割当済みバージョンの公開教材のみ（それ以外は404）。
+         */
+        get: operations["get_materials_id"];
         put?: never;
         post?: never;
         delete?: never;
@@ -731,7 +739,11 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /**
+         * 教育記録の詳細と訂正履歴
+         * @description 許可ロール: admin/teacher（担当範囲のみ）。履歴は監査ログ（変更前後・理由・実施者・日時）。
+         */
+        get: operations["get_progress_records_id"];
         put?: never;
         post?: never;
         delete?: never;
@@ -739,7 +751,7 @@ export interface paths {
         head?: never;
         /**
          * 教育記録訂正
-         * @description 許可ロール: admin/teacher。組織・本人・担当範囲は認証情報とDBから決定する。
+         * @description 許可ロール: admin/teacher（担当範囲のみ）。値を変更する場合は correction_reason が必須。変更前後・理由・実施者を履歴に記録する。
          */
         patch: operations["patch_progress_records_id"];
         trace?: never;
@@ -1323,7 +1335,7 @@ export interface paths {
         put?: never;
         /**
          * OpenAI短期資格情報発行
-         * @description 許可ロール: teacher/student。組織・本人・担当範囲は認証情報とDBから決定する。
+         * @description 許可ロール: teacher/student。日次上限（組織設定 voice_daily_quota_seconds）と1回の上限（voice_max_session_seconds）を超える場合は429 VOICE_QUOTA_EXCEEDED。短期秘密はこの応答でのみ返し保存しない。新しいセッションは同じ利用者の未終了セッションを終了させる。
          */
         post: operations["post_voice_sessions"];
         delete?: never;
@@ -1343,7 +1355,7 @@ export interface paths {
         put?: never;
         /**
          * 音声終了・quota確定
-         * @description 許可ロール: teacher/student。組織・本人・担当範囲は認証情報とDBから決定する。
+         * @description 許可ロール: teacher/student（本人のセッションのみ）。冪等。
          */
         post: operations["post_voice_sessions_id_end"];
         delete?: never;
@@ -1363,7 +1375,7 @@ export interface paths {
         put?: never;
         /**
          * 許可音声ツール実行
-         * @description 許可ロール: teacher/student。組織・本人・担当範囲は認証情報とDBから決定する。
+         * @description 許可ロール: teacher/student。セッション所有・有効期限・ロール別allowlist・引数schema・call_id冪等をサーバーで検証し、REST APIと同じドメインサービスで実行する。業務上の失敗は success:false と data.error_code / data.message_ja で返す（モデルへ渡すため）。予約の申請・取消は prepare_* が返す action_token（120秒・本人/セッション/目的に紐付け、ハッシュのみ保存）を commit_* に渡した場合のみ成立し、トークンの消費と予約の変更は同一トランザクション。
          */
         post: operations["post_voice_tool_calls"];
         delete?: never;
@@ -1419,10 +1431,14 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /**
+         * 確認テスト定義（正答を含む）
+         * @description 許可ロール: admin/teacher。正答を含むため受講者は取得できない。
+         */
+        get: operations["get_materials_id_quiz_definition"];
         /**
          * 確認テストを登録・更新
-         * @description 許可ロール: admin/teacher。認証DBの組織と担当範囲を強制。
+         * @description 許可ロール: admin/そのプログラムを使うクラスの担当講師。draftバージョンのみ。問題を全件置換する。
          */
         put: operations["put__materials_id_quiz-definition"];
         post?: never;
@@ -1652,6 +1668,106 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/submissions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * 課題提出一覧（評価待ちキュー）
+         * @description 許可ロール: admin/teacher。講師は担当受講者（担当講師またはクラス担当）の提出のみ。各受講者・教材の最新提出を新しい順に返す。
+         */
+        get: operations["get_submissions"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/submissions/{id}/file": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * 提出ファイルの5分署名URL
+         * @description 許可ロール: admin/担当講師/提出した受講者本人。検査済み(clean)のファイルのみ。
+         */
+        get: operations["get_submissions_id_file"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/classrooms/{id}/enrollments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * クラス在籍者へ一括で受講割当
+         * @description 許可ロール: admin。公開中バージョンをクラスの有効な在籍者へ割り当てる。既に同じプログラムを受講中の受講者はスキップ。
+         */
+        post: operations["post_classrooms_id_enrollments"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/uploads/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * アップロード・検疫状態
+         * @description 許可ロール: アップロードした本人またはadmin。
+         */
+        get: operations["get_uploads_id"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/uploads/{id}/scan-result": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * ファイル検査サービスからの結果通知
+         * @description 公開（ユーザー認証なし）。X-ARMS-Scan-Timestamp と X-ARMS-Scan-Signature（v1=HMAC-SHA256(MALWARE_SCAN_API_KEY, timestamp + '.' + 生のbody) の16進）で検証し、5分以上ずれた時刻は拒否する。org はファイル提出時に通知したcallback URLのクエリ。
+         */
+        post: operations["post_uploads_id_scan_result"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/notifications/read-all": {
         parameters: {
             query?: never;
@@ -1687,6 +1803,26 @@ export interface paths {
          * @description 許可ロール: teacher/student。ログアウト時に本人の端末登録を削除する。token_hash は登録時の端末トークン（16進小文字）のSHA-256（16進小文字64桁）。端末登録はバージョン管理対象外のため If-Match は不要。未登録でも成功を返す（冪等）。
          */
         delete: operations["delete_devices_token_hash"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/voice/quota": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * 本日の音声利用状況
+         * @description 許可ロール: teacher/student。組織タイムゾーンの当日分。未終了セッションは予約秒数で計上。
+         */
+        get: operations["get_voice_quota"];
+        put?: never;
+        post?: never;
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -1834,7 +1970,9 @@ export interface components {
             required: boolean;
             /** Format: uri */
             external_url?: string;
+            /** @description POST /uploads の応答 object_key（同じ組織・本人または管理者のアップロード）。pdf/video/image で必須。 */
             object_key?: string;
+            description?: string;
         };
         /** @description 授業枠の追加・編集共通フォーム。PATCHは全項目置換（unit_id・meeting_url を省略するとnull）。cancel_before_seconds を省略すると、作成時は組織設定（なければ既定値）、編集時は現在値。state は open/closed（取消は /lesson-slots/{id}/cancel）。 */
         SlotInput: {
@@ -1939,11 +2077,23 @@ export interface components {
         VoiceSession: {
             /** Format: uuid */
             session_id: string;
+            /** @description OpenAI短期クライアント秘密。メモリ内でのみ使用し保存・記録しない。 */
             client_secret: string;
-            /** Format: date-time */
+            /**
+             * Format: date-time
+             * @description このセッションの最大終了時刻（quota予約）。
+             */
             expires_at: string;
+            /**
+             * Format: date-time
+             * @description WebRTC接続開始に使える期限。
+             */
+            client_secret_expires_at?: string;
             model: string;
             voice: string;
+            max_seconds?: number;
+            tools?: string[];
+            quota_remaining_seconds?: number;
         };
         VoiceToolInput: {
             /** Format: uuid */
@@ -2041,12 +2191,15 @@ export interface components {
         Progress: {
             /** Format: uuid */
             student_id: string;
+            /** @description 全割当の必須単元の完了weight/必須weight×100の四捨五入。必須単元がない場合null（未設定）。 */
             progress_percent: number | null;
             required_total: number;
             required_completed: number;
             units: components["schemas"]["UnitProgress"][];
             /** Format: date-time */
             checked_at: string;
+            student_name: string;
+            enrollments: components["schemas"]["EnrollmentProgress"][];
         };
         ActionResult: {
             success: boolean;
@@ -2219,10 +2372,24 @@ export interface components {
             archived: boolean;
             /** Format: uuid */
             published_version_id: string | null;
+            /** @description 公開中バージョン（なければ最新バージョン）の単元数。DB集計。 */
             unit_count: number;
+            /** @description 同バージョンの教材数。DB集計。 */
             material_count: number;
+            /** @description このプログラムのいずれかのバージョンに割り当てられた有効な受講者数。DB集計。 */
             student_count: number;
             row_version: number;
+            latest_version: null | {
+                /** Format: uuid */
+                id: string;
+                version_number: number;
+                /** @enum {string} */
+                state: "draft" | "published" | "archived";
+            };
+            /** Format: uuid */
+            draft_version_id: string | null;
+            /** Format: date-time */
+            created_at: string;
         };
         ProgramResponse: {
             data: components["schemas"]["Program"];
@@ -2244,6 +2411,20 @@ export interface components {
             /** @enum {string} */
             state: "draft" | "published" | "archived";
             row_version: number;
+            policy: {
+                max_quiz_attempts: number;
+                /** @enum {string} */
+                quiz_score_policy: "highest" | "latest";
+            };
+            /** Format: date-time */
+            published_at: string | null;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: uuid */
+            source_version_id: string | null;
+            unit_count: number;
+            material_count: number;
+            required_weight_total: number;
         };
         ProgramVersionResponse: {
             data: components["schemas"]["ProgramVersion"];
@@ -2265,10 +2446,12 @@ export interface components {
             position: number;
             required: boolean;
             weight: number;
-            pass_score: number;
+            /** @description 確認テストの合格点。null の場合は100点（全問正解）を合格条件とする。 */
+            pass_score: number | null;
             required_attendance: boolean;
             requires_review: boolean;
             row_version: number;
+            material_count: number;
         };
         UnitResponse: {
             data: components["schemas"]["Unit"];
@@ -2286,7 +2469,10 @@ export interface components {
             id: string;
             /** Format: uuid */
             unit_id: string;
+            /** Format: uuid */
+            program_version_id: string;
             title: string;
+            description: string;
             /** @enum {string} */
             kind: "pdf" | "video" | "image" | "link" | "quiz" | "assignment";
             required: boolean;
@@ -2295,6 +2481,26 @@ export interface components {
             published: boolean;
             size_bytes: number | null;
             row_version: number;
+            /** @description kind=link のときのみ。 */
+            external_url: string | null;
+            /** Format: uuid */
+            upload_id: string | null;
+            filename: string | null;
+            content_type: string | null;
+            /** @description kind=quiz のときの問題数。 */
+            question_count: number | null;
+            /** @description 受講者本人が取得した場合のみ。本人の確認・受験・提出状況。 */
+            learner_status?: {
+                /** Format: date-time */
+                confirmed_at: string | null;
+                quiz_attempts_used: number | null;
+                /** @description バージョンの方針（最高点/最新点）で評価した点数。 */
+                quiz_score: number | null;
+                quiz_passed: boolean | null;
+                /** @enum {string|null} */
+                submission_state: "submitted" | "accepted" | "revision_requested" | null;
+                feedback: string | null;
+            };
         };
         MaterialResponse: {
             data: components["schemas"]["Material"];
@@ -2372,6 +2578,16 @@ export interface components {
             teacher_name: string;
             progress_percent: number | null;
             row_version: number;
+            /** @description 終了予定日 < 組織タイムゾーンの今日 かつ 未完了（保存値ではなく導出）。 */
+            overdue: boolean;
+            employee_number: string;
+            /** Format: uuid */
+            classroom_id: string | null;
+            classroom_name: string | null;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            updated_at: string;
         };
         ProgressRecordResponse: {
             data: components["schemas"]["ProgressRecord"];
@@ -2503,6 +2719,12 @@ export interface components {
             attempts_used: number;
             attempts_remaining: number;
             pass_score: number;
+            max_attempts: number;
+            /** @enum {string} */
+            score_policy: "highest" | "latest";
+            total_points: number;
+            effective_score: number | null;
+            passed: boolean;
         };
         QuizResponse: {
             data: components["schemas"]["Quiz"];
@@ -2522,6 +2744,13 @@ export interface components {
             passed: boolean;
             /** Format: date-time */
             submitted_at: string;
+            attempts_used: number;
+            attempts_remaining: number;
+            pass_score: number;
+            /** @description 方針（最高点/最新点）で評価した現在の点数。 */
+            effective_score: number;
+            correct_count: number;
+            question_count: number;
         };
         QuizResultResponse: {
             data: components["schemas"]["QuizResult"];
@@ -2544,11 +2773,22 @@ export interface components {
             /** @enum {string} */
             state: "submitted" | "accepted" | "revision_requested";
             body: string;
-            scan_state: string;
+            /** @enum {string} */
+            scan_state: "pending" | "clean" | "blocked" | "not_applicable";
             feedback: string | null;
             row_version: number;
             /** Format: date-time */
             submitted_at: string;
+            student_name: string;
+            material_title: string;
+            /** Format: uuid */
+            unit_id: string;
+            unit_title: string;
+            has_file: boolean;
+            filename: string | null;
+            /** Format: date-time */
+            reviewed_at: string | null;
+            reviewer_name: string | null;
         };
         SubmissionResponse: {
             data: components["schemas"]["Submission"];
@@ -2570,6 +2810,12 @@ export interface components {
             program_version_id: string;
             /** Format: date */
             due_on: string;
+            /** Format: uuid */
+            program_id: string;
+            program_name: string;
+            version_number: number;
+            /** Format: date-time */
+            created_at: string;
         };
         EnrollmentResponse: {
             data: components["schemas"]["Enrollment"];
@@ -2670,10 +2916,17 @@ export interface components {
             /** Format: uuid */
             id: string;
             /** @enum {string} */
-            state: "pending" | "ready" | "failed";
+            state: "pending" | "ready" | "failed" | "expired";
             download_url: string | null;
             /** Format: date-time */
             expires_at: string | null;
+            /** @enum {string} */
+            format: "csv" | "pdf";
+            /** Format: date-time */
+            created_at: string;
+            row_count: number | null;
+            filename: string | null;
+            error_code: string | null;
         };
         ExportResponse: {
             data: components["schemas"]["Export"];
@@ -2757,9 +3010,28 @@ export interface components {
             /** @enum {string} */
             state: "not_started" | "in_progress" | "review_pending" | "completed";
             weight: number;
+            /** @description 必須確認テストの評価点（複数ある場合は最も低い点）。未受験はnull。 */
             score: number | null;
             requires_review: boolean;
             feedback: string | null;
+            /** Format: uuid */
+            enrollment_id: string;
+            /** Format: uuid */
+            program_version_id: string;
+            program_name: string;
+            position: number;
+            required: boolean;
+            /** Format: date-time */
+            completed_at: string | null;
+            /** @description 確認が必要な必須教材（PDF/動画/画像/リンク）の数。 */
+            materials_total: number;
+            materials_confirmed: number;
+            /** @description 必須確認テストがない単元はnull。 */
+            quiz_passed: boolean | null;
+            /** @enum {string|null} */
+            submission_state: "submitted" | "accepted" | "revision_requested" | null;
+            attendance_required: boolean;
+            attendance_satisfied: boolean;
         };
         ExportInput: {
             /** @enum {string} */
@@ -2770,6 +3042,9 @@ export interface components {
             classroom_id?: string;
             /** Format: uuid */
             teacher_id?: string;
+            /** @enum {string} */
+            status?: "unverified" | "not_started" | "in_progress" | "review_pending" | "completed" | "overdue";
+            q?: string;
         };
         VersionInput: {
             /** Format: uuid */
@@ -2958,6 +3233,153 @@ export interface components {
             /** Format: date-time */
             checked_at: string;
         };
+        QuizDefinition: {
+            /** Format: uuid */
+            material_id: string;
+            title: string;
+            questions: {
+                /** Format: uuid */
+                id: string;
+                prompt: string;
+                choices: {
+                    id: string;
+                    label: string;
+                }[];
+                correct_option_ids: string[];
+                points: number;
+            }[];
+            total_points: number;
+            pass_score: number;
+            /** @description draftバージョンの場合のみtrue。 */
+            editable: boolean;
+            row_version: number;
+        };
+        QuizDefinitionResponse: {
+            data: components["schemas"]["QuizDefinition"];
+            /** Format: date-time */
+            checked_at: string;
+        };
+        ClassroomEnrollmentInput: {
+            /** Format: uuid */
+            program_version_id: string;
+            /** Format: date */
+            due_on: string;
+        };
+        EnrollmentProgress: {
+            /** Format: uuid */
+            enrollment_id: string;
+            /** Format: uuid */
+            program_id: string;
+            program_name: string;
+            /** Format: uuid */
+            program_version_id: string;
+            version_number: number;
+            /** Format: date */
+            due_on: string;
+            overdue: boolean;
+            progress_percent: number | null;
+            required_total: number;
+            required_completed: number;
+        };
+        ProgressRecordUpdateInput: {
+            /** Format: uuid */
+            student_id: string;
+            /** Format: uuid */
+            teacher_id: string;
+            department_name: string;
+            /** Format: date */
+            due_date: string;
+            content: string;
+            notes?: string;
+            /** @enum {string} */
+            state: "unverified" | "not_started" | "in_progress" | "review_pending" | "completed";
+            /** @description 既存記録の値を変更する場合は必須（履歴に記録）。 */
+            correction_reason?: string;
+        };
+        ProgressRecordHistoryEntry: {
+            /** Format: uuid */
+            id: string;
+            event_type: string;
+            /** Format: uuid */
+            actor_id: string | null;
+            actor_name: string | null;
+            /** Format: date-time */
+            created_at: string;
+            reason: string | null;
+            changes: {
+                [key: string]: {
+                    before: unknown;
+                    after: unknown;
+                };
+            };
+        };
+        ProgressRecordDetail: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            student_id: string;
+            /** Format: uuid */
+            teacher_id: string;
+            department_name: string;
+            /** Format: date */
+            due_date: string;
+            content: string;
+            notes: string;
+            /** @enum {string} */
+            state: "unverified" | "not_started" | "in_progress" | "review_pending" | "completed";
+            student_name: string;
+            teacher_name: string;
+            progress_percent: number | null;
+            row_version: number;
+            /** @description 終了予定日 < 組織タイムゾーンの今日 かつ 未完了（保存値ではなく導出）。 */
+            overdue: boolean;
+            employee_number: string;
+            /** Format: uuid */
+            classroom_id: string | null;
+            classroom_name: string | null;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            updated_at: string;
+            history: components["schemas"]["ProgressRecordHistoryEntry"][];
+        };
+        ProgressRecordDetailResponse: {
+            data: components["schemas"]["ProgressRecordDetail"];
+            /** Format: date-time */
+            checked_at: string;
+        };
+        UploadStatus: {
+            /** Format: uuid */
+            id: string;
+            /** @enum {string} */
+            purpose: "material" | "assignment" | "import";
+            filename: string;
+            content_type: string;
+            size_bytes: number;
+            /** @enum {string} */
+            state: "awaiting_upload" | "scanning" | "clean" | "blocked" | "rejected" | "expired";
+            /** @enum {string} */
+            scan_state: "pending" | "clean" | "blocked" | "not_applicable";
+            object_key: string;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            completed_at: string | null;
+            reject_code: string | null;
+        };
+        UploadStatusResponse: {
+            data: components["schemas"]["UploadStatus"];
+            /** Format: date-time */
+            checked_at: string;
+        };
+        ScanCallbackInput: {
+            scan_id: string;
+            status: string;
+            /** Format: uuid */
+            upload_id?: string;
+        } & {
+            [key: string]: unknown;
+        };
         AttendanceRosterItem: {
             /** Format: uuid */
             student_id: string;
@@ -2990,6 +3412,17 @@ export interface components {
         };
         AttendanceRosterResponse: {
             data: components["schemas"]["AttendanceRoster"];
+            /** Format: date-time */
+            checked_at: string;
+        };
+        VoiceQuota: {
+            daily_quota_seconds: number;
+            max_session_seconds: number;
+            used_seconds: number;
+            remaining_seconds: number;
+        };
+        VoiceQuotaResponse: {
+            data: components["schemas"]["VoiceQuota"];
             /** Format: date-time */
             checked_at: string;
         };
@@ -4101,6 +4534,39 @@ export interface operations {
             503: components["responses"]["Error"];
         };
     };
+    get_programs_id_versions: {
+        parameters: {
+            query?: {
+                cursor?: string;
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 成功 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProgramVersionPage"];
+                };
+            };
+            400: components["responses"]["Error"];
+            401: components["responses"]["Error"];
+            403: components["responses"]["Error"];
+            404: components["responses"]["Error"];
+            409: components["responses"]["Error"];
+            422: components["responses"]["Error"];
+            429: components["responses"]["Error"];
+            503: components["responses"]["Error"];
+        };
+    };
     post_programs_id_versions: {
         parameters: {
             query?: never;
@@ -4351,6 +4817,36 @@ export interface operations {
                 "application/json": components["schemas"]["MaterialInput"];
             };
         };
+        responses: {
+            /** @description 成功 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MaterialResponse"];
+                };
+            };
+            400: components["responses"]["Error"];
+            401: components["responses"]["Error"];
+            403: components["responses"]["Error"];
+            404: components["responses"]["Error"];
+            409: components["responses"]["Error"];
+            422: components["responses"]["Error"];
+            429: components["responses"]["Error"];
+            503: components["responses"]["Error"];
+        };
+    };
+    get_materials_id: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
         responses: {
             /** @description 成功 */
             200: {
@@ -4763,11 +5259,41 @@ export interface operations {
             503: components["responses"]["Error"];
         };
     };
+    get_progress_records_id: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 成功 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProgressRecordDetailResponse"];
+                };
+            };
+            400: components["responses"]["Error"];
+            401: components["responses"]["Error"];
+            403: components["responses"]["Error"];
+            404: components["responses"]["Error"];
+            409: components["responses"]["Error"];
+            422: components["responses"]["Error"];
+            429: components["responses"]["Error"];
+            503: components["responses"]["Error"];
+        };
+    };
     patch_progress_records_id: {
         parameters: {
             query?: never;
             header: {
-                /** @description 現在のrow_version。予約判断はbody.expected_versionと一致。 */
+                /** @description 現在のrow_version。 */
                 "If-Match": string;
                 /** @description cookie認証の場合必須。Bearer専用iOSには不要。 */
                 "X-CSRF-Token"?: string;
@@ -4779,7 +5305,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["ProgressRecordInput"];
+                "application/json": components["schemas"]["ProgressRecordUpdateInput"];
             };
         };
         responses: {
@@ -6002,7 +6528,7 @@ export interface operations {
             query?: never;
             header: {
                 "Idempotency-Key": string;
-                /** @description cookie認証の場合必須。Bearer専用iOSには不要。 */
+                /** @description cookie認証の場合必須。 */
                 "X-CSRF-Token"?: string;
             };
             path?: never;
@@ -6022,9 +6548,6 @@ export interface operations {
             400: components["responses"]["Error"];
             401: components["responses"]["Error"];
             403: components["responses"]["Error"];
-            404: components["responses"]["Error"];
-            409: components["responses"]["Error"];
-            422: components["responses"]["Error"];
             429: components["responses"]["Error"];
             503: components["responses"]["Error"];
         };
@@ -6033,7 +6556,6 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
-                /** @description cookie認証の場合必須。Bearer専用iOSには不要。 */
                 "X-CSRF-Token"?: string;
             };
             path: {
@@ -6052,14 +6574,9 @@ export interface operations {
                     "application/json": components["schemas"]["ActionResult"];
                 };
             };
-            400: components["responses"]["Error"];
             401: components["responses"]["Error"];
             403: components["responses"]["Error"];
             404: components["responses"]["Error"];
-            409: components["responses"]["Error"];
-            422: components["responses"]["Error"];
-            429: components["responses"]["Error"];
-            503: components["responses"]["Error"];
         };
     };
     post_voice_tool_calls: {
@@ -6067,7 +6584,6 @@ export interface operations {
             query?: never;
             header: {
                 "Idempotency-Key": string;
-                /** @description cookie認証の場合必須。Bearer専用iOSには不要。 */
                 "X-CSRF-Token"?: string;
             };
             path?: never;
@@ -6079,7 +6595,7 @@ export interface operations {
             };
         };
         responses: {
-            /** @description 成功 */
+            /** @description 成功（業務エラーは success:false） */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -6095,7 +6611,6 @@ export interface operations {
             409: components["responses"]["Error"];
             422: components["responses"]["Error"];
             429: components["responses"]["Error"];
-            503: components["responses"]["Error"];
         };
     };
     patch_me_preferences: {
@@ -6169,11 +6684,43 @@ export interface operations {
             503: components["responses"]["Error"];
         };
     };
+    get_materials_id_quiz_definition: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 成功 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["QuizDefinitionResponse"];
+                };
+            };
+            400: components["responses"]["Error"];
+            401: components["responses"]["Error"];
+            403: components["responses"]["Error"];
+            404: components["responses"]["Error"];
+            409: components["responses"]["Error"];
+            422: components["responses"]["Error"];
+            429: components["responses"]["Error"];
+            503: components["responses"]["Error"];
+        };
+    };
     "put__materials_id_quiz-definition": {
         parameters: {
             query?: never;
             header: {
                 "Idempotency-Key": string;
+                /** @description cookie認証の場合必須。Bearer専用iOSには不要。 */
+                "X-CSRF-Token"?: string;
             };
             path: {
                 id: string;
@@ -6549,6 +7096,176 @@ export interface operations {
             503: components["responses"]["Error"];
         };
     };
+    get_submissions: {
+        parameters: {
+            query?: {
+                state?: "submitted" | "accepted" | "revision_requested";
+                student_id?: string;
+                classroom_id?: string;
+                material_id?: string;
+                cursor?: string;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 成功 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SubmissionPage"];
+                };
+            };
+            400: components["responses"]["Error"];
+            401: components["responses"]["Error"];
+            403: components["responses"]["Error"];
+            404: components["responses"]["Error"];
+            409: components["responses"]["Error"];
+            422: components["responses"]["Error"];
+            429: components["responses"]["Error"];
+            503: components["responses"]["Error"];
+        };
+    };
+    get_submissions_id_file: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 成功 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DownloadResponse"];
+                };
+            };
+            400: components["responses"]["Error"];
+            401: components["responses"]["Error"];
+            403: components["responses"]["Error"];
+            404: components["responses"]["Error"];
+            409: components["responses"]["Error"];
+            422: components["responses"]["Error"];
+            429: components["responses"]["Error"];
+            503: components["responses"]["Error"];
+        };
+    };
+    post_classrooms_id_enrollments: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": string;
+                /** @description cookie認証の場合必須。Bearer専用iOSには不要。 */
+                "X-CSRF-Token"?: string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ClassroomEnrollmentInput"];
+            };
+        };
+        responses: {
+            /** @description 成功 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ActionResult"];
+                };
+            };
+            400: components["responses"]["Error"];
+            401: components["responses"]["Error"];
+            403: components["responses"]["Error"];
+            404: components["responses"]["Error"];
+            409: components["responses"]["Error"];
+            422: components["responses"]["Error"];
+            429: components["responses"]["Error"];
+            503: components["responses"]["Error"];
+        };
+    };
+    get_uploads_id: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 成功 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UploadStatusResponse"];
+                };
+            };
+            400: components["responses"]["Error"];
+            401: components["responses"]["Error"];
+            403: components["responses"]["Error"];
+            404: components["responses"]["Error"];
+            409: components["responses"]["Error"];
+            422: components["responses"]["Error"];
+            429: components["responses"]["Error"];
+            503: components["responses"]["Error"];
+        };
+    };
+    post_uploads_id_scan_result: {
+        parameters: {
+            query: {
+                org: string;
+            };
+            header: {
+                "X-ARMS-Scan-Timestamp": string;
+                "X-ARMS-Scan-Signature": string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ScanCallbackInput"];
+            };
+        };
+        responses: {
+            /** @description 成功 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ActionResult"];
+                };
+            };
+            400: components["responses"]["Error"];
+            401: components["responses"]["Error"];
+            404: components["responses"]["Error"];
+            409: components["responses"]["Error"];
+            422: components["responses"]["Error"];
+            503: components["responses"]["Error"];
+        };
+    };
     post_notifications_read_all: {
         parameters: {
             query?: never;
@@ -6604,6 +7321,28 @@ export interface operations {
             404: components["responses"]["Error"];
             429: components["responses"]["Error"];
             503: components["responses"]["Error"];
+        };
+    };
+    get_voice_quota: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 成功 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VoiceQuotaResponse"];
+                };
+            };
+            401: components["responses"]["Error"];
+            403: components["responses"]["Error"];
         };
     };
     get_imports_id_items: {

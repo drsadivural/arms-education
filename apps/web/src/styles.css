@@ -21,9 +21,10 @@
   --arms-border: #dfe7f1;
   --arms-success: #0b7b61;
   --arms-success-soft: #e5f6f0;
-  --arms-warning: #9a6700;
+  --arms-warning: #8a5d00;
   --arms-warning-soft: #fff4d6;
   --arms-danger: #c93843;
+  --arms-danger-strong: #a82a34;
   --arms-danger-soft: #fdecee;
   --arms-neutral-soft: #eef2f7;
   --arms-focus: #0076d1;
@@ -47,6 +48,7 @@
   --arms-warning: #f2c45a;
   --arms-warning-soft: #3d3420;
   --arms-danger: #ff8f97;
+  --arms-danger-strong: #ffb3b8;
   --arms-danger-soft: #45232b;
   --arms-neutral-soft: #24395a;
   --arms-focus: #8cc8ff;
@@ -70,6 +72,7 @@
   --color-warning: var(--arms-warning);
   --color-warning-soft: var(--arms-warning-soft);
   --color-danger: var(--arms-danger);
+  --color-danger-strong: var(--arms-danger-strong);
   --color-danger-soft: var(--arms-danger-soft);
   --color-neutral-soft: var(--arms-neutral-soft);
   --font-sans: "Noto Sans JP", "Hiragino Sans", "Yu Gothic UI", system-ui, sans-serif;
