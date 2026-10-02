@@ -83,6 +83,11 @@ async function loadRecord(tx: Tx, actor: Actor, id: string, today: string): Prom
   return row;
 }
 
+/** UUIDs are compared as strings below; the DB returns them lower-case. */
+function lowerIds<T extends { student_id: string; teacher_id: string }>(input: T): T {
+  return { ...input, student_id: input.student_id.toLowerCase(), teacher_id: input.teacher_id.toLowerCase() };
+}
+
 interface PartyCheck {
   teacherName: string;
 }
@@ -121,7 +126,7 @@ async function checkParties(
 /** POST /progress-records — 旧形式の教育記録を登録. */
 progressRoutes.post("/progress-records", requireRole("admin", "teacher"), async (c) => {
   const actor = c.get("actor");
-  const input = await readBody(c, ProgressRecordInput);
+  const input = lowerIds(await readBody(c, ProgressRecordInput));
   const today = orgToday(c);
   const result = await actorTx(c, (tx) =>
     idempotent(c, tx, input, async () => {
@@ -182,7 +187,7 @@ progressRoutes.patch("/progress-records/:id", requireRole("admin", "teacher"), a
   const actor = c.get("actor");
   const id = pathId(c);
   const expected = requireIfMatch(c);
-  const input = await readBody(c, ProgressRecordUpdateInput);
+  const input = lowerIds(await readBody(c, ProgressRecordUpdateInput));
   const today = orgToday(c);
   const dto = await actorTx(c, async (tx) => {
     const before = await loadRecord(tx, actor, id, today);

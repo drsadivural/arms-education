@@ -175,6 +175,12 @@ describe("PATCH and GET /progress-records/{id}", () => {
     const same = await call(w.ctx, w.admin, "PATCH", `/progress-records/${R.r1}`, { body: body(), ifMatch: 1 });
     expect(same.status).toBe(200);
     expect(same.body.data.row_version).toBe(1);
+    const upper = await call(w.ctx, w.teacher, "PATCH", `/progress-records/${R.r1}`, {
+      body: body({ student_id: w.org.student.userId.toUpperCase(), teacher_id: w.org.teacher.userId.toUpperCase() }),
+      ifMatch: 1,
+    });
+    expect(upper.status).toBe(200);
+    expect(upper.body.data.row_version).toBe(1);
     const noReason = await call(w.ctx, w.admin, "PATCH", `/progress-records/${R.r1}`, { body: body({ due_date: "2026-10-05" }), ifMatch: 1 });
     expect(noReason.status).toBe(422);
     expect(noReason.body.code).toBe("REASON_REQUIRED");
