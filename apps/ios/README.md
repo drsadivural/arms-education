@@ -123,6 +123,10 @@ apps/ios/ARMSKit/Scripts/live-contract-test.sh
   ローテーションされ、再利用はサーバーがセッション失効とみなす）。ログアウトは `/auth/tokens/revoke`。トークンは Keychain
   （`AfterFirstUnlockThisDeviceOnly`）。ロールは選択値をサーバーへ送り、`ROLE_MISMATCH` なら「このアカウントでは選択した利用区分にログインできません」
   を表示してサインアウト。管理者は Web へ案内。複数組織の場合は `X-ARMS-Org` で選択。
+- **Face ID / Touch ID ログイン**（講師・受講者、任意）: パスワードでログインした後に「次回からFace IDでログインしますか？」を表示（設定画面の
+  「ログイン」でも切替）。有効な場合、保存済みセッションは Face ID 成功まで使わない（起動時と、5分以上バックグラウンドにした後に確認。
+  確認前はAPIを呼ばない）。「パスワードでログイン」でパスワード画面へ。端末の生体情報の登録内容が変わった場合・生体認証が使えなくなった場合・
+  ログアウト時は自動で無効化してパスワードを求める。判定は `ARMSKit` の `SessionStore`（テスト済み）、端末側は `LocalBiometrics`（LocalAuthentication）。
 - **書き込み**: 操作ごとに Idempotency-Key（UUID）を 1 つ生成し、自動再試行・二重タップ・「もう一度申請する」で再利用。
   通信断で結果が不明な予約申請は `GET /reservations?idempotency_key=` で確認してから結果を表示。PATCH は `If-Match: "<row_version>"`。
   予約は 201 応答後にのみ「申請しました（承認待ち）」、「予約確定」は approved のみ。

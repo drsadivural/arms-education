@@ -45,6 +45,8 @@ private struct SettingsScreen: View {
         if let message = model.message { MessageBanner(kind: .success, text: message) }
         if let error = model.error { MessageBanner(kind: .error, text: error.messageWithRequestId) }
 
+        BiometricLoginCard()
+
         ARMSCard {
           Text("表示と通知").font(.headline).foregroundStyle(ARMSColor.text)
           SettingRow(title: "テーマ") {
@@ -154,6 +156,7 @@ private struct SettingsScreen: View {
     .task {
       await app.refreshNotificationAuthorization()
       await app.voice?.refreshQuota()
+      await app.session.refreshBiometricAvailability()
     }
     .sheet(isPresented: $showsDeletion) { AccountDeletionSheet(model: model) }
     .confirmationDialog("ログアウトしますか？", isPresented: $confirmingLogout, titleVisibility: .visible) {
@@ -182,6 +185,53 @@ private struct SettingsScreen: View {
 
   private func openSystemSettings() {
     if let url = URL(string: UIApplication.openSettingsURLString) { openURL(url) }
+  }
+}
+
+/// 設定 > ログイン: Face ID / Touch ID login (shown when the device has biometrics).
+private struct BiometricLoginCard: View {
+  @Environment(AppModel.self) private var app
+  @State private var isUpdating = false
+  @State private var notChanged = false
+
+  var body: some View {
+    let session = app.session
+    if let kind = session.biometricAvailability.kind {
+      ARMSCard {
+        Text("ログイン").font(.headline).foregroundStyle(ARMSColor.text)
+        Toggle(
+          isOn: Binding(
+            get: { session.isBiometricLoginEnabled },
+            set: { enabled in
+              Task {
+                isUpdating = true
+                notChanged = !(await session.setBiometricLogin(enabled: enabled))
+                isUpdating = false
+              }
+            })
+        ) {
+          Label("\(kind.labelJa)でログイン", systemImage: kind.systemImage)
+            .font(.subheadline)
+            .foregroundStyle(ARMSColor.text)
+        }
+        .disabled(isUpdating || session.biometricAvailability != .available(kind))
+        .frame(minHeight: ARMSMetrics.minTapTarget)
+        if case .notEnrolled = session.biometricAvailability {
+          Text("端末の設定で\(kind.labelJa)を登録し、ARMSでの利用を許可すると使えます。")
+            .font(.footnote)
+            .foregroundStyle(ARMSColor.muted)
+        } else {
+          Text("次回からパスワードの代わりに\(kind.labelJa)でログインします。アプリを5分以上離れた後も確認します。")
+            .font(.footnote)
+            .foregroundStyle(ARMSColor.muted)
+        }
+        if notChanged {
+          Text("\(kind.labelJa)で確認できなかったため、設定を変更していません。")
+            .font(.footnote)
+            .foregroundStyle(ARMSColor.danger)
+        }
+      }
+    }
   }
 }
 
