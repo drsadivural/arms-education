@@ -1,7 +1,9 @@
 // Copy to Local.xcconfig (git-ignored) and fill in the customer's values.
 // Only public values belong here: never put API secrets, the OpenAI key or the APNs .p8 key into the app.
 
-API_BASE_URL = https:/$()/arms-api.example.com
+// API_BASE_URL defaults to https://arms.ayonix.com (Base.xcconfig). Override only for another environment, e.g.
+// a local API on the Mac: API_BASE_URL = http:/$()/localhost:8787
+// API_BASE_URL = https:/$()/arms-staging.example.com
 TERMS_URL = https:/$()/example.com/terms
 PRIVACY_POLICY_URL = https:/$()/example.com/privacy
 
