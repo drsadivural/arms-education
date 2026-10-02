@@ -138,7 +138,7 @@ public final class BookingConfirmModel {
   }
 
   private func lookupByKey() async -> Reservation? {
-    let query = ListQuery(limit: 1, idempotencyKey: idempotencyKey)
+    let query = ListQuery(limit: 1, idempotencyKey: idempotencyKey, slotId: slot.id)
     guard let page = try? await context.api.send(API.reservations(query)).value else { return nil }
     return page.items.first { $0.slotId == slot.id }
   }
@@ -150,6 +150,45 @@ public final class BookingConfirmModel {
     case .approved: return "予約が確定しました。"
     default: return "申請の状態：\(r.status.labelJa)"
     }
+  }
+}
+
+/// One lesson slot opened from a deep link (`arms://lesson-slots/<id>`, e.g. 「担当授業が取り消されました」).
+/// `GET /lesson-slots/{id}`; out-of-scope slots are 404.
+@MainActor
+@Observable
+public final class LessonSlotModel {
+  public let slotId: String
+  public private(set) var slot = Loadable<DataEnvelope<LessonSlot>>()
+  public let context: AppContext
+
+  public init(slotId: String, context: AppContext) {
+    self.slotId = slotId
+    self.context = context
+  }
+
+  public func load() async {
+    slot.beginLoading()
+    let api = context.api
+    let id = slotId
+    slot.apply(
+      await context.fetch(cacheKey: "lesson-slot/\(id)", checkedAt: { $0.checkedAt }) { () async throws in
+        try await api.send(API.lessonSlot(id: id)).value
+      })
+  }
+
+  public var isTeacher: Bool { context.role == .teacher }
+
+  /// The teacher of the slot can open attendance (the screen explains when it is not open yet).
+  public var canTakeAttendance: Bool {
+    guard let s = slot.value?.data, isTeacher else { return false }
+    return s.teacherId == context.me?.id && s.state != .cancelled
+  }
+
+  /// A student can request it from the confirmation screen.
+  public var canBook: Bool {
+    guard let s = slot.value?.data, context.role == .student else { return false }
+    return SlotRules.availability(s, now: context.now()) == .bookable
   }
 }
 
@@ -234,7 +273,8 @@ public final class ReservationDetailModel {
       actionMessage = updated.status == .cancelled ? "予約を取り消しました。" : "予約の状態：\(updated.status.labelJa)"
     } catch {
       actionError = error
-      if error.code == "VERSION_CONFLICT" || error.code == "INVALID_STATE" || error.code == "CANCELLATION_CLOSED" {
+      // Definitive state answers (details carry the current status / row_version): reload.
+      if ["VERSION_CONFLICT", "INVALID_STATE", "CANCELLATION_CLOSED", "RESERVATION_EXPIRED"].contains(error.code) {
         keys.complete(action)
         await load()
       }
@@ -279,9 +319,10 @@ public final class TeacherReservationsModel {
   public func load() async {
     reservations.beginLoading()
     let api = context.api
+    // Upcoming first; the server hides removed reservations unless requested.
     reservations.apply(
       await context.fetch(cacheKey: "teacher-reservations", checkedAt: { $0.checkedAt }) { () async throws in
-        try await api.collectPage(maxPages: 5, query: ListQuery(limit: 100), API.reservations)
+        try await api.collectPage(maxPages: 5, query: ListQuery(limit: 100, sort: "starts_at"), API.reservations)
       })
   }
 
@@ -332,7 +373,9 @@ public final class TeacherReservationsModel {
         ? "\(who)さんの予約を承認しました。" : updated.status == .rejected ? "\(who)さんの予約を却下しました。" : "予約の状態：\(updated.status.labelJa)"
     } catch {
       actionError = error
-      if ["VERSION_CONFLICT", "RESERVATION_EXPIRED", "INVALID_STATE", "SLOT_FULL"].contains(error.code) {
+      // RESERVATION_EXPIRED / VERSION_CONFLICT / INVALID_STATE carry `details.status` and
+      // `details.row_version`; the list is reloaded so the next decision uses the current version.
+      if ["VERSION_CONFLICT", "RESERVATION_EXPIRED", "INVALID_STATE", "SLOT_FULL", "TIME_CONFLICT"].contains(error.code) {
         keys.complete(action)
         await load()
       }
@@ -340,57 +383,90 @@ public final class TeacherReservationsModel {
   }
 }
 
-/// IOS-16 出欠を記録 (teacher of the lesson). Attendees are the approved reservations of the slot.
+/// IOS-16 出欠を記録 (teacher of the lesson). The roster comes from
+/// `GET /lesson-slots/{id}/attendance` (approved reservations + students already recorded, with
+/// their current record); saving is open from 30 minutes before the start (`editable`).
 @MainActor
 @Observable
 public final class AttendanceModel {
-  public let slot: LessonSlot
-  public private(set) var roster = Loadable<[Reservation]>()
+  public let slotId: String
+  /// Slot from the list the screen was opened from (classroom name for the subtitle), if any.
+  public let slot: LessonSlot?
+  public private(set) var roster = Loadable<DataEnvelope<AttendanceRoster>>()
   public private(set) var draft = AttendanceDraft(attendees: [])
   public private(set) var isSaving = false
   public private(set) var error: ARMSError?
   public private(set) var savedMessage: String?
+  /// The teacher changed the form since it was built from the server roster.
+  public private(set) var isDirty = false
   private var keys = ActionKeys()
   public let context: AppContext
 
-  public init(slot: LessonSlot, context: AppContext) {
+  public init(slotId: String, slot: LessonSlot? = nil, context: AppContext) {
+    self.slotId = slotId
     self.slot = slot
     self.context = context
   }
 
+  public convenience init(slot: LessonSlot, context: AppContext) {
+    self.init(slotId: slot.id, slot: slot, context: context)
+  }
+
+  public var title: String { roster.value?.data.slotTitle ?? slot?.title ?? "授業" }
+
+  /// 「10月5日（月）14:00–15:30 / 新入社員Aクラス」.
   public var subtitle: String {
-    "\(JaFormat.dateTimeRange(slot.startsAt, slot.endsAt, calendar: context.calendar)) / \(slot.classroomName)"
+    let range: String
+    if let r = roster.value?.data {
+      range = JaFormat.dateTimeRange(r.startsAt, r.endsAt, calendar: context.calendar)
+    } else if let slot {
+      range = JaFormat.dateTimeRange(slot.startsAt, slot.endsAt, calendar: context.calendar)
+    } else {
+      return ""
+    }
+    guard let classroom = slot?.classroomName else { return range }
+    return "\(range) / \(classroom)"
+  }
+
+  /// Server rule: open from 30 minutes before the start and never for cancelled slots.
+  public var isEditable: Bool { roster.value?.data.editable ?? false }
+
+  /// Why the form is read-only (nil while editable or before the roster loaded).
+  public var notEditableMessage: String? {
+    guard let r = roster.value?.data, !r.editable else { return nil }
+    return ErrorCatalog.message(for: r.state == .cancelled ? "SLOT_CANCELLED" : "ATTENDANCE_NOT_OPEN")
   }
 
   public func load() async {
     roster.beginLoading()
     let api = context.api
-    let date = context.calendar.localDate(of: slot.startsAt)
-    let slotId = slot.id
-    let checked = context.now()
+    let id = slotId
     roster.apply(
-      await context.fetch(cacheKey: "attendance-roster/\(slotId)", checkedAt: { _ in checked }) {
-        () async throws in
-        let all = try await api.collectAll(
-          maxPages: 5, query: ListQuery(limit: 100, status: "approved", from: date, to: date), API.reservations)
-        return all.items.filter { $0.slotId == slotId && $0.status == .approved }
+      await context.fetch(cacheKey: "attendance-roster/\(id)", checkedAt: { $0.checkedAt }) { () async throws in
+        try await api.send(API.attendanceRoster(slotId: id)).value
       })
-    if let list = roster.value, draft.isEmpty || draft.rows.map(\.studentId) != AttendanceDraft(reservations: list, slotId: slotId).rows.map(\.studentId) {
-      draft = AttendanceDraft(reservations: list, slotId: slotId)
+    guard let fresh = roster.value?.data else { return }
+    let rebuilt = AttendanceDraft(roster: fresh)
+    // Keep unsaved edits across refreshes unless the set of students changed.
+    if !isDirty || draft.studentIds != rebuilt.studentIds {
+      draft = rebuilt
+      isDirty = false
     }
   }
 
   public func setState(_ state: AttendanceState, for studentId: String) {
     draft.setState(state, for: studentId)
+    isDirty = true
     savedMessage = nil
   }
 
   public func setNote(_ note: String, for studentId: String) {
     draft.setNote(note, for: studentId)
+    isDirty = true
     savedMessage = nil
   }
 
-  public var canSave: Bool { !draft.isEmpty && !isSaving && context.canMutate }
+  public var canSave: Bool { !draft.isEmpty && !isSaving && context.canMutate && isEditable }
 
   public func save() async {
     guard !draft.isEmpty, !isSaving else { return }
@@ -398,17 +474,25 @@ public final class AttendanceModel {
       error = blocker
       return
     }
-    let action = "attendance:\(slot.id):\(draft.contentFingerprint)"
+    let action = "attendance:\(slotId):\(draft.contentFingerprint)"
     let key = keys.key(for: action)
     isSaving = true
     error = nil
     defer { isSaving = false }
     do {
-      _ = try await context.api.send(API.recordAttendance(slotId: slot.id, input: draft.input(), key: key))
+      _ = try await context.api.send(API.recordAttendance(slotId: slotId, input: draft.input(), key: key))
       keys.complete(action)
-      savedMessage = "出欠を保存しました（\(draft.rows.count)名）。"
+      let count = draft.rows.count
+      isDirty = false
+      await load()
+      savedMessage = "出欠を保存しました（\(count)名）。"
     } catch {
       self.error = error
+      if ["ATTENDANCE_NOT_OPEN", "SLOT_CANCELLED", "VALIDATION_FAILED"].contains(error.code) {
+        // Definitive answer: refresh the roster / editability; a retry is a new action.
+        keys.complete(action)
+        await load()
+      }
     }
   }
 }

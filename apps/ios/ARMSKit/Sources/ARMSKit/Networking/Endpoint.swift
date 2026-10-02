@@ -113,11 +113,20 @@ public struct ListQuery: Sendable, Hashable {
   public var month: YearMonth?
   public var department: String?
   public var idempotencyKey: IdempotencyKey?
+  /// `GET /submissions?state=` (submitted / accepted / revision_requested).
+  public var state: String?
+  /// `GET /reservations?slot_id=`.
+  public var slotId: String?
+  /// `GET /submissions?material_id=`.
+  public var materialId: String?
+  /// `GET /reservations?sort=` (starts_at / -starts_at / -created_at).
+  public var sort: String?
 
   public init(
     cursor: String? = nil, limit: Int? = nil, q: String? = nil, classroomId: String? = nil, teacherId: String? = nil,
     studentId: String? = nil, status: String? = nil, from: LocalDate? = nil, to: LocalDate? = nil,
-    month: YearMonth? = nil, department: String? = nil, idempotencyKey: IdempotencyKey? = nil
+    month: YearMonth? = nil, department: String? = nil, idempotencyKey: IdempotencyKey? = nil, state: String? = nil,
+    slotId: String? = nil, materialId: String? = nil, sort: String? = nil
   ) {
     self.cursor = cursor
     self.limit = limit
@@ -131,6 +140,15 @@ public struct ListQuery: Sendable, Hashable {
     self.month = month
     self.department = department
     self.idempotencyKey = idempotencyKey
+    self.state = state
+    self.slotId = slotId
+    self.materialId = materialId
+    self.sort = sort
+  }
+
+  /// Comma-separated reservation status filter (`status=pending,approved`).
+  public static func statuses(_ list: [ReservationStatus]) -> String {
+    list.map(\.rawValue).joined(separator: ",")
   }
 
   public var items: [QueryItem] {
@@ -149,6 +167,10 @@ public struct ListQuery: Sendable, Hashable {
     if let month { out.append(QueryItem("month", month.isoString)) }
     if let department { out.append(QueryItem("department", department)) }
     if let idempotencyKey { out.append(QueryItem("idempotency_key", idempotencyKey.value)) }
+    if let state { out.append(QueryItem("state", state)) }
+    if let slotId { out.append(QueryItem("slot_id", slotId)) }
+    if let materialId { out.append(QueryItem("material_id", materialId)) }
+    if let sort { out.append(QueryItem("sort", sort)) }
     return out
   }
 

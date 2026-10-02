@@ -279,17 +279,76 @@ enum Fixtures {
     """
   }
 
-  static func progressJSON(percent: String = "76", units: String? = nil) -> String {
+  static let enrollmentId = "99999999-0000-4000-8000-000000000001"
+  static let programVersionId = "99999999-0000-4000-8000-000000000002"
+
+  /// One `UnitProgress` exactly as `readStudentProgress` (services/api/src/domain/progress.ts) emits it.
+  static func unitJSON(
+    id: String, title: String, state: String, score: String = "null", requiresReview: Bool = false,
+    feedback: String = "null", position: Int = 0, required: Bool = true, completedAt: String = "null",
+    materialsTotal: Int = 0, materialsConfirmed: Int = 0, quizPassed: String = "null", submissionState: String = "null",
+    attendanceRequired: Bool = false, attendanceSatisfied: Bool = false
+  ) -> String {
+    """
+    {"id":"\(id)","title":"\(title)","state":"\(state)","weight":1,"score":\(score),"requires_review":\(requiresReview),"feedback":\(feedback),
+    "enrollment_id":"\(enrollmentId)","program_version_id":"\(programVersionId)","program_name":"新入社員基礎研修","position":\(position),
+    "required":\(required),"completed_at":\(completedAt),"materials_total":\(materialsTotal),"materials_confirmed":\(materialsConfirmed),
+    "quiz_passed":\(quizPassed),"submission_state":\(submissionState),"attendance_required":\(attendanceRequired),
+    "attendance_satisfied":\(attendanceSatisfied)}
+    """
+  }
+
+  static func progressJSON(percent: String = "76", units: String? = nil, overdue: Bool = false) -> String {
     let u =
-      units ?? """
-      [{"id":"u1","title":"ビジネスマナー","state":"completed","weight":1,"score":92,"requires_review":true,"feedback":null},
-       {"id":"u2","title":"IT基礎・セキュリティ","state":"completed","weight":1,"score":88,"requires_review":false,"feedback":null},
-       {"id":"u3","title":"実践課題","state":"review_pending","weight":1,"score":null,"requires_review":true,"feedback":null},
-       {"id":"u4","title":"研修振り返り","state":"not_started","weight":1,"score":null,"requires_review":false,"feedback":null}]
-      """
+      units
+      ?? "["
+      + [
+        unitJSON(
+          id: "u1", title: "ビジネスマナー", state: "completed", score: "92", requiresReview: true, position: 0,
+          completedAt: #""2026-10-01T05:00:00.000Z""#, materialsTotal: 2, materialsConfirmed: 2, quizPassed: "true",
+          submissionState: #""accepted""#),
+        unitJSON(
+          id: "u2", title: "IT基礎・セキュリティ", state: "completed", score: "88", position: 1,
+          completedAt: #""2026-10-01T06:00:00.000Z""#, quizPassed: "true"),
+        unitJSON(
+          id: "u3", title: "実践課題", state: "review_pending", requiresReview: true, position: 2,
+          submissionState: #""submitted""#),
+        unitJSON(id: "u4", title: "研修振り返り", state: "not_started", position: 3, materialsTotal: 1),
+      ].joined(separator: ",") + "]"
     return """
-      {"student_id":"\(studentId)","progress_percent":\(percent),"required_total":8,"required_completed":6,"units":\(u),"checked_at":"2026-10-02T02:20:00.000Z"}
+      {"student_id":"\(studentId)","student_name":"和田 一夫","progress_percent":\(percent),"required_total":8,"required_completed":6,"units":\(u),
+      "enrollments":[{"enrollment_id":"\(enrollmentId)","program_id":"99999999-0000-4000-8000-000000000003","program_name":"新入社員基礎研修",
+      "program_version_id":"\(programVersionId)","version_number":2,"due_on":"2026-12-25","overdue":\(overdue),"progress_percent":\(percent),
+      "required_total":8,"required_completed":6}],
+      "checked_at":"2026-10-02T02:20:00.000Z"}
       """
+  }
+
+  /// `Material` as `materialDto` emits it (learner view when `learner` is given).
+  static func materialJSON(
+    id: String, title: String, kind: String, scanState: String = "clean", published: Bool = true,
+    sizeBytes: String = "1", externalUrl: String = "null", questionCount: String = "null", learner: String? = nil,
+    description: String = ""
+  ) -> String {
+    """
+    {"id":"\(id)","unit_id":"\(unitId)","program_version_id":"\(programVersionId)","title":"\(title)","description":"\(description)",
+    "kind":"\(kind)","required":true,"scan_state":"\(scanState)","published":\(published),"size_bytes":\(sizeBytes),"row_version":1,
+    "external_url":\(externalUrl),"upload_id":null,"filename":null,"content_type":null,"question_count":\(questionCount)\(learner.map { #","learner_status":\#($0)"# } ?? "")}
+    """
+  }
+
+  /// `Submission` as `submissionDto` emits it.
+  static func submissionJSON(
+    id: String, studentId: String = Fixtures.studentId, state: String = "submitted", body: String = "業務改善の提案",
+    feedback: String = "null", rowVersion: Int = 1, submittedAt: String = "2026-10-02T00:20:00.000Z",
+    hasFile: Bool = false, scanState: String = "not_applicable"
+  ) -> String {
+    """
+    {"id":"\(id)","material_id":"m4","student_id":"\(studentId)","state":"\(state)","body":"\(body)","scan_state":"\(scanState)",
+    "feedback":\(feedback),"row_version":\(rowVersion),"submitted_at":"\(submittedAt)","student_name":"和田 一夫",
+    "material_title":"業務改善レポート","unit_id":"\(unitId)","unit_title":"実践課題","has_file":\(hasFile),
+    "filename":\(hasFile ? #""report.pdf""# : "null"),"reviewed_at":null,"reviewer_name":null}
+    """
   }
 
   static func errorJSON(_ code: String, _ message: String, requestId: String = "req-1", extra: String = "") -> String {

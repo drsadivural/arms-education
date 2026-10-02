@@ -141,6 +141,17 @@ public enum ARMSError: Error, Sendable, Equatable {
 
   public func hasCode(_ code: String) -> Bool { self.code == code }
 
+  /// Contract `Error.details` (e.g. `{status, row_version}` for RESERVATION_EXPIRED / VERSION_CONFLICT).
+  public var details: JSONValue? {
+    if case .api(let body, _) = self { return body.details }
+    return nil
+  }
+
+  /// Current server state reported with RESERVATION_EXPIRED / VERSION_CONFLICT / INVALID_STATE.
+  public var reportedReservationStatus: ReservationStatus? {
+    details?["status"]?.stringValue.flatMap(ReservationStatus.init(rawValue:))
+  }
+
   /// Message plus the request id for support, e.g. 「…（問い合わせ番号: abc）」.
   public var messageWithRequestId: String {
     guard let id = requestId, !id.isEmpty else { return messageJa }
@@ -184,7 +195,8 @@ public enum AuthFailure: Error, Sendable, Equatable {
   }
 }
 
-/// Mirror of `packages/contracts/src/errors.ts`. Used only when an error response carries no
+/// Mirror of `packages/contracts/src/errors.ts` (every code, same Japanese text). The UI always
+/// prefers the server's `message_ja`; this table is used only when an error response carries no
 /// parsable body (e.g. a proxy error page) or a locally synthesised code needs a message.
 public enum ErrorCatalog {
   public static let messages: [String: String] = [
@@ -210,6 +222,9 @@ public enum ErrorCatalog {
     "IDEMPOTENCY_IN_PROGRESS": "同じ操作を処理中です。しばらくしてから状態を確認してください。",
     "DUPLICATE": "既に登録されています。",
     "INVALID_STATE": "現在の状態ではこの操作はできません。再読み込みしてください。",
+    "EMAIL_TAKEN": "このメールアドレスは既に登録されています。",
+    "EMPLOYEE_NUMBER_TAKEN": "この社員番号は既に登録されています。",
+    "TEACHER_NUMBER_TAKEN": "この講師番号は既に登録されています。",
     "SLOT_FULL": "この授業は満席です。",
     "TIME_CONFLICT": "同じ時間に別の予約があります。",
     "SLOT_TIME_CONFLICT": "同じ講師またはクラスで時間が重なる授業枠があります。",
@@ -218,10 +233,19 @@ public enum ErrorCatalog {
     "RESERVATION_EXPIRED": "申請の保持期限が切れたため、この操作はできません。",
     "ACTIVE_RESERVATIONS": "有効な予約があるため変更できません。先に予約の取消・通知を行ってください。",
     "REASON_REQUIRED": "理由を入力してください（1〜1,000文字）。",
-    "QUIZ_ATTEMPTS_EXCEEDED": "受験回数の上限に達しました。",
+    "CLASSROOM_FULL": "クラスの定員に達しています。",
+    "CAPACITY_BELOW_ENROLLMENT": "在籍人数より少ない定員には変更できません。",
+    "CLASSROOM_HAS_STUDENTS": "在籍者がいるクラスは削除できません。",
+    "CLASSROOM_TRANSFER_REQUIRES_SERVICE": "クラスの変更は「クラス移動」から理由を付けて行ってください。",
+    "TEACHER_CLASSROOM_MISMATCH": "選択した講師はこのクラスの担当ではありません。",
+    "TEACHER_INACTIVE": "停止中の講師は選択できません。",
+    "PROFILE_ROLE_MISMATCH": "利用区分とプロフィールが一致しません。",
+    "PUBLISHED_VERSION_IMMUTABLE": "公開済みのバージョンは変更できません。新しいバージョンを作成してください。",
+    "VERSION_NOT_PUBLISHABLE": "公開条件を満たしていません。単元・教材・検査状態を確認してください。",
+    "SCAN_PENDING": "ファイル検査が完了していないため公開できません。",
     "FILE_REJECTED": "ファイルの形式または内容が許可されていません。",
     "FILE_TOO_LARGE": "ファイルサイズが上限を超えています。",
-    "SCAN_PENDING": "ファイル検査が完了していないため公開できません。",
+    "QUIZ_ATTEMPTS_EXCEEDED": "受験回数の上限に達しました。",
     "ACTION_TOKEN_INVALID": "確認の有効期限が切れたか、無効です。もう一度内容を確認してください。",
     "VOICE_QUOTA_EXCEEDED": "本日の音声利用上限に達しました。画面から操作してください。",
     "RATE_LIMITED": "操作が多すぎます。しばらくしてから再度お試しください。",
@@ -229,9 +253,44 @@ public enum ErrorCatalog {
     "SERVICE_UNAVAILABLE": "現在サービスを利用できません。しばらくしてから再度お試しください。",
     "DB_UNAVAILABLE": "データベースに接続できません。変更は保存されていません。",
     "AUTH_PROVIDER_UNAVAILABLE": "認証サービスに接続できません。しばらくしてから再度お試しください。",
+    "SCANNER_UNAVAILABLE": "ファイル検査サービスに接続できないため、教材の公開を停止しています。",
     "STORAGE_UNAVAILABLE": "ファイル保管サービスに接続できません。",
     "VOICE_UNAVAILABLE": "現在、音声機能を利用できません。画面から操作してください。",
     "NOT_CONFIGURED": "この機能は必要な外部サービスが未設定のため利用できません。管理者にお問い合わせください。",
+    "CLASSROOM_ARCHIVED": "アーカイブ済みのクラスには登録できません。",
+    "RELATED_IN_USE": "関連するデータがあるため、削除・変更できません。",
+    // area: admin
+    "TEACHER_IS_PRIMARY": "主担当のクラスがあるため停止できません。先にクラスの主担当講師を変更してください。",
+    "TEACHER_HAS_FUTURE_SLOTS": "今後の授業枠があるため停止できません。先に授業枠の講師変更または取消を行ってください。",
+    "CLASSROOM_TEACHER_IN_USE": "担当受講者または授業枠（過去分を含む）があるため、この講師をクラスから外せません。",
+    "CLASSROOM_NAME_TAKEN": "同じ名称・開始日のクラスが既に登録されています。",
+    "INVITATION_IN_PROGRESS": "このメールアドレスの招待を処理中です。しばらくしてから一覧で状態を確認してください。",
+    "CANNOT_DISABLE_SELF": "自分自身のアカウントは停止できません。",
+    "LAST_ADMIN": "有効な管理者が1人だけのため停止できません。先に別の管理者を追加してください。",
+    // area: learning
+    "PROGRAM_ARCHIVED": "アーカイブ済みのプログラムは変更できません。",
+    "DRAFT_VERSION_EXISTS": "このプログラムには編集中の下書きバージョンがあります。既存の下書きを編集または公開してください。",
+    "UNIT_POSITION_TAKEN": "この順番は既に別の単元で使われています。別の順番を指定してください。",
+    "MATERIAL_NOT_PUBLISHABLE": "教材の公開条件を満たしていません。ファイル検査・リンク・問題の登録状況を確認してください。",
+    "MATERIAL_KIND_MISMATCH": "この教材の種類ではこの操作はできません。",
+    "QUIZ_NOT_DEFINED": "確認テストの問題が登録されていません。",
+    "VERSION_NOT_PUBLISHED": "公開中のバージョンにのみ受講を割り当てられます。",
+    "ENROLLMENT_EXISTS": "この新入社員は既にこのプログラムを受講しています。",
+    "SUBMISSION_AWAITING_REVIEW": "提出済みの課題は講師の確認待ちです。評価後に再提出できます。",
+    "SUBMISSION_ALREADY_ACCEPTED": "この課題は既に承認されています。",
+    "UPLOAD_NOT_RECEIVED": "ファイルのアップロードが確認できません。アップロードが完了してから再度お試しください。",
+    "UPLOAD_EXPIRED": "アップロードの有効期限が切れました。もう一度ファイルを選択してください。",
+    "UPLOAD_NOT_READY": "ファイルの確認が完了していません。アップロードを完了してから選択してください。",
+    "SCAN_SIGNATURE_INVALID": "検査結果の署名を確認できませんでした。",
+    "PDF_FONT_UNAVAILABLE": "PDF出力用の日本語フォントが配置されていないため、PDFを作成できません。管理者にお問い合わせください。",
+    "EXPORT_TOO_LARGE": "出力件数が上限（10,000件）を超えています。月や部署で絞り込んでください。",
+    // area: booking & notifications
+    "ALREADY_RESERVED": "この授業は既に申請済みです。",
+    "ATTENDANCE_NOT_OPEN": "出欠は授業開始の30分前から記録できます。",
+    "SLOT_CANCELLED": "この授業枠は取り消されています。",
+    "PROGRAM_NOT_ASSIGNED": "この授業の教育プログラムが割り当てられていないため申請できません。",
+    // area: voice
+    "VOICE_SESSION_ENDED": "音声セッションは終了しました。もう一度開始してください。",
   ]
 
   public static func message(for code: String) -> String {

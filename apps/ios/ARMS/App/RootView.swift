@@ -165,6 +165,8 @@ struct RouteDestinationView: View {
     case .studentDetail(let id): StudentDetailView(studentId: id)
     case .attendance(let slot): AttendanceView(slot: slot)
     case .teacherReservations: TeacherReservationsView()
+    case .lessonSlot(let id): LessonSlotView(slotId: id)
+    case .reviewQueue: ReviewQueueView()
     }
   }
 }

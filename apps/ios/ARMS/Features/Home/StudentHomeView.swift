@@ -95,6 +95,9 @@ struct ProgressSummaryCard: View {
     VStack(alignment: .leading, spacing: 8) {
       Text(summary.headline).font(.headline).foregroundStyle(ARMSColor.text)
       Text(summary.requiredText).font(.subheadline).foregroundStyle(ARMSColor.muted)
+      if let due = summary.dueText {
+        Text(due).font(.subheadline).foregroundStyle(due.hasPrefix("期限超過") ? ARMSColor.danger : ARMSColor.muted)
+      }
       if let onDetail {
         LinkButton(title: "進捗の詳細を見る", action: onDetail)
       }

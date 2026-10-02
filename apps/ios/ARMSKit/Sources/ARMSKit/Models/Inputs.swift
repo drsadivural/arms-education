@@ -104,12 +104,18 @@ public struct DeviceInput: Codable, Sendable, Equatable {
     self.environment = environment
   }
 
-  /// Hex encoding of the APNs device token bytes.
+  /// Hex encoding of the APNs device token bytes (lower case, as the API stores it).
   public static func hexToken(_ data: Data) -> String {
     data.map { byte in
       let s = String(byte, radix: 16)
       return s.count == 1 ? "0" + s : s
     }.joined()
+  }
+
+  /// Identifier used by `DELETE /devices/{token_hash}`: SHA-256 (lower-case hex) of the lower-case
+  /// hex token — `deviceTokenHash` in services/api/src/domain/notifications/devices.ts.
+  public static func tokenHash(hexToken: String) -> String {
+    SHA256Digest.hexDigest(hexToken.lowercased())
   }
 }
 

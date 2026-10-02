@@ -1,14 +1,23 @@
 import Foundation
 
-/// Attendance form state for one lesson (IOS-16). Defaults every attendee to 出席 as in the design;
-/// the teacher changes exceptions and may add a note per student.
+/// Attendance form state for one lesson (IOS-16), built from the server roster
+/// (`GET /lesson-slots/{id}/attendance`). Students already recorded start with their saved state
+/// and note; the others default to 出席 as in the design and the teacher changes exceptions.
 public struct AttendanceDraft: Sendable, Equatable {
   public struct Row: Sendable, Equatable, Identifiable {
     public let studentId: String
     public let studentName: String
+    public let employeeNumber: String
     public var state: AttendanceState
     public var note: String
+    /// Saved on the server (「記録済み：田中 祥司 10:05」) — nil until recorded.
+    public let recordedByName: String?
+    public let recordedAt: Date?
+    /// The student's reservation for the slot is no longer approved (kept for correction).
+    public let reservationStatus: ReservationStatus?
     public var id: String { studentId }
+
+    public var isRecorded: Bool { recordedAt != nil }
   }
 
   public private(set) var rows: [Row]
@@ -18,15 +27,22 @@ public struct AttendanceDraft: Sendable, Equatable {
     var seen = Set<String>()
     rows = attendees.compactMap { a in
       guard seen.insert(a.studentId).inserted else { return nil }
-      return Row(studentId: a.studentId, studentName: a.name, state: .present, note: "")
+      return Row(
+        studentId: a.studentId, studentName: a.name, employeeNumber: "", state: .present, note: "", recordedByName: nil,
+        recordedAt: nil, reservationStatus: .approved)
     }
   }
 
-  /// Attendees are the students with an approved reservation for the slot.
-  public init(reservations: [Reservation], slotId: String) {
-    let approved = reservations.filter { $0.slotId == slotId && $0.status == .approved }
-      .sorted { ($0.studentName ?? "") < ($1.studentName ?? "") }
-    self.init(attendees: approved.map { ($0.studentId, $0.studentName ?? "受講者") })
+  /// Rows in the server's roster order (社員番号).
+  public init(roster: AttendanceRoster) {
+    var seen = Set<String>()
+    rows = roster.items.compactMap { item in
+      guard seen.insert(item.studentId).inserted else { return nil }
+      return Row(
+        studentId: item.studentId, studentName: item.studentName, employeeNumber: item.employeeNumber,
+        state: item.attendanceState ?? .present, note: item.note, recordedByName: item.recordedByName,
+        recordedAt: item.recordedAt, reservationStatus: item.reservationStatus)
+    }
   }
 
   public mutating func setState(_ state: AttendanceState, for studentId: String) {
@@ -38,6 +54,8 @@ public struct AttendanceDraft: Sendable, Equatable {
     guard let i = rows.firstIndex(where: { $0.studentId == studentId }) else { return }
     rows[i].note = String(note.prefix(AttendanceDraft.maxNoteLength))
   }
+
+  public var studentIds: [String] { rows.map(\.studentId) }
 
   public var isEmpty: Bool { rows.isEmpty }
 
@@ -107,21 +125,52 @@ public struct QuizSession: Sendable, Equatable {
       })
   }
 
-  /// 「全5問 / 合格点80点 / 受験可能」 (or 「受験回数の上限に達しました」).
+  /// 「全5問 / 合格点80点 / 受験可能（残り2回）」 (or 「受験回数の上限に達しました」).
   public static func summary(_ quiz: Quiz) -> String {
     let availability = quiz.attemptsRemaining > 0 ? "受験可能（残り\(quiz.attemptsRemaining)回）" : "受験回数の上限に達しました"
     return "全\(quiz.questions.count)問 / 合格点\(UnitPresentation.formatScore(quiz.passScore))点 / \(availability)"
   }
+
+  /// 「受験回数の上限：3回（最高点を採用）」.
+  public static func policyText(_ quiz: Quiz) -> String {
+    "受験回数の上限：\(quiz.maxAttempts)回（\(quiz.scorePolicy.labelJa)）"
+  }
+
+  /// 「現在の評価：92点・合格」 once attempted (the score counted under the version policy).
+  public static func currentScoreText(_ quiz: Quiz) -> String? {
+    guard let score = quiz.effectiveScore else { return nil }
+    return "現在の評価：\(UnitPresentation.formatScore(score))点・\(quiz.passed ? "合格" : "不合格")"
+  }
 }
 
-/// Assignment text validation (contract: 1–10,000 characters).
+/// Assignment validation (contract: body ≤ 10,000 characters; text or an uploaded file is required).
 public enum AssignmentRules {
   public static let maxLength = 10_000
+  /// `PURPOSE_RULES.assignment` in services/api/src/domain/learning/files.ts.
+  public static let allowedContentTypes: [String: [String]] = [
+    "application/pdf": ["pdf"], "image/png": ["png"], "image/jpeg": ["jpg", "jpeg"],
+  ]
+  public static let maxFileBytes = 20 * 1024 * 1024
 
   public static func validate(_ body: String) -> String? {
+    validate(body, hasAttachment: false)
+  }
+
+  public static func validate(_ body: String, hasAttachment: Bool) -> String? {
     let trimmed = body.trimmingCharacters(in: .whitespacesAndNewlines)
-    if trimmed.isEmpty { return "提出内容を入力してください。" }
+    if trimmed.isEmpty && !hasAttachment { return "提出内容を入力してください。" }
     if body.count > maxLength { return "提出内容は10,000文字以内で入力してください。" }
+    return nil
+  }
+
+  /// Checks a file before `POST /uploads` (the server re-checks type, extension, size and bytes).
+  public static func validateAttachment(filename: String, contentType: String, sizeBytes: Int) -> String? {
+    let type = contentType.split(separator: ";").first.map { $0.trimmingCharacters(in: .whitespaces).lowercased() } ?? ""
+    guard let extensions = allowedContentTypes[type] else { return "添付できるファイルはPDF・PNG・JPEGです。" }
+    let ext = filename.split(separator: ".").last.map { $0.lowercased() } ?? ""
+    guard filename.contains("."), extensions.contains(ext) else { return "ファイルの拡張子が形式と一致しません。" }
+    if sizeBytes <= 0 { return "空のファイルは添付できません。" }
+    if sizeBytes > maxFileBytes { return "ファイルサイズは20MB以下にしてください。" }
     return nil
   }
 

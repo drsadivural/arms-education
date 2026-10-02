@@ -104,6 +104,21 @@ cd apps/ios && xcodegen generate && xcodebuild -project ARMS.xcodeproj -scheme A
 
 CI は `.github/workflows/ios.yml`（Ubuntu の `swift:6.1-noble` で ARMSKit、macOS 15 で XcodeGen → xcodebuild build/test）です。
 
+### ローカル API との契約テスト（任意）
+
+`Tests/ARMSKitTests/LiveAPITests.swift` は、実際の `APIClient`（URLSession）・DTO・ビューモデル・音声ブリッジをローカルの
+API（wrangler dev）に対して実行します。`ARMS_LIVE_API=1` が無い場合はスキップされます（CI でもスキップ）。
+
+```bash
+# リポジトリ直下。Docker のローカル基盤（Postgres :55433 / GoTrue :9999 / MinIO :9100）を起動し、マイグレーション適用済みであること
+(cd services/api && npx wrangler dev --port 8804 --inspector-port 9804 --ip 127.0.0.1)   # 別ターミナル
+apps/ios/ARMSKit/Scripts/live-contract-test.sh
+```
+
+`Scripts/seed-live.mjs` が実行ごとに独立した組織（講師・受講者・クラス・公開済みプログラム・授業枠 3 件・未読のお知らせ・
+音声セッション行）をローカル環境にだけ作成します（ローカル以外の接続先は拒否）。ローカルには OpenAI キーが無いため
+`POST /voice/sessions` は `503 VOICE_UNAVAILABLE` になり、`/voice/tool-calls` は seed した音声セッションで prepare → 確認 → commit を検証します。
+
 ## 実装上の要点
 
 - **認証**: Supabase Auth のアクセストークンを `Authorization: Bearer` で送信（Cookie・CSRF は使用しない）。トークンは Keychain
@@ -122,6 +137,19 @@ CI は `.github/workflows/ios.yml`（Ubuntu の `swift:6.1-noble` で ARMSKit、
   `commit_*` は確認カード（120 秒）に対するボタン押下、または「はい、申請して」のような明確な発話の後だけ送信し、
   「はい」だけの相槌・質問・言いよどみでは送信しません。60 秒無音・サーバーの `expires_at`・電話割り込み・通信断で終了し、
   `POST /voice/sessions/{id}/end` を送信。初回に「AIが生成した音声です」の説明を表示。マイク拒否時は文字入力で利用可能。
+  利用できるツールはセッション応答の `tools`（ロール別、サーバーが決定）に限定。ツール結果はサーバーの executor の形
+  （`prepare_*` → `{action_token, expires_at, confirmation_ja, card, checked_at}`、`commit_*` → `{reservation, message_ja, checked_at}`）
+  で解釈し、業務エラー（HTTP 200 の `success:false, data:{error_code, message_ja}`）は成功扱いせずそのままモデルと画面に伝えます。
+  確認カードはサーバーの `confirmation_ja` とカード項目（日時・授業・講師・クラス・空き／現在の状態・取消期限）を表示します。
+  本日の残り利用時間は `GET /voice/quota`（設定画面・音声画面）。
+- **出欠（IOS-16）**: `GET /lesson-slots/{id}/attendance` の名簿（承認済み予約＋記録済み受講者、現在の記録・記録者）を表示し、
+  `POST` で保存。授業開始 30 分前より前・取消済みの枠は読み取り専用（`ATTENDANCE_NOT_OPEN` / `SLOT_CANCELLED`）。
+- **課題（IOS-12/06）**: ファイル添付は `POST /uploads`（purpose: assignment）→ 署名付き PUT（`required_headers` のみ送信）→
+  `POST /uploads/{id}/complete` → `object_key` を付けて提出。講師は `GET /submissions?state=submitted`、
+  `GET /submissions/{id}/file`（検査済みのみ）、`POST /submissions/{id}/review`（`expected_version`）で評価。
+- **通知・端末**: お知らせは `status=unread` 絞り込みと「すべて既読」（`POST /notifications/read-all`）。APNs ペイロードの
+  `deep_link`（`arms://reservations/<id>`・`arms://lessons/today`・`arms://lesson-slots/<id>`）で画面を開きます。ログアウト時は
+  `DELETE /devices/{token_hash}`（16 進トークンの SHA-256）で端末登録を解除。
 - **アクセシビリティ**: Dynamic Type、VoiceOver ラベル、44pt 以上のタップ領域、状態は色＋文字で表示、Reduce Motion で波形停止。
 - **ロゴ**: `assets/reference/logo.png` を無加工でアセットに収録し、ダークモードでも白いタイル上に表示。
 
@@ -130,6 +158,8 @@ CI は `.github/workflows/ios.yml`（Ubuntu の `swift:6.1-noble` で ARMSKit、
 | 項目 | 状況 |
 |---|---|
 | ARMSKit のビルドと XCTest（DTO・API クライアント・日付・予約/進捗ルール・音声ブリッジ・ビューモデル） | Linux で実行済み（`swift test`） |
+| 実 API との契約（ローカル wrangler dev + GoTrue + MinIO に対する `LiveAPITests`：/me・予約・出欠・進捗・教材・テスト・課題アップロード・評価・通知・端末・音声ツール） | Linux で実行済み（`Scripts/live-contract-test.sh`） |
+| SwiftUI アプリ本体の構文（`swiftc -parse`） | Linux で確認済み（型検査は macOS CI） |
 | `SupabaseAuthService` の supabase-swift 2.55.3 `Auth` に対するコンパイル、誤パスワード時のローカル GoTrue 応答の日本語化 | Linux で確認済み |
 | SwiftUI アプリ本体・WebRTC・AVAudioSession・Keychain・APNs のコンパイル | **未実施**（Linux に iOS SDK が無いため。macOS CI で確認） |
 | マイク・WebRTC 音声・AirPods/Bluetooth 経路・電話割り込み・音声割り込み時の再生停止 | 実機での確認が必要 |

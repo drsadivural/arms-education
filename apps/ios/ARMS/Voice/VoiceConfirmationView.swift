@@ -47,26 +47,37 @@ struct VoiceConfirmationView: View {
             .background(ARMSColor.surface, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
             .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).strokeBorder(ARMSColor.border))
 
+          // Card fields exactly as prepared by the server (`data.card`); nothing is written yet.
           ARMSCard {
             Text(card.intent == .reserve ? "予約申請の内容" : "取消する予約").font(.headline).foregroundStyle(ARMSColor.text)
             VStack(spacing: 0) {
-              if let start = card.startsAt, let end = card.endsAt {
-                KeyValueRow(label: "日時", value: JaFormat.dateTimeRange(start, end, calendar: calendar))
-              }
+              if let schedule = card.scheduleLabel { KeyValueRow(label: "日時", value: schedule) }
               if let title = card.lessonTitle { KeyValueRow(label: "授業", value: title) }
               if let teacher = card.teacherName { KeyValueRow(label: "担当講師", value: teacher) }
-              if let student = card.studentName ?? app.context.me?.displayName {
-                KeyValueRow(label: "受講者", value: student, showsDivider: false)
+              if let classroom = card.classroomName { KeyValueRow(label: "クラス", value: classroom) }
+              if let seats = card.remainingSeats { KeyValueRow(label: "空き", value: JaFormat.remainingSeats(seats)) }
+              if let status = card.statusLabel { KeyValueRow(label: "現在の状態", value: status) }
+              if let deadline = card.cancelDeadline {
+                KeyValueRow(label: "取消期限", value: JaFormat.dateTime(deadline, calendar: calendar))
               }
+              KeyValueRow(label: "受講者", value: card.studentName ?? app.context.me?.displayName ?? "—", showsDivider: false)
             }
           }
 
           switch state {
-          case .awaiting, .confirmed:
+          case .awaiting:
             InfoNote(text: card.voiceHint)
             PrimaryButton(title: card.confirmButtonTitle, isEnabled: !card.isExpired(now: now) && app.context.canMutate) {
               Task { await voice.confirmByButton() }
             }
+            SecondaryButton(title: "内容を変更する") {
+              voice.requestChange()
+              dismiss()
+            }
+          case .confirmed:
+            // Confirmed by voice: the assistant is sending it; the button must not send a second time.
+            InfoNote(text: card.intent == .reserve ? "確認しました。申請を送信しています…" : "確認しました。取消を送信しています…")
+            PrimaryButton(title: card.confirmButtonTitle, isLoading: true, isEnabled: false) {}
             SecondaryButton(title: "内容を変更する") {
               voice.requestChange()
               dismiss()

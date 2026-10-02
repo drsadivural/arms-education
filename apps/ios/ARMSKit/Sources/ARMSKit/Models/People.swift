@@ -17,11 +17,15 @@ public struct Student: Codable, Sendable, Hashable, Identifiable {
   public let active: Bool
   public let rowVersion: Int
   public let progressPercent: Int?
+  /// Display names resolved by the server (contract `Student.classroom_name` / `teacher_name`).
+  public let classroomName: String?
+  public let teacherName: String?
 
   public init(
     id: String, employeeNumber: String, displayName: String, kana: String, email: String, companyName: String,
     departmentName: String, joinedOn: LocalDate, classroomId: String, teacherId: String, trainingStartsOn: LocalDate,
-    trainingDueOn: LocalDate, active: Bool, rowVersion: Int, progressPercent: Int?
+    trainingDueOn: LocalDate, active: Bool, rowVersion: Int, progressPercent: Int?, classroomName: String? = nil,
+    teacherName: String? = nil
   ) {
     self.id = id
     self.employeeNumber = employeeNumber
@@ -38,6 +42,8 @@ public struct Student: Codable, Sendable, Hashable, Identifiable {
     self.active = active
     self.rowVersion = rowVersion
     self.progressPercent = progressPercent
+    self.classroomName = classroomName
+    self.teacherName = teacherName
   }
 
   enum CodingKeys: String, CodingKey {
@@ -56,6 +62,8 @@ public struct Student: Codable, Sendable, Hashable, Identifiable {
     case active
     case rowVersion = "row_version"
     case progressPercent = "progress_percent"
+    case classroomName = "classroom_name"
+    case teacherName = "teacher_name"
   }
 
   public init(from decoder: any Decoder) throws {
@@ -75,6 +83,8 @@ public struct Student: Codable, Sendable, Hashable, Identifiable {
     active = try c.decode(Bool.self, forKey: .active)
     rowVersion = try c.decode(Int.self, forKey: .rowVersion)
     progressPercent = try c.decodeIfPresent(Int.self, forKey: .progressPercent)
+    classroomName = try c.decodeIfPresent(String.self, forKey: .classroomName)
+    teacherName = try c.decodeIfPresent(String.self, forKey: .teacherName)
   }
 
   public func encode(to encoder: any Encoder) throws {
@@ -94,6 +104,8 @@ public struct Student: Codable, Sendable, Hashable, Identifiable {
     try c.encode(active, forKey: .active)
     try c.encode(rowVersion, forKey: .rowVersion)
     try c.encode(progressPercent, forKey: .progressPercent)
+    try c.encodeIfPresent(classroomName, forKey: .classroomName)
+    try c.encodeIfPresent(teacherName, forKey: .teacherName)
   }
 }
 

@@ -21,9 +21,29 @@ private struct NotificationsScreen: View {
   var body: some View {
     ScrollView {
       VStack(alignment: .leading, spacing: 12) {
+        HStack(spacing: 12) {
+          Picker(
+            "表示", selection: Binding(get: { model.filter }, set: { filter in Task { await model.setFilter(filter) } })
+          ) {
+            ForEach(NotificationsModel.Filter.allCases, id: \.self) { filter in
+              Text(filter.labelJa).tag(filter)
+            }
+          }
+          .pickerStyle(.segmented)
+          .frame(minHeight: ARMSMetrics.minTapTarget)
+          Button("すべて既読") { Task { await model.markAllRead() } }
+            .font(.subheadline)
+            .frame(minHeight: ARMSMetrics.minTapTarget)
+            .disabled(!model.canMarkAllRead)
+        }
+        if let error = model.actionError {
+          MessageBanner(kind: .error, text: error.messageWithRequestId)
+        }
         LoadStateView(
-          state: model.notifications, isEmpty: { $0.items.isEmpty }, retry: model.load,
-          empty: { EmptyStateView(systemImage: "bell", title: "お知らせはありません") }
+          state: model.notifications, isEmpty: { _ in model.items.isEmpty }, retry: model.load,
+          empty: {
+            EmptyStateView(systemImage: "bell", title: model.filter == .unread ? "未読のお知らせはありません" : "お知らせはありません")
+          }
         ) { _ in
           LazyVStack(spacing: 12) {
             ForEach(model.items) { notification in

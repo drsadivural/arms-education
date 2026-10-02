@@ -1,29 +1,6 @@
 import Foundation
 import Observation
 
-/// Daily voice usage when the server reports it in the `/voice/sessions/{id}/end` result
-/// (`data.daily_used_seconds` / `data.daily_quota_seconds`).
-public struct VoiceQuotaInfo: Sendable, Equatable {
-  public let usedSeconds: Int
-  public let quotaSeconds: Int
-
-  public init(usedSeconds: Int, quotaSeconds: Int) {
-    self.usedSeconds = usedSeconds
-    self.quotaSeconds = quotaSeconds
-  }
-
-  /// 「3分 / 15分」.
-  public var labelJa: String { "\(JaFormat.minutes(seconds: usedSeconds)) / \(JaFormat.minutes(seconds: quotaSeconds))" }
-
-  static func parse(_ data: JSONValue?) -> VoiceQuotaInfo? {
-    guard let data else { return nil }
-    let used = data["daily_used_seconds"]?.intValue ?? data["used_seconds"]?.intValue
-    let quota = data["daily_quota_seconds"]?.intValue ?? data["quota_seconds"]?.intValue
-    guard let used, let quota, quota > 0 else { return nil }
-    return VoiceQuotaInfo(usedSeconds: used, quotaSeconds: quota)
-  }
-}
-
 /// Orchestrates one voice session (IOS-13/14):
 /// `POST /voice/sessions` → WebRTC connect with the in-memory client secret → data-channel events →
 /// `POST /voice/sessions/{id}/end`. Ends on user request, 60 s silence, the server's `expires_at`,
@@ -48,7 +25,10 @@ public final class VoiceSessionController {
   public private(set) var conversation: VoiceConversation?
   public private(set) var microphonePermission: MicrophonePermission = .undetermined
   public private(set) var routeName: String = ""
-  public private(set) var quota: VoiceQuotaInfo?
+  /// Today's usage from `GET /voice/quota` (refreshed on demand, after each session and on 429).
+  public private(set) var quota: VoiceQuota?
+  /// Seconds reserved for the running session (`VoiceSession.max_seconds`).
+  public private(set) var sessionLimitSeconds: Int?
   /// 「AIが生成した音声です」 explanation must be acknowledged once before the first session.
   public private(set) var needsDisclosure: Bool
 
@@ -145,7 +125,9 @@ public final class VoiceSessionController {
     do {
       grant = try await api.send(API.createVoiceSession(key: IdempotencyKey())).value
     } catch {
+      // 429 VOICE_QUOTA_EXCEEDED / 503 VOICE_UNAVAILABLE: show the server's message as is.
       phase = .failed(error.messageJa)
+      if error.code == "VOICE_QUOTA_EXCEEDED" { await refreshQuota() }
       return
     }
     guard generation == myGeneration else {
@@ -154,6 +136,7 @@ public final class VoiceSessionController {
       return
     }
     sessionId = grant.sessionId
+    sessionLimitSeconds = grant.maxSeconds
 
     do {
       try audio.activate()
@@ -170,7 +153,7 @@ public final class VoiceSessionController {
     let transport = makeTransport()
     self.transport = transport
     let conversation = VoiceConversation(
-      sessionId: grant.sessionId, role: role, calendar: calendar, expiresAt: grant.expiresAt,
+      sessionId: grant.sessionId, role: role, calendar: calendar, expiresAt: grant.expiresAt, serverTools: grant.tools,
       executor: APIVoiceToolExecutor(api: api), now: now, sleeper: sleeper,
       send: { [weak transport] event in transport?.send(event.data) ?? false },
       setMicrophone: { [weak transport] enabled in transport?.setMicrophoneEnabled(enabled) })
@@ -212,6 +195,7 @@ public final class VoiceSessionController {
     audio.setEventHandler(nil)
     audio.deactivate()
     disconnectedSince = nil
+    sessionLimitSeconds = nil
     if let sessionId {
       self.sessionId = nil
       phase = .ending
@@ -220,6 +204,11 @@ public final class VoiceSessionController {
     } else if wasRunning {
       phase = .ended(reason)
     }
+  }
+
+  /// `GET /voice/quota` for the Settings screen and the voice screen. Failures keep the last value.
+  public func refreshQuota() async {
+    if let fresh = try? await api.send(API.voiceQuota()).value.data { quota = fresh }
   }
 
   /// Scene moved to background: recording stops and the session ends (no background audio).
@@ -307,11 +296,12 @@ public final class VoiceSessionController {
 
   private func finishOnServer(_ sessionId: String) async {
     do {
-      let result = try await api.send(API.endVoiceSession(id: sessionId)).value
-      if let info = VoiceQuotaInfo.parse(result.data) { quota = info }
+      // `data: {session_id, consumed_seconds}`; the daily figures come from GET /voice/quota.
+      _ = try await api.send(API.endVoiceSession(id: sessionId))
     } catch {
       // The server reconciles quota at expires_at (unended sessions are charged their maximum),
       // so a failed end call is not surfaced as an error to the user.
     }
+    await refreshQuota()
   }
 }

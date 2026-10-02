@@ -21,6 +21,10 @@ public struct RetryPolicy: Sendable, Equatable {
   /// transaction rolled back), so resending with the same idempotency key is safe.
   public static let retryableStatuses: Set<Int> = [429, 503]
 
+  /// 429/503 answers that a retry cannot change: a missing server integration (APNs, storage,
+  /// OpenAI) and an exhausted daily voice quota.
+  public static let permanentCodes: Set<String> = ["NOT_CONFIGURED", "VOICE_QUOTA_EXCEEDED"]
+
   /// Delay before attempt `attempt + 1` (attempt is 1-based). `random` returns a value in [0, 1).
   public func delay(afterAttempt attempt: Int, retryAfter: TimeInterval?, random: Double) -> TimeInterval {
     if let retryAfter, retryAfter >= 0 {

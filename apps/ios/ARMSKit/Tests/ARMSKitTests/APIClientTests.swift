@@ -44,6 +44,29 @@ final class APIClientTests: XCTestCase {
     XCTAssertTrue(url.absoluteString.contains("%2B"))
   }
 
+  func testFinalContractQueriesAndPaths() {
+    func query(_ items: [QueryItem]) -> [String: String] { Dictionary(uniqueKeysWithValues: items.map { ($0.name, $0.value) }) }
+    let key = IdempotencyKey()
+    let reservations = API.reservations(
+      ListQuery(
+        status: ListQuery.statuses([.pending, .approved]), idempotencyKey: key, slotId: Fixtures.slotId, sort: "-created_at"))
+    XCTAssertEqual(
+      query(reservations.query),
+      ["status": "pending,approved", "idempotency_key": key.value, "slot_id": Fixtures.slotId, "sort": "-created_at"])
+    XCTAssertEqual(query(API.submissions(ListQuery(studentId: "s", state: "submitted")).query), ["student_id": "s", "state": "submitted"])
+    XCTAssertEqual(query(API.notifications(ListQuery(limit: 30, status: "unread")).query), ["limit": "30", "status": "unread"])
+    XCTAssertEqual(API.attendanceRoster(slotId: Fixtures.slotId).path, "/lesson-slots/\(Fixtures.slotId)/attendance")
+    XCTAssertEqual(API.lessonSlot(id: Fixtures.slotId).path, "/lesson-slots/\(Fixtures.slotId)")
+    XCTAssertEqual(API.submissionFile(id: "S1").path, "/submissions/s1/file")
+    XCTAssertEqual(API.markAllNotificationsRead().path, "/notifications/read-all")
+    XCTAssertEqual(API.voiceQuota().path, "/voice/quota")
+    let delete = API.unregisterDevice(tokenHash: String(repeating: "A", count: 64))
+    XCTAssertEqual(delete.method, .delete)
+    XCTAssertEqual(delete.path, "/devices/" + String(repeating: "a", count: 64))
+    XCTAssertNil(delete.ifMatch, "device registrations are not versioned")
+    XCTAssertNotNil(API.createUpload(UploadInput(filename: "a.pdf", contentType: "application/pdf", sizeBytes: 1, purpose: .assignment), key: key).idempotencyKey)
+  }
+
   func testMutationHeadersIdempotencyAndCreatedStatus() async throws {
     let t = MockTransport()
     t.on(.post, "/reservations", status: 201, json: Fixtures.reservationJSON())
@@ -145,6 +168,55 @@ final class APIClientTests: XCTestCase {
     XCTAssertEqual(t.requests.count, 3)
     // base 0.5 s × 2^(n-1) × jitter 0.5
     XCTAssertEqual(sleeper.delays, [0.25, 0.5])
+  }
+
+  func testNotConfiguredIsNotRetried() async {
+    let t = MockTransport()
+    t.on(
+      .post, "/devices", status: 503,
+      json: Fixtures.errorJSON("NOT_CONFIGURED", "この機能は必要な外部サービスが未設定のため利用できません。管理者にお問い合わせください。"))
+    let sleeper = RecordingSleeper()
+    do {
+      _ = try await makeClient(t, sleeper: sleeper).send(
+        API.registerDevice(DeviceInput(token: "ab01", environment: .sandbox), key: IdempotencyKey()))
+      XCTFail("expected error")
+    } catch {
+      XCTAssertEqual(error.code, "NOT_CONFIGURED")
+    }
+    XCTAssertEqual(t.requests.count, 1)
+    XCTAssertTrue(sleeper.delays.isEmpty)
+  }
+
+  func testPresignedPutSendsOnlySignedHeaders() async throws {
+    let t = MockTransport()
+    let url = "https://r2.example.invalid/b/quarantine/o/k?X-Amz-Signature=s"
+    t.on(.put, url) { _, n in
+      if n == 1 { throw TransportError.connectionLost }
+      return HTTPResponse(status: 200)
+    }
+    let ticket = UploadTicket(id: "u", uploadUrl: url, objectKey: "quarantine/o/k", expiresAt: fixedNow, requiredHeaders: ["Content-Type": "image/png"])
+    try await makeClient(t, organization: OrganizationSelection("org-1")).putObject(ticket, body: Data([1, 2, 3]))
+    XCTAssertEqual(t.requests.count, 2, "transport failure retried")
+    let put = t.requests[1]
+    XCTAssertEqual(put.method, .put)
+    XCTAssertEqual(put.headers, ["Content-Type": "image/png"], "no Authorization / X-ARMS-Org on the storage URL")
+    XCTAssertEqual(put.body, Data([1, 2, 3]))
+
+    let expired = MockTransport()
+    expired.on(.put, url) { _, _ in HTTPResponse(status: 403) }
+    do {
+      try await makeClient(expired).putObject(ticket, body: Data([1]))
+      XCTFail("expected error")
+    } catch {
+      XCTAssertEqual(error.code, "UPLOAD_EXPIRED")
+    }
+    do {
+      let insecure = UploadTicket(id: "u", uploadUrl: "http://r2.example.invalid/x", objectKey: "k", expiresAt: fixedNow, requiredHeaders: [:])
+      try await makeClient(MockTransport()).putObject(insecure, body: Data([1]))
+      XCTFail("expected error")
+    } catch {
+      XCTAssertEqual(error.code, "UPLOAD_FAILED")
+    }
   }
 
   func testTimeoutRetriedOnlyForRetrySafeRequests() async {

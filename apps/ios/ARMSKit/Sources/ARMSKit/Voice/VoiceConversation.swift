@@ -47,35 +47,34 @@ public enum VoiceEndReason: Sendable, Equatable {
   }
 }
 
-/// Structured result shown inline in the conversation (e.g. the 「本日の授業」 card).
+/// Structured result shown inline in the conversation (e.g. the 「本日の授業」 card), decoded from
+/// the read tools' `data` (services/api/src/domain/voice/executor.ts):
+/// - today_lessons: `{date, date_ja, lessons: [slot summary], count, checked_at}`
+/// - search_slots: `{date, date_ja, time_band, slots: [slot summary], full_or_closed_count, checked_at}`
+/// - get_reservations: `{reservations: [reservation summary], from, checked_at}` or `{reservation, checked_at}`
+/// - get_progress: `{student_name, progress_percent, progress_ja, required_*, programs, units, checked_at}`
 public enum VoiceResultCard: Sendable, Equatable {
-  case lessons(title: String, [LessonSlot])
-  case reservations([Reservation])
-  case progress(StudentProgress)
+  case lessons(title: String, [VoiceSlotSummary])
+  case reservations([VoiceReservationSummary])
+  case progress(VoiceProgressSummary)
 
   static func parse(tool: VoiceTool, data: JSONValue?) -> VoiceResultCard? {
     guard let data else { return nil }
-    func list(_ keys: [String]) -> JSONValue? {
-      if case .array = data { return data }
-      for k in keys { if let v = data[k], case .array = v { return v } }
-      return nil
-    }
     switch tool {
     case .todayLessons:
-      if let items = list(["items", "lessons"]), let slots = try? items.decode([LessonSlot].self) {
+      if let slots = try? data["lessons"]?.decode([VoiceSlotSummary].self) {
         return .lessons(title: "本日の授業", slots)
       }
     case .searchSlots:
-      if let items = list(["items", "slots"]), let slots = try? items.decode([LessonSlot].self) {
-        return .lessons(title: "空き枠", slots)
+      if let slots = try? data["slots"]?.decode([VoiceSlotSummary].self) {
+        let day = data["date_ja"]?.stringValue.map { "\($0)の" } ?? ""
+        return .lessons(title: "\(day)空き枠", slots)
       }
     case .getReservations:
-      if let items = list(["items", "reservations"]), let r = try? items.decode([Reservation].self) {
-        return .reservations(r)
-      }
-      if let single = try? (data["reservation"] ?? data).decode(Reservation.self) { return .reservations([single]) }
+      if let list = try? data["reservations"]?.decode([VoiceReservationSummary].self) { return .reservations(list) }
+      if let single = try? data["reservation"]?.decode(VoiceReservationSummary.self) { return .reservations([single]) }
     case .getProgress:
-      if let p = try? (data["progress"] ?? data).decode(StudentProgress.self) { return .progress(p) }
+      if let p = try? data.decode(VoiceProgressSummary.self) { return .progress(p) }
     default:
       return nil
     }
@@ -132,6 +131,8 @@ public final class VoiceConversation {
   public let role: Role
   public let calendar: OrgCalendar
   public let expiresAt: Date?
+  /// Tool names granted by the server for this session (`VoiceSession.tools`); nil → role default.
+  public let serverTools: Set<String>?
 
   public private(set) var entries: [VoiceTranscriptEntry] = []
   public private(set) var confirmation = ConfirmationMachine()
@@ -164,7 +165,7 @@ public final class VoiceConversation {
   private var currentAssistantItemId: String?
 
   public init(
-    sessionId: String, role: Role, calendar: OrgCalendar, expiresAt: Date?,
+    sessionId: String, role: Role, calendar: OrgCalendar, expiresAt: Date?, serverTools: [String]? = nil,
     executor: any VoiceToolExecuting, now: @escaping () -> Date, sleeper: any Sleeper = TaskSleeper(),
     send: @escaping (RealtimeClientEvent) -> Bool, setMicrophone: @escaping (Bool) -> Void
   ) {
@@ -172,6 +173,7 @@ public final class VoiceConversation {
     self.role = role
     self.calendar = calendar
     self.expiresAt = expiresAt
+    self.serverTools = serverTools.map(Set.init)
     self.executor = executor
     self.now = now
     self.sleeper = sleeper
@@ -384,7 +386,10 @@ public final class VoiceConversation {
     guard let tool = VoiceTool(rawValue: call.name) else {
       return rejectionOutput(.unknownTool(call.name))
     }
-    guard tool.isAllowed(for: role) else { return rejectionOutput(.notAllowedForRole) }
+    // The server's per-session tool list is authoritative; the role rule stays as defence in depth.
+    guard tool.isAllowed(for: role), serverTools?.contains(tool.rawValue) ?? true else {
+      return rejectionOutput(.notAllowedForRole)
+    }
     let arguments: JSONValue
     switch tool.validate(argumentsJSON: call.arguments) {
     case .failure(let rejection): return rejectionOutput(rejection)
@@ -412,6 +417,12 @@ public final class VoiceConversation {
     let input = VoiceToolInput(sessionId: sessionId, callId: call.callId, toolName: tool.rawValue, arguments: arguments)
     do {
       let result = try await executor.execute(input, key: key)
+      if let failure = result.toolFailure {
+        // Business failure (`success:false`): nothing was prepared or written. The model gets the
+        // server's code and Japanese message; a write attempt is also shown on screen.
+        if tool.isPrepare { addNotice(failure.messageJa) }
+        return errorOutput(code: failure.errorCode, message: failure.messageJa)
+      }
       if tool.isPrepare, let intent = tool.intent {
         if let card = VoiceConfirmationCard.parse(data: result.data, intent: intent, receivedAt: now(), calendar: calendar)
         {
@@ -426,7 +437,6 @@ public final class VoiceConversation {
       }
       return successOutput(result)
     } catch {
-      if tool.isPrepare, error.code == "ACTION_TOKEN_INVALID" { confirmation.discard() }
       return errorOutput(code: error.code, message: error.messageJa)
     }
   }
@@ -448,6 +458,12 @@ public final class VoiceConversation {
       sessionId: sessionId, callId: callId, toolName: tool.rawValue, arguments: ["action_token": .string(card.actionToken)])
     do {
       let result = try await executor.execute(input, key: key)
+      if let failure = result.toolFailure {
+        // e.g. ACTION_TOKEN_INVALID (expired / already used), SLOT_FULL, CANCELLATION_CLOSED.
+        confirmation.finishCommit(success: false, message: failure.messageJa)
+        addNotice(failure.messageJa)
+        return errorOutput(code: failure.errorCode, message: failure.messageJa)
+      }
       let message = VoiceConversation.commitMessage(intent: card.intent, data: result.data)
       confirmation.finishCommit(success: true, message: message)
       addNotice(message)
@@ -459,9 +475,15 @@ public final class VoiceConversation {
     }
   }
 
-  /// Result line after a commit. 「予約確定」 is only used when the server says `approved`.
+  /// Result line after a commit: the server's `message_ja` when present, otherwise derived from
+  /// `reservation.status`. 「予約確定」 is only ever said for `approved`.
   static func commitMessage(intent: VoiceIntent, data: JSONValue?) -> String {
     let status = (data?["reservation"]?["status"] ?? data?["status"])?.stringValue.flatMap(ReservationStatus.init(rawValue:))
+    if let server = data?["message_ja"]?.stringValue, !server.isEmpty,
+      status == .approved || !server.contains("確定")
+    {
+      return server
+    }
     switch (intent, status) {
     case (.reserve, .pending?): return "予約を申請しました。現在、担当講師の承認待ちです。"
     case (.reserve, .approved?): return "予約が確定しました。"

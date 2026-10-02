@@ -45,6 +45,13 @@ private struct BookingConfirmScreen: View {
 
         if let error = model.error {
           MessageBanner(kind: .error, text: error.messageWithRequestId)
+          if error.code == "ALREADY_RESERVED" {
+            // The student already holds a pending/approved request for this lesson.
+            LinkButton(title: "自分の予約を確認する") {
+              app.router.bookingSegment = .mine
+              app.router.bookingPath = []
+            }
+          }
         }
 
         if case .submitted(let reservation)? = model.outcome, let message = model.successMessage {
@@ -59,7 +66,7 @@ private struct BookingConfirmScreen: View {
         } else {
           PrimaryButton(
             title: model.error == nil ? "この内容で予約を申請" : "もう一度申請する",
-            isLoading: model.isSubmitting, isEnabled: model.canSubmit
+            isLoading: model.isSubmitting, isEnabled: model.canSubmit && model.error?.code != "ALREADY_RESERVED"
           ) {
             Task { await model.submit() }
           }

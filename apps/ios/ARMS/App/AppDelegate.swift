@@ -49,9 +49,10 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
     _ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse,
     withCompletionHandler completionHandler: @escaping () -> Void
   ) {
-    let raw = response.notification.request.content.userInfo["deep_link"] as? String
+    // APNs payload: {"aps":{…},"deep_link":"arms://reservations/<id>" | "arms://lessons/today" | "arms://lesson-slots/<id>"}.
+    let link = DeepLink.fromPush(userInfo: response.notification.request.content.userInfo)
     Task { @MainActor in
-      if let raw, let link = DeepLink.parse(raw) {
+      if let link {
         self.app?.handle(link)
       }
       completionHandler()
