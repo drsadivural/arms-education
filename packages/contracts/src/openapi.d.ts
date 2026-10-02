@@ -133,7 +133,7 @@ export interface paths {
         };
         /**
          * 講師一覧
-         * @description 許可ロール: admin/teacher。組織・本人・担当範囲は認証情報とDBから決定する。
+         * @description 許可ロール: admin/teacher（講師は閲覧のみ）。講師番号順。classroom_ids/student_countはDB集計。
          */
         get: operations["get_teachers"];
         put?: never;
@@ -185,7 +185,7 @@ export interface paths {
         };
         /**
          * 新入社員一覧
-         * @description 許可ロール: admin/teacher。組織・本人・担当範囲は認証情報とDBから決定する。
+         * @description 許可ロール: admin/teacher。講師は担当受講者（担当講師が本人、または担当クラスの在籍者）のみ。社員番号順。
          */
         get: operations["get_students"];
         put?: never;
@@ -237,7 +237,7 @@ export interface paths {
         };
         /**
          * クラス一覧
-         * @description 許可ロール: admin/teacher。組織・本人・担当範囲は認証情報とDBから決定する。
+         * @description 許可ロール: admin/teacher。講師は担当（主・補助）クラスのみ。研修開始日の新しい順。student_countは在籍中の受講者数をDB集計。
          */
         get: operations["get_classrooms"];
         put?: never;
@@ -381,7 +381,7 @@ export interface paths {
         };
         /**
          * クラス在籍者
-         * @description 許可ロール: admin/teacher。組織・本人・担当範囲は認証情報とDBから決定する。
+         * @description 許可ロール: admin/teacher（担当クラスのみ。担当外・他組織は404）。
          */
         get: operations["get_classrooms_id_students"];
         put?: never;
@@ -401,7 +401,7 @@ export interface paths {
         };
         /**
          * 選択可能講師
-         * @description 許可ロール: admin/teacher。組織・本人・担当範囲は認証情報とDBから決定する。
+         * @description 許可ロール: admin/teacher（担当クラスのみ）。クラスに割り当てられた有効な講師（主担当が先頭）。1クラスの講師数は最大51名のため全件を返し next_cursor は常にnull。新入社員フォームの担当講師候補に使用。
          */
         get: operations["get_classrooms_id_teachers"];
         put?: never;
@@ -3003,15 +3003,13 @@ export interface operations {
             query?: {
                 cursor?: string;
                 limit?: number;
+                /** @description 氏名・ふりがな・メール・講師番号の部分一致 */
                 q?: string;
-                classroom_id?: string;
-                teacher_id?: string;
-                student_id?: string;
-                status?: string;
-                from?: string;
-                to?: string;
-                month?: string;
+                /** @description 所属部署（完全一致） */
                 department?: string;
+                status?: "active" | "inactive";
+                /** @description 担当（主・補助）クラス */
+                classroom_id?: string;
             };
             header?: never;
             path?: never;
@@ -3183,15 +3181,14 @@ export interface operations {
             query?: {
                 cursor?: string;
                 limit?: number;
+                /** @description 氏名・ふりがな・社員番号・メールの部分一致 */
                 q?: string;
                 classroom_id?: string;
                 teacher_id?: string;
-                student_id?: string;
-                status?: string;
-                from?: string;
-                to?: string;
-                month?: string;
+                /** @description 所属部署（完全一致） */
                 department?: string;
+                /** @description 在籍状態 */
+                status?: "active" | "inactive";
             };
             header?: never;
             path?: never;
@@ -3363,15 +3360,10 @@ export interface operations {
             query?: {
                 cursor?: string;
                 limit?: number;
+                /** @description クラス名の部分一致 */
                 q?: string;
-                classroom_id?: string;
                 teacher_id?: string;
-                student_id?: string;
-                status?: string;
-                from?: string;
-                to?: string;
-                month?: string;
-                department?: string;
+                status?: "active" | "archived";
             };
             header?: never;
             path?: never;
@@ -3791,15 +3783,12 @@ export interface operations {
             query?: {
                 cursor?: string;
                 limit?: number;
+                /** @description 氏名・ふりがな・社員番号・メールの部分一致 */
                 q?: string;
-                classroom_id?: string;
                 teacher_id?: string;
-                student_id?: string;
-                status?: string;
-                from?: string;
-                to?: string;
-                month?: string;
+                /** @description 所属部署（完全一致） */
                 department?: string;
+                status?: "active" | "inactive";
             };
             header?: never;
             path: {
@@ -3830,19 +3819,7 @@ export interface operations {
     };
     get_classrooms_id_teachers: {
         parameters: {
-            query?: {
-                cursor?: string;
-                limit?: number;
-                q?: string;
-                classroom_id?: string;
-                teacher_id?: string;
-                student_id?: string;
-                status?: string;
-                from?: string;
-                to?: string;
-                month?: string;
-                department?: string;
-            };
+            query?: never;
             header?: never;
             path: {
                 id: string;

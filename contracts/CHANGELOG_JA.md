@@ -32,6 +32,7 @@
 | GET /events, AuditEvent | 修正 | 検索条件を event_type（前方一致）・actor_id・entity_id・from/to（JSTの日付）・q（種別/操作者名）に整理。AuditEvent に actor_id を追加し、システム処理・対象なしのイベントがあるため actor_id / entity_id を null 許容に変更。details は秘密情報キー（token/secret/password/meeting_url/answer_key/transcript等）を除去。 |
 | GET /events/deliveries, POST /events/deliveries/{id}/retry, Delivery, DeliveryPage | 追加 | WEB-19「通知失敗/再送」。outboxの配信状況（読み取り専用）と、failedの配信を送信待ちに戻す手動再送（監査記録）。配信処理そのものは通知モジュールの責務。 |
 | GET /settings/users | 修正 | クエリを q（氏名・メール）・role・status（active/inactive/invite_failed）に整理。 |
+| GET /teachers, GET /students, GET /classrooms, GET /classrooms/{id}/students, GET /classrooms/{id}/teachers | 修正 | 原本は全一覧に共通の汎用クエリ（month/from/to/student_id等）を列挙していたため、実装する絞込みのみに整理（講師: q/department/status/classroom_id、新入社員: q/classroom_id/teacher_id/department/status、クラス: q/teacher_id/status=active\|archived）。/classrooms/{id}/teachers は1クラス最大51名のため全件返却（next_cursor=null）。講師scopeを説明に明記。 |
 | POST /settings/users/invite | 修正 | 管理者アカウントのみ招待する。講師・受講者はプロフィール（講師番号／社員番号・クラス・担当講師）が必須のため講師管理・新入社員管理から登録（role=teacher/studentは422で案内）。 |
 | POST /settings/users/{id}/enable | 追加 | WEB-18 停止の取り消し（membership有効化＋Auth providerのログイン停止解除）。停止と対称のため追加。 |
 | GET /settings/account-deletion-requests, POST /settings/account-deletion-requests/{id}/complete, AccountDeletionRequest(Page) | 追加 | WEB-18「本人削除申請」。POST /me/account-deletion の申請一覧と対応完了（アカウント停止・監査記録。研修記録は保持）。 |
