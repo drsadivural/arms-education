@@ -795,7 +795,11 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /**
+         * 授業枠詳細
+         * @description 許可ロール: admin/teacher/student。受講者は所属クラスの枠のみ、講師は担当クラスの枠のみ（範囲外は404）。remainingは取得時にlive pending＋approvedをDB集計。meeting_urlは管理者・枠の担当講師・承認済み予約の本人にのみ値を返す。ETagはrow_version。
+         */
+        get: operations["get_lesson_slots_id"];
         put?: never;
         post?: never;
         delete?: never;
@@ -815,7 +819,11 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /**
+         * 担当授業の出欠名簿
+         * @description 許可ロール: admin/teacher（枠の担当講師のみ）。名簿は当該枠で承認済みの予約を持つ受講者＋既に出欠記録がある受講者。予約状態と現在の出欠を返す。
+         */
+        get: operations["get_lesson_slots_id_attendance"];
         put?: never;
         /**
          * 担当授業出欠記録
@@ -857,7 +865,7 @@ export interface paths {
         };
         /**
          * 予約一覧
-         * @description 許可ロール: admin/teacher/student。組織・本人・担当範囲は認証情報とDBから決定する。
+         * @description 許可ロール: admin/teacher/student。受講者は本人、講師は担当授業枠の予約、管理者は組織内全件。status はカンマ区切り（pending,approved,rejected,cancelled,expired,removed）。removed は status で明示した場合のみ返す。保持期限を過ぎた pending は取得時に expired として扱う。from/to/month は組織タイムゾーンの日付で授業開始日時を絞り込む。idempotency_key は呼び出し本人の申請を検索する。
          */
         get: operations["get_reservations"];
         put?: never;
@@ -1245,7 +1253,7 @@ export interface paths {
         };
         /**
          * 本人通知
-         * @description 許可ロール: 全員。組織・本人・担当範囲は認証情報とDBから決定する。
+         * @description 許可ロール: 全員。本人宛のアプリ内通知を新しい順に返す。status=unread で未読のみ、status=read で既読のみ。
          */
         get: operations["get_notifications"];
         put?: never;
@@ -1427,7 +1435,7 @@ export interface paths {
         put?: never;
         /**
          * 授業枠を理由付き取消
-         * @description 許可ロール: admin/teacher。認証DBの組織と担当範囲を強制。
+         * @description 許可ロール: admin/teacher（枠の担当講師のみ）。理由1〜1,000文字必須、expected_versionは枠のrow_version。同一transactionで枠をcancelledにし、承認待ち・承認済みの予約をすべて取消済み（理由付き）へ遷移させ、監査と受講者への通知outboxを記録する。dataに {id, state, row_version, cancelled_reservations}。
          */
         post: operations["post__lesson-slots_id_cancel"];
         delete?: never;
@@ -1536,6 +1544,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/notifications/read-all": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * すべて既読
+         * @description 許可ロール: 全員。本人宛の未読通知をすべて既読にする。dataに {updated}。
+         */
+        post: operations["post_notifications_read_all"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/devices/{token_hash}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * APNs登録解除
+         * @description 許可ロール: teacher/student。ログアウト時に本人の端末登録を削除する。token_hash は登録時の端末トークン（16進小文字）のSHA-256（16進小文字64桁）。端末登録はバージョン管理対象外のため If-Match は不要。未登録でも成功を返す（冪等）。
+         */
+        delete: operations["delete_devices_token_hash"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -1633,6 +1681,7 @@ export interface components {
             external_url?: string;
             object_key?: string;
         };
+        /** @description 授業枠の追加・編集共通フォーム。PATCHは全項目置換（unit_id・meeting_url を省略するとnull）。cancel_before_seconds を省略すると、作成時は組織設定（なければ既定値）、編集時は現在値。state は open/closed（取消は /lesson-slots/{id}/cancel）。 */
         SlotInput: {
             /** Format: uuid */
             classroom_id: string;
@@ -1651,6 +1700,8 @@ export interface components {
             /** Format: uri */
             meeting_url?: string;
             cancel_before_seconds?: number;
+            /** @enum {string} */
+            state?: "open" | "closed";
         };
         ProgressRecordInput: {
             /** Format: uuid */
@@ -2552,6 +2603,41 @@ export interface components {
         };
         MeResponse: {
             data: components["schemas"]["Me"];
+            /** Format: date-time */
+            checked_at: string;
+        };
+        AttendanceRosterItem: {
+            /** Format: uuid */
+            student_id: string;
+            student_name: string;
+            employee_number: string;
+            /** Format: uuid */
+            reservation_id: string | null;
+            /** @enum {string|null} */
+            reservation_status: "pending" | "approved" | "rejected" | "cancelled" | "expired" | "removed" | null;
+            /** @enum {string|null} */
+            attendance_state: "present" | "absent" | "late" | "excused" | null;
+            note: string;
+            recorded_by_name: string | null;
+            /** Format: date-time */
+            recorded_at: string | null;
+        };
+        AttendanceRoster: {
+            /** Format: uuid */
+            slot_id: string;
+            slot_title: string;
+            /** Format: date-time */
+            starts_at: string;
+            /** Format: date-time */
+            ends_at: string;
+            /** @enum {string} */
+            state: "open" | "closed" | "cancelled";
+            /** @description 授業開始30分前以降かつ取消されていない場合true */
+            editable: boolean;
+            items: components["schemas"]["AttendanceRosterItem"][];
+        };
+        AttendanceRosterResponse: {
+            data: components["schemas"]["AttendanceRoster"];
             /** Format: date-time */
             checked_at: string;
         };
@@ -4431,6 +4517,32 @@ export interface operations {
             503: components["responses"]["Error"];
         };
     };
+    get_lesson_slots_id: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 成功 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LessonSlotResponse"];
+                };
+            };
+            401: components["responses"]["Error"];
+            403: components["responses"]["Error"];
+            404: components["responses"]["Error"];
+            503: components["responses"]["Error"];
+        };
+    };
     patch_lesson_slots_id: {
         parameters: {
             query?: never;
@@ -4467,6 +4579,32 @@ export interface operations {
             409: components["responses"]["Error"];
             422: components["responses"]["Error"];
             429: components["responses"]["Error"];
+            503: components["responses"]["Error"];
+        };
+    };
+    get_lesson_slots_id_attendance: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 成功 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AttendanceRosterResponse"];
+                };
+            };
+            401: components["responses"]["Error"];
+            403: components["responses"]["Error"];
+            404: components["responses"]["Error"];
             503: components["responses"]["Error"];
         };
     };
@@ -4553,7 +4691,9 @@ export interface operations {
             query?: {
                 cursor?: string;
                 limit?: number;
+                /** @description 受講者氏名・社員番号の部分一致 */
                 q?: string;
+                slot_id?: string;
                 classroom_id?: string;
                 teacher_id?: string;
                 student_id?: string;
@@ -4561,8 +4701,8 @@ export interface operations {
                 from?: string;
                 to?: string;
                 month?: string;
-                department?: string;
                 idempotency_key?: string;
+                sort?: "starts_at" | "-starts_at" | "-created_at";
             };
             header?: never;
             path?: never;
@@ -4587,8 +4727,6 @@ export interface operations {
             400: components["responses"]["Error"];
             401: components["responses"]["Error"];
             403: components["responses"]["Error"];
-            404: components["responses"]["Error"];
-            409: components["responses"]["Error"];
             422: components["responses"]["Error"];
             429: components["responses"]["Error"];
             503: components["responses"]["Error"];
@@ -5301,15 +5439,7 @@ export interface operations {
             query?: {
                 cursor?: string;
                 limit?: number;
-                q?: string;
-                classroom_id?: string;
-                teacher_id?: string;
-                student_id?: string;
-                status?: string;
-                from?: string;
-                to?: string;
-                month?: string;
-                department?: string;
+                status?: "all" | "unread" | "read";
             };
             header?: never;
             path?: never;
@@ -5328,9 +5458,6 @@ export interface operations {
             };
             400: components["responses"]["Error"];
             401: components["responses"]["Error"];
-            403: components["responses"]["Error"];
-            404: components["responses"]["Error"];
-            409: components["responses"]["Error"];
             422: components["responses"]["Error"];
             429: components["responses"]["Error"];
             503: components["responses"]["Error"];
@@ -5618,6 +5745,8 @@ export interface operations {
             query?: never;
             header: {
                 "Idempotency-Key": string;
+                /** @description cookie認証の場合必須。Bearer専用iOSには不要。 */
+                "X-CSRF-Token"?: string;
             };
             path: {
                 id: string;
@@ -5788,6 +5917,63 @@ export interface operations {
             401: components["responses"]["Error"];
             403: components["responses"]["Error"];
             422: components["responses"]["Error"];
+            429: components["responses"]["Error"];
+            503: components["responses"]["Error"];
+        };
+    };
+    post_notifications_read_all: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description cookie認証の場合必須。Bearer専用iOSには不要。 */
+                "X-CSRF-Token"?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 成功 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ActionResult"];
+                };
+            };
+            401: components["responses"]["Error"];
+            403: components["responses"]["Error"];
+            429: components["responses"]["Error"];
+            503: components["responses"]["Error"];
+        };
+    };
+    delete_devices_token_hash: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description cookie認証の場合必須。Bearer専用iOSには不要。 */
+                "X-CSRF-Token"?: string;
+            };
+            path: {
+                token_hash: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 成功 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ActionResult"];
+                };
+            };
+            401: components["responses"]["Error"];
+            403: components["responses"]["Error"];
+            404: components["responses"]["Error"];
             429: components["responses"]["Error"];
             503: components["responses"]["Error"];
         };

@@ -29,6 +29,16 @@
 ## 30-booking.json（授業枠・予約・出欠・通知）
 | 対象 | 種別 | 理由 |
 |---|---|---|
+| GET /lesson-slots/{id} | 追加 | WEB-15編集フォーム・IOS-08確認画面・IOS-10詳細で単一枠を取得する。範囲外は404、ETag=row_version、meeting_urlは管理者・担当講師・承認済み本人のみ。 |
+| POST /lesson-slots/{id}/cancel | 修正 | 原本のtagが materials、X-CSRF-Token 未記載だったため lesson-slots に修正しCSRFヘッダーを追加。枠取消と同時にactive予約を理由付きで取消済みへ遷移し、受講者通知outboxを記録する動作を明記（docs/04「管理者が取消通知を実行してから新枠を作る」）。 |
+| GET /lesson-slots/{id}/attendance | 追加 | IOS-16「出欠を記録」に名簿（承認済み予約＋既存記録）と現在の出欠・記録者が必要。 |
+| AttendanceRosterItem / AttendanceRoster / AttendanceRosterResponse | 追加 | 上記名簿の応答DTO。editable は授業開始30分前以降かつ未取消。 |
+| SlotInput | 修正 | state（open/closed）を任意項目として追加（受付終了の切替。取消は専用API）。title・capacity・meeting_url・cancel_before_seconds に上限を明記。PATCHは全項目置換（unit_id・meeting_url省略時null、cancel_before_seconds・state省略時は現在値）。 |
+| GET /reservations | 修正 | WEB-13の授業別一覧・IOS-17に slot_id、並び順 sort（starts_at / -starts_at / -created_at）を追加。status はカンマ区切り、removed は明示時のみ、保持期限切れpendingは expired として返すことを明記。404/409は一覧では発生しないため削除。 |
+| GET /notifications | 修正 | 汎用フィルタ群を本人通知に必要な cursor・limit・status（all/unread/read）に整理。 |
+| POST /notifications/read-all | 追加 | IOS-15のお知らせ一覧「すべて既読」。 |
+| DELETE /devices/{token_hash} | 追加 | IOS-18ログアウト時に端末のAPNs登録を解除する。端末登録はバージョン管理対象外のため If-Match 不要（冪等）。 |
+| エラーコード ALREADY_RESERVED / ATTENDANCE_NOT_OPEN / SLOT_CANCELLED | 追加 | 同一枠への重複申請（「この授業は既に申請済みです。」）、授業開始30分前より前の出欠記録、取消済み枠の編集・出欠を区別して表示するため。 |
 
 ## 40-voice.json（音声）
 | 対象 | 種別 | 理由 |

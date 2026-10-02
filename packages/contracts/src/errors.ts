@@ -77,6 +77,9 @@ export const ERROR_CATALOG = {
   // ---- area: learning (append new codes directly below this line) ----
 
   // ---- area: booking & notifications (append new codes directly below this line) ----
+  ALREADY_RESERVED: { status: 409, message_ja: "この授業は既に申請済みです。" },
+  ATTENDANCE_NOT_OPEN: { status: 409, message_ja: "出欠は授業開始の30分前から記録できます。" },
+  SLOT_CANCELLED: { status: 409, message_ja: "この授業枠は取り消されています。" },
 
   // ---- area: voice (append new codes directly below this line) ----
 
