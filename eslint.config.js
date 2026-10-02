@@ -38,6 +38,7 @@ export default tseslint.config(
         AbortController: "readonly",
         structuredClone: "readonly",
         Buffer: "readonly",
+        performance: "readonly",
         atob: "readonly",
         btoa: "readonly",
       },
