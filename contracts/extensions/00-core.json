@@ -1,0 +1,1216 @@
+{
+  "paths": {
+    "/auth/login": {
+      "post": {
+        "operationId": "post_auth_login",
+        "summary": "Webログイン",
+        "description": "許可ロール: 公開。メール/パスワードをAuthで検証し、選択した利用区分とDB membershipを照合してHttpOnlyセッションを発行する。管理者でMFA未完了の場合は mfa_required=true を返し、MFA完了まで業務APIを拒否する。",
+        "tags": [
+          "auth"
+        ],
+        "security": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LoginInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionInfoResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/auth/password-reset": {
+      "post": {
+        "operationId": "post_auth_password_reset",
+        "summary": "パスワード再設定メール送信",
+        "description": "許可ロール: 公開。登録済みで有効な利用者には1時間有効の再設定リンクをメール送信する。列挙防止のため、未登録・停止中のアドレスでも同じ応答を返す。メール送信サービス未設定は503 NOT_CONFIGURED。",
+        "tags": [
+          "auth"
+        ],
+        "security": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PasswordResetInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "受付",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ActionResult"
+                }
+              }
+            }
+          },
+          "422": {
+            "$ref": "#/components/responses/Error"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/auth/mfa/enroll": {
+      "post": {
+        "operationId": "post_auth_mfa_enroll",
+        "summary": "管理者MFA(TOTP)登録開始",
+        "description": "許可ロール: admin（パスワード認証済みセッション）。TOTPのQRコード(SVG data URI)と登録用URIを返す。",
+        "tags": [
+          "auth"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MfaEnrollResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/auth/mfa/verify": {
+      "post": {
+        "operationId": "post_auth_mfa_verify",
+        "summary": "管理者MFAコード検証",
+        "description": "許可ロール: admin（パスワード認証済みセッション）。成功するとセッションがaal2になり業務APIを利用できる。",
+        "tags": [
+          "auth"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MfaVerifyInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionInfoResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/me": {
+      "get": {
+        "operationId": "get_me",
+        "summary": "本人とロール",
+        "description": "許可ロール: 全員。iOSは X-ARMS-Selected-Role ヘッダーで選択した利用区分を送り、DB membershipと一致しなければ403 ROLE_MISMATCHを返す。",
+        "tags": [
+          "me"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "X-ARMS-Selected-Role",
+            "in": "header",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "admin",
+                "teacher",
+                "student"
+              ]
+            }
+          },
+          {
+            "name": "X-ARMS-Org",
+            "in": "header",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "複数組織に所属するBearer利用者のみ。DB membershipで検証する。"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MeResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/auth/password": {
+      "post": {
+        "operationId": "post_auth_password",
+        "summary": "招待・再設定リンクからのパスワード設定",
+        "description": "許可ロール: 公開（招待・パスワード再設定メールのリンクに含まれる一回限りのトークンで認可。有効期限: 招待24時間・再設定1時間）。組織メンバーシップが必要。設定後はトークンを無効化し、パスワード再設定の場合はほかの端末のセッションを解除する。受講者はiOS、管理者・講師はWebでログインするよう案内する。",
+        "tags": [
+          "auth"
+        ],
+        "security": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PasswordSetInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ActionResult"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/auth/tokens": {
+      "post": {
+        "operationId": "post_auth_tokens",
+        "summary": "iOSログイン（トークン発行）",
+        "description": "許可ロール: 公開（メールアドレス・パスワードで認証）。iOSアプリ用。いずれかの組織に有効なメンバーシップが必要。不透明なアクセストークン（1時間）とリフレッシュトークン（ローテーション、最終利用から30日・ログインから最長90日）を返す。ロールは発行後に GET /me でサーバーが判定する。連続10回の失敗で15分ログインを制限（429）。",
+        "tags": [
+          "auth"
+        ],
+        "security": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TokenGrantInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TokenResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/auth/tokens/refresh": {
+      "post": {
+        "operationId": "post_auth_tokens_refresh",
+        "summary": "iOSトークン更新",
+        "description": "許可ロール: 公開（リフレッシュトークンで認可）。新しいアクセストークンとリフレッシュトークンを返し、古いリフレッシュトークンは無効になる。無効化済みのリフレッシュトークンが再提示された場合は盗用とみなしてセッションを失効させる（401 SESSION_EXPIRED）。",
+        "tags": [
+          "auth"
+        ],
+        "security": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TokenRefreshInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TokenResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/auth/tokens/revoke": {
+      "post": {
+        "operationId": "post_auth_tokens_revoke",
+        "summary": "iOSログアウト（トークン失効）",
+        "description": "許可ロール: 公開（リフレッシュトークンで認可）。そのセッションを失効させる。未知・失効済みのトークンでも同じ成功応答（冪等）。",
+        "tags": [
+          "auth"
+        ],
+        "security": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TokenRefreshInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ActionResult"
+                }
+              }
+            }
+          },
+          "422": {
+            "$ref": "#/components/responses/Error"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "PasswordResetInput": {
+        "type": "object",
+        "properties": {
+          "email": {
+            "type": "string",
+            "format": "email"
+          }
+        },
+        "required": [
+          "email"
+        ],
+        "additionalProperties": false
+      },
+      "MfaVerifyInput": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string",
+            "pattern": "^\\d{6}$"
+          }
+        },
+        "required": [
+          "code"
+        ],
+        "additionalProperties": false
+      },
+      "MfaEnrollResponse": {
+        "type": "object",
+        "properties": {
+          "data": {
+            "type": "object",
+            "properties": {
+              "factor_id": {
+                "type": "string"
+              },
+              "qr_code": {
+                "type": "string"
+              },
+              "uri": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "factor_id",
+              "qr_code",
+              "uri"
+            ],
+            "additionalProperties": false
+          },
+          "checked_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "data",
+          "checked_at"
+        ],
+        "additionalProperties": false
+      },
+      "User": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "display_name": {
+            "type": "string"
+          },
+          "email": {
+            "type": "string",
+            "format": "email"
+          },
+          "role": {
+            "type": "string",
+            "enum": [
+              "admin",
+              "teacher",
+              "student"
+            ]
+          },
+          "active": {
+            "type": "boolean"
+          },
+          "invitation_state": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "pending",
+              "auth_created",
+              "profile_created",
+              "sent",
+              "failed",
+              null
+            ]
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "display_name",
+          "email",
+          "role",
+          "active"
+        ],
+        "additionalProperties": false
+      },
+      "Me": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "display_name": {
+            "type": "string"
+          },
+          "email": {
+            "type": "string",
+            "format": "email"
+          },
+          "role": {
+            "type": "string",
+            "enum": [
+              "admin",
+              "teacher",
+              "student"
+            ]
+          },
+          "active": {
+            "type": "boolean"
+          },
+          "organization": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "name": {
+                "type": "string"
+              },
+              "timezone": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "name",
+              "timezone"
+            ],
+            "additionalProperties": false
+          },
+          "preferences": {
+            "type": "object",
+            "properties": {
+              "theme": {
+                "type": "string",
+                "enum": [
+                  "light",
+                  "dark",
+                  "system"
+                ]
+              },
+              "notifications_enabled": {
+                "type": "boolean"
+              },
+              "row_version": {
+                "type": "integer"
+              }
+            },
+            "required": [
+              "theme",
+              "notifications_enabled",
+              "row_version"
+            ],
+            "additionalProperties": false
+          },
+          "student": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "properties": {
+              "employee_number": {
+                "type": "string"
+              },
+              "classroom_id": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "classroom_name": {
+                "type": "string"
+              },
+              "teacher_id": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "teacher_name": {
+                "type": "string"
+              },
+              "department_name": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "employee_number",
+              "classroom_id",
+              "classroom_name",
+              "teacher_id",
+              "teacher_name",
+              "department_name"
+            ],
+            "additionalProperties": false
+          },
+          "mfa": {
+            "type": "object",
+            "properties": {
+              "required": {
+                "type": "boolean"
+              },
+              "verified": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "required",
+              "verified"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "id",
+          "display_name",
+          "email",
+          "role",
+          "active",
+          "organization",
+          "preferences",
+          "student",
+          "mfa"
+        ],
+        "additionalProperties": false
+      },
+      "MeResponse": {
+        "type": "object",
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/Me"
+          },
+          "checked_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "data",
+          "checked_at"
+        ],
+        "additionalProperties": false
+      },
+      "SessionInfo": {
+        "type": "object",
+        "properties": {
+          "user": {
+            "$ref": "#/components/schemas/User"
+          },
+          "csrf_token": {
+            "type": "string"
+          },
+          "expires_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "organization_name": {
+            "type": "string"
+          },
+          "mfa_required": {
+            "type": "boolean"
+          },
+          "mfa_enrolled": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "user",
+          "csrf_token",
+          "expires_at",
+          "organization_name",
+          "mfa_required",
+          "mfa_enrolled"
+        ],
+        "additionalProperties": false
+      },
+      "Error": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string"
+          },
+          "message_ja": {
+            "type": "string"
+          },
+          "request_id": {
+            "type": "string"
+          },
+          "field_errors": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            }
+          },
+          "details": {
+            "type": "object",
+            "additionalProperties": true
+          }
+        },
+        "required": [
+          "code",
+          "message_ja",
+          "request_id"
+        ],
+        "additionalProperties": false
+      },
+      "LessonSlot": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "classroom_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "teacher_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "unit_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "title": {
+            "type": "string"
+          },
+          "starts_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "ends_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "capacity": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "booking_closes_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "meeting_url": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "承認済み本人・担当講師・管理者にのみ値を返す。それ以外はnull。"
+          },
+          "has_meeting_url": {
+            "type": "boolean"
+          },
+          "cancel_before_seconds": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "teacher_name": {
+            "type": "string"
+          },
+          "classroom_name": {
+            "type": "string"
+          },
+          "remaining": {
+            "type": "integer"
+          },
+          "pending_count": {
+            "type": "integer"
+          },
+          "approved_count": {
+            "type": "integer"
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "open",
+              "closed",
+              "cancelled"
+            ]
+          },
+          "my_reservation": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "properties": {
+              "id": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "status": {
+                "type": "string",
+                "enum": [
+                  "pending",
+                  "approved",
+                  "rejected",
+                  "cancelled",
+                  "expired",
+                  "removed"
+                ]
+              }
+            },
+            "required": [
+              "id",
+              "status"
+            ],
+            "additionalProperties": false
+          },
+          "row_version": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "classroom_id",
+          "teacher_id",
+          "unit_id",
+          "title",
+          "starts_at",
+          "ends_at",
+          "capacity",
+          "booking_closes_at",
+          "meeting_url",
+          "has_meeting_url",
+          "cancel_before_seconds",
+          "teacher_name",
+          "classroom_name",
+          "remaining",
+          "state",
+          "row_version"
+        ],
+        "additionalProperties": false
+      },
+      "Reservation": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "slot_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "student_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "approved",
+              "rejected",
+              "cancelled",
+              "expired",
+              "removed"
+            ]
+          },
+          "starts_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "ends_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "expires_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "row_version": {
+            "type": "integer"
+          },
+          "reason": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "student_name": {
+            "type": "string"
+          },
+          "employee_number": {
+            "type": "string"
+          },
+          "slot_title": {
+            "type": "string"
+          },
+          "teacher_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "teacher_name": {
+            "type": "string"
+          },
+          "classroom_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "classroom_name": {
+            "type": "string"
+          },
+          "meeting_url": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "承認済みの本人・担当講師・管理者にのみ返す。"
+          },
+          "cancel_deadline": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "history": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "event_type": {
+                  "type": "string"
+                },
+                "status": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "reason": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "actor_name": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "created_at": {
+                  "type": "string",
+                  "format": "date-time"
+                }
+              },
+              "required": [
+                "event_type",
+                "status",
+                "reason",
+                "actor_name",
+                "created_at"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "checked_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "slot_id",
+          "student_id",
+          "status",
+          "starts_at",
+          "ends_at",
+          "expires_at",
+          "row_version",
+          "checked_at"
+        ],
+        "additionalProperties": false
+      },
+      "LoginInput": {
+        "type": "object",
+        "properties": {
+          "email": {
+            "type": "string",
+            "format": "email"
+          },
+          "password": {
+            "type": "string",
+            "minLength": 1
+          },
+          "selected_role": {
+            "type": "string",
+            "enum": [
+              "admin",
+              "teacher",
+              "student"
+            ]
+          },
+          "organization_id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "同じ利用区分で複数組織に所属する場合のみ指定（ORG_SELECTION_REQUIRED応答のdetails.organizationsから選択）。"
+          }
+        },
+        "required": [
+          "email",
+          "password",
+          "selected_role"
+        ],
+        "additionalProperties": false
+      },
+      "PasswordSetInput": {
+        "type": "object",
+        "properties": {
+          "token": {
+            "type": "string",
+            "minLength": 20,
+            "maxLength": 200,
+            "description": "メールリンクの #token= の値（一回限り）。"
+          },
+          "password": {
+            "type": "string",
+            "minLength": 10,
+            "maxLength": 128,
+            "description": "英字と数字を両方含む10文字以上。"
+          }
+        },
+        "required": [
+          "token",
+          "password"
+        ],
+        "additionalProperties": false
+      },
+      "TokenGrantInput": {
+        "type": "object",
+        "properties": {
+          "email": {
+            "type": "string",
+            "format": "email"
+          },
+          "password": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "device_label": {
+            "type": "string",
+            "maxLength": 100,
+            "description": "端末の表示名（任意、セッション管理用）。"
+          }
+        },
+        "required": [
+          "email",
+          "password"
+        ],
+        "additionalProperties": false
+      },
+      "TokenRefreshInput": {
+        "type": "object",
+        "properties": {
+          "refresh_token": {
+            "type": "string",
+            "minLength": 20,
+            "maxLength": 200
+          }
+        },
+        "required": [
+          "refresh_token"
+        ],
+        "additionalProperties": false
+      },
+      "TokenPair": {
+        "type": "object",
+        "properties": {
+          "access_token": {
+            "type": "string",
+            "description": "Authorization: Bearer に使う不透明トークン。"
+          },
+          "refresh_token": {
+            "type": "string"
+          },
+          "token_type": {
+            "type": "string",
+            "enum": [
+              "Bearer"
+            ]
+          },
+          "expires_in": {
+            "type": "integer",
+            "description": "アクセストークンの残り秒数。"
+          },
+          "refresh_expires_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "セッションの最長期限（再ログインが必要になる時刻）。"
+          },
+          "user_id": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        "required": [
+          "access_token",
+          "refresh_token",
+          "token_type",
+          "expires_in",
+          "refresh_expires_at",
+          "user_id"
+        ],
+        "additionalProperties": false
+      },
+      "TokenResponse": {
+        "type": "object",
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/TokenPair"
+          },
+          "checked_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "data",
+          "checked_at"
+        ],
+        "additionalProperties": false
+      }
+    }
+  }
+}

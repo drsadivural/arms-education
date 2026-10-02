@@ -1,0 +1,320 @@
+import Foundation
+
+/// Contract `Error` body: `{ code, message_ja, request_id, field_errors?, details? }`.
+public struct APIErrorBody: Codable, Sendable, Equatable {
+  public let code: String
+  public let messageJa: String
+  public let requestId: String
+  public let fieldErrors: [String: String]?
+  public let details: JSONValue?
+
+  public init(
+    code: String, messageJa: String, requestId: String, fieldErrors: [String: String]? = nil,
+    details: JSONValue? = nil
+  ) {
+    self.code = code
+    self.messageJa = messageJa
+    self.requestId = requestId
+    self.fieldErrors = fieldErrors
+    self.details = details
+  }
+
+  enum CodingKeys: String, CodingKey {
+    case code
+    case messageJa = "message_ja"
+    case requestId = "request_id"
+    case fieldErrors = "field_errors"
+    case details
+  }
+}
+
+/// Every failure surfaced by ARMSKit. `messageJa` is what the UI shows.
+public enum ARMSError: Error, Sendable, Equatable {
+  /// A JSON error from the ARMS API (`message_ja` is shown verbatim).
+  case api(APIErrorBody, status: Int)
+  /// No network path (or the request could not reach the server).
+  case offline
+  /// The request timed out. For mutations the outcome is unknown; callers verify via the
+  /// idempotency key before reporting failure.
+  case timedOut
+  /// The response could not be understood (unexpected status/body).
+  case invalidResponse(status: Int, requestId: String?)
+  /// The response body did not match the contract.
+  case decoding(String)
+  /// Local validation before sending (field → Japanese message).
+  case validation([String: String])
+  /// Authentication with the identity provider failed.
+  case auth(AuthFailure)
+  /// Not signed in / session could not be refreshed.
+  case notSignedIn
+  /// Local configuration (build settings) missing.
+  case notConfigured(String)
+  /// A business precondition checked on the client (e.g. offline mutation, expired confirmation).
+  case local(code: String, messageJa: String)
+  case cancelled
+
+  public var code: String {
+    switch self {
+    case .api(let body, _): return body.code
+    case .offline: return "OFFLINE"
+    case .timedOut: return "TIMEOUT"
+    case .invalidResponse: return "INVALID_RESPONSE"
+    case .decoding: return "DECODING_FAILED"
+    case .validation: return "VALIDATION_FAILED"
+    case .auth(let failure): return failure.code
+    case .notSignedIn: return "UNAUTHENTICATED"
+    case .notConfigured: return "NOT_CONFIGURED"
+    case .local(let code, _): return code
+    case .cancelled: return "CANCELLED"
+    }
+  }
+
+  /// Japanese user-facing message.
+  public var messageJa: String {
+    switch self {
+    case .api(let body, _):
+      return body.messageJa.isEmpty ? ErrorCatalog.message(for: body.code) : body.messageJa
+    case .offline:
+      return "ネットワークに接続できません。通信環境を確認してから再度お試しください。"
+    case .timedOut:
+      return "通信がタイムアウトしました。状態を確認してから再度お試しください。"
+    case .invalidResponse:
+      return ErrorCatalog.message(for: "INTERNAL")
+    case .decoding:
+      return "サーバーからの応答を読み取れませんでした。アプリを最新版に更新してください。"
+    case .validation(let fields):
+      return fields.count == 1 ? fields.values.first! : "入力内容を確認してください。"
+    case .auth(let failure):
+      return failure.messageJa
+    case .notSignedIn:
+      return ErrorCatalog.message(for: "UNAUTHENTICATED")
+    case .notConfigured:
+      return "アプリの接続設定が不足しています。管理者にお問い合わせください。"
+    case .local(_, let message):
+      return message
+    case .cancelled:
+      return "操作を中止しました。"
+    }
+  }
+
+  public var requestId: String? {
+    switch self {
+    case .api(let body, _): return body.requestId
+    case .invalidResponse(_, let id): return id
+    default: return nil
+    }
+  }
+
+  public var fieldErrors: [String: String] {
+    switch self {
+    case .api(let body, _): return body.fieldErrors ?? [:]
+    case .validation(let fields): return fields
+    default: return [:]
+    }
+  }
+
+  public var httpStatus: Int? {
+    switch self {
+    case .api(_, let status): return status
+    case .invalidResponse(let status, _): return status
+    default: return nil
+    }
+  }
+
+  /// Connectivity problems: the server may be reachable later; cached data may be shown.
+  public var isConnectivity: Bool {
+    switch self {
+    case .offline, .timedOut: return true
+    default: return false
+    }
+  }
+
+  /// The session is no longer valid and the user must sign in again.
+  public var requiresSignIn: Bool {
+    switch self {
+    case .notSignedIn: return true
+    case .api(let body, let status):
+      return status == 401 || body.code == "ACCOUNT_DISABLED"
+    default: return false
+    }
+  }
+
+  public func hasCode(_ code: String) -> Bool { self.code == code }
+
+  /// Contract `Error.details` (e.g. `{status, row_version}` for RESERVATION_EXPIRED / VERSION_CONFLICT).
+  public var details: JSONValue? {
+    if case .api(let body, _) = self { return body.details }
+    return nil
+  }
+
+  /// Current server state reported with RESERVATION_EXPIRED / VERSION_CONFLICT / INVALID_STATE.
+  public var reportedReservationStatus: ReservationStatus? {
+    details?["status"]?.stringValue.flatMap(ReservationStatus.init(rawValue:))
+  }
+
+  /// Message plus the request id for support, e.g. 「…（問い合わせ番号: abc）」.
+  public var messageWithRequestId: String {
+    guard let id = requestId, !id.isEmpty else { return messageJa }
+    return "\(messageJa)（問い合わせ番号: \(id)）"
+  }
+}
+
+/// Sign-in failures (POST /auth/tokens), mapped to Japanese.
+public enum AuthFailure: Error, Sendable, Equatable {
+  case invalidCredentials
+  case rateLimited
+  case accountDisabled
+  case network
+  case sessionMissing
+  case provider(code: String)
+
+  public var code: String {
+    switch self {
+    case .invalidCredentials: return "INVALID_CREDENTIALS"
+    case .rateLimited: return "RATE_LIMITED"
+    case .accountDisabled: return "ACCOUNT_DISABLED"
+    case .network: return "OFFLINE"
+    case .sessionMissing: return "SESSION_EXPIRED"
+    case .provider: return "AUTH_PROVIDER_UNAVAILABLE"
+    }
+  }
+
+  public var messageJa: String {
+    switch self {
+    case .invalidCredentials: return ErrorCatalog.message(for: "INVALID_CREDENTIALS")
+    case .rateLimited: return ErrorCatalog.message(for: "RATE_LIMITED")
+    case .accountDisabled: return ErrorCatalog.message(for: "ACCOUNT_DISABLED")
+    case .network: return "ネットワークに接続できません。通信環境を確認してから再度お試しください。"
+    case .sessionMissing: return ErrorCatalog.message(for: "SESSION_EXPIRED")
+    case .provider: return ErrorCatalog.message(for: "AUTH_PROVIDER_UNAVAILABLE")
+    }
+  }
+}
+
+/// Mirror of `packages/contracts/src/errors.ts` (every code, same Japanese text). The UI always
+/// prefers the server's `message_ja`; this table is used only when an error response carries no
+/// parsable body (e.g. a proxy error page) or a locally synthesised code needs a message.
+public enum ErrorCatalog {
+  public static let messages: [String: String] = [
+    "BAD_REQUEST": "リクエストの形式が正しくありません。",
+    "VALIDATION_FAILED": "入力内容を確認してください。",
+    "IF_MATCH_REQUIRED": "最新の情報を読み込んでから操作してください。",
+    "IDEMPOTENCY_KEY_REQUIRED": "操作キーがありません。画面を再読み込みしてから操作してください。",
+    "AMBIGUOUS_AUTH": "認証方式が重複しています。アプリを再起動してください。",
+    "UNAUTHENTICATED": "ログインが必要です。再度ログインしてください。",
+    "INVALID_CREDENTIALS": "メールアドレスまたはパスワードが正しくありません。",
+    "SESSION_EXPIRED": "セッションの有効期限が切れました。再度ログインしてください。",
+    "FORBIDDEN": "この操作を行う権限がありません。",
+    "ROLE_MISMATCH": "このアカウントでは選択した利用区分にログインできません。",
+    "ACCOUNT_DISABLED": "このアカウントは利用できません。管理者にお問い合わせください。",
+    "MFA_REQUIRED": "管理者は二段階認証を完了してください。",
+    "CSRF_FAILED": "画面の有効期限が切れました。再読み込みしてから操作してください。",
+    "ORIGIN_REJECTED": "許可されていない画面からの操作です。",
+    "ADMIN_USE_WEB": "管理者の操作はWeb管理画面をご利用ください。",
+    "NOT_FOUND": "対象が見つかりません。削除されたか、閲覧権限がありません。",
+    "ORG_SELECTION_REQUIRED": "利用する組織を選択してください。",
+    "VERSION_CONFLICT": "情報が更新されました。再読み込みしてください。",
+    "IDEMPOTENCY_CONFLICT": "同じ操作キーで異なる内容が送信されました。画面を再読み込みしてください。",
+    "IDEMPOTENCY_IN_PROGRESS": "同じ操作を処理中です。しばらくしてから状態を確認してください。",
+    "DUPLICATE": "既に登録されています。",
+    "INVALID_STATE": "現在の状態ではこの操作はできません。再読み込みしてください。",
+    "EMAIL_TAKEN": "このメールアドレスは既に登録されています。",
+    "EMPLOYEE_NUMBER_TAKEN": "この社員番号は既に登録されています。",
+    "TEACHER_NUMBER_TAKEN": "この講師番号は既に登録されています。",
+    "SLOT_FULL": "この授業は満席です。",
+    "TIME_CONFLICT": "同じ時間に別の予約があります。",
+    "SLOT_TIME_CONFLICT": "同じ講師またはクラスで時間が重なる授業枠があります。",
+    "BOOKING_CLOSED": "予約受付を終了しました。",
+    "CANCELLATION_CLOSED": "取消期限を過ぎているため取消できません。",
+    "RESERVATION_EXPIRED": "申請の保持期限が切れたため、この操作はできません。",
+    "ACTIVE_RESERVATIONS": "有効な予約があるため変更できません。先に予約の取消・通知を行ってください。",
+    "REASON_REQUIRED": "理由を入力してください（1〜1,000文字）。",
+    "CLASSROOM_FULL": "クラスの定員に達しています。",
+    "CAPACITY_BELOW_ENROLLMENT": "在籍人数より少ない定員には変更できません。",
+    "CLASSROOM_HAS_STUDENTS": "在籍者がいるクラスは削除できません。",
+    "CLASSROOM_TRANSFER_REQUIRES_SERVICE": "クラスの変更は「クラス移動」から理由を付けて行ってください。",
+    "TEACHER_CLASSROOM_MISMATCH": "選択した講師はこのクラスの担当ではありません。",
+    "TEACHER_INACTIVE": "停止中の講師は選択できません。",
+    "PROFILE_ROLE_MISMATCH": "利用区分とプロフィールが一致しません。",
+    "PUBLISHED_VERSION_IMMUTABLE": "公開済みのバージョンは変更できません。新しいバージョンを作成してください。",
+    "VERSION_NOT_PUBLISHABLE": "公開条件を満たしていません。単元・教材・検査状態を確認してください。",
+    "SCAN_PENDING": "ファイル検査が完了していないため公開できません。",
+    "FILE_REJECTED": "ファイルの形式または内容が許可されていません。",
+    "FILE_TOO_LARGE": "ファイルサイズが上限を超えています。",
+    "QUIZ_ATTEMPTS_EXCEEDED": "受験回数の上限に達しました。",
+    "ACTION_TOKEN_INVALID": "確認の有効期限が切れたか、無効です。もう一度内容を確認してください。",
+    "VOICE_QUOTA_EXCEEDED": "本日の音声利用上限に達しました。画面から操作してください。",
+    "RATE_LIMITED": "操作が多すぎます。しばらくしてから再度お試しください。",
+    "INTERNAL": "予期しないエラーが発生しました。時間をおいて再度お試しください。",
+    "SERVICE_UNAVAILABLE": "現在サービスを利用できません。しばらくしてから再度お試しください。",
+    "DB_UNAVAILABLE": "データベースに接続できません。変更は保存されていません。",
+    "AUTH_PROVIDER_UNAVAILABLE": "認証サービスに接続できません。しばらくしてから再度お試しください。",
+    "SCANNER_UNAVAILABLE": "ファイル検査サービスに接続できないため、教材の公開を停止しています。",
+    "STORAGE_UNAVAILABLE": "ファイル保管サービスに接続できません。",
+    "VOICE_UNAVAILABLE": "現在、音声機能を利用できません。画面から操作してください。",
+    "NOT_CONFIGURED": "この機能は必要な外部サービスが未設定のため利用できません。管理者にお問い合わせください。",
+    "CLASSROOM_ARCHIVED": "アーカイブ済みのクラスには登録できません。",
+    "RELATED_IN_USE": "関連するデータがあるため、削除・変更できません。",
+    // area: admin
+    "TEACHER_IS_PRIMARY": "主担当のクラスがあるため停止できません。先にクラスの主担当講師を変更してください。",
+    "TEACHER_HAS_FUTURE_SLOTS": "今後の授業枠があるため停止できません。先に授業枠の講師変更または取消を行ってください。",
+    "CLASSROOM_TEACHER_IN_USE": "担当受講者または授業枠（過去分を含む）があるため、この講師をクラスから外せません。",
+    "CLASSROOM_NAME_TAKEN": "同じ名称・開始日のクラスが既に登録されています。",
+    "INVITATION_IN_PROGRESS": "このメールアドレスの招待を処理中です。しばらくしてから一覧で状態を確認してください。",
+    "CANNOT_DISABLE_SELF": "自分自身のアカウントは停止できません。",
+    "LAST_ADMIN": "有効な管理者が1人だけのため停止できません。先に別の管理者を追加してください。",
+    // area: learning
+    "PROGRAM_ARCHIVED": "アーカイブ済みのプログラムは変更できません。",
+    "DRAFT_VERSION_EXISTS": "このプログラムには編集中の下書きバージョンがあります。既存の下書きを編集または公開してください。",
+    "UNIT_POSITION_TAKEN": "この順番は既に別の単元で使われています。別の順番を指定してください。",
+    "MATERIAL_NOT_PUBLISHABLE": "教材の公開条件を満たしていません。ファイル検査・リンク・問題の登録状況を確認してください。",
+    "MATERIAL_KIND_MISMATCH": "この教材の種類ではこの操作はできません。",
+    "QUIZ_NOT_DEFINED": "確認テストの問題が登録されていません。",
+    "VERSION_NOT_PUBLISHED": "公開中のバージョンにのみ受講を割り当てられます。",
+    "ENROLLMENT_EXISTS": "この新入社員は既にこのプログラムを受講しています。",
+    "SUBMISSION_AWAITING_REVIEW": "提出済みの課題は講師の確認待ちです。評価後に再提出できます。",
+    "SUBMISSION_ALREADY_ACCEPTED": "この課題は既に承認されています。",
+    "UPLOAD_NOT_RECEIVED": "ファイルのアップロードが確認できません。アップロードが完了してから再度お試しください。",
+    "UPLOAD_EXPIRED": "アップロードの有効期限が切れました。もう一度ファイルを選択してください。",
+    "UPLOAD_NOT_READY": "ファイルの確認が完了していません。アップロードを完了してから選択してください。",
+    "SCAN_SIGNATURE_INVALID": "検査結果の署名を確認できませんでした。",
+    "PDF_FONT_UNAVAILABLE": "PDF出力用の日本語フォントが配置されていないため、PDFを作成できません。管理者にお問い合わせください。",
+    "EXPORT_TOO_LARGE": "出力件数が上限（10,000件）を超えています。月や部署で絞り込んでください。",
+    // area: booking & notifications
+    "ALREADY_RESERVED": "この授業は既に申請済みです。",
+    "ATTENDANCE_NOT_OPEN": "出欠は授業開始の30分前から記録できます。",
+    "SLOT_CANCELLED": "この授業枠は取り消されています。",
+    "PROGRAM_NOT_ASSIGNED": "この授業の教育プログラムが割り当てられていないため申請できません。",
+    // area: voice
+    "VOICE_SESSION_ENDED": "音声セッションは終了しました。もう一度開始してください。",
+    "IMPORT_UPLOAD_NOT_READY": "アップロードしたファイルの検査が完了していません。しばらくしてから再度お試しください。",
+    "IMPORT_UPLOAD_REJECTED": "アップロードしたファイルは検査で利用できないと判定されました。別のファイルをアップロードしてください。",
+    "IMPORT_FILE_MISSING": "アップロードしたファイルが見つかりません。もう一度アップロードしてください。",
+    "IMPORT_ENCODING_MISMATCH": "指定した文字コードとファイルの文字コードが一致しません。文字コードを選び直してください。",
+    "IMPORT_ENCODING_UNSUPPORTED": "ファイルの文字コードを判別できません。UTF-8またはShift_JIS（CP932）のCSVを指定してください。",
+    "IMPORT_TOO_MANY_ROWS": "行数が上限（10,000行）を超えています。ファイルを分割してください。",
+    "IMPORT_EMPTY": "取り込むデータ行がありません。ヘッダー行とデータ行を確認してください。",
+    "IMPORT_MAPPING_INVALID": "列の対応付けを確認してください。",
+    "IMPORT_HAS_ERRORS": "エラーのある行があるため確定できません。元データまたは項目の対応を修正して、もう一度ドライランを実行してください。",
+    "IMPORT_IN_PROGRESS": "この移行ジョブは処理中です。しばらくしてから状態を確認してください。",
+  ]
+
+  public static func message(for code: String) -> String {
+    messages[code] ?? messages["INTERNAL"]!
+  }
+
+  /// Code synthesised from an HTTP status when the body is not a contract error.
+  public static func code(forStatus status: Int) -> String {
+    switch status {
+    case 400: return "BAD_REQUEST"
+    case 401: return "UNAUTHENTICATED"
+    case 403: return "FORBIDDEN"
+    case 404: return "NOT_FOUND"
+    case 409: return "INVALID_STATE"
+    case 422: return "VALIDATION_FAILED"
+    case 429: return "RATE_LIMITED"
+    case 503: return "SERVICE_UNAVAILABLE"
+    default: return "INTERNAL"
+    }
+  }
+}

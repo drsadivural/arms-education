@@ -1,0 +1,231 @@
+{
+  "screens": [
+    {
+      "screen": "web/login",
+      "font_loaded": true,
+      "title": "ARMS | ログイン",
+      "width": 1440
+    },
+    {
+      "screen": "web/dashboard",
+      "font_loaded": true,
+      "title": "ARMS | ダッシュボード",
+      "width": 1440
+    },
+    {
+      "screen": "web/teachers",
+      "font_loaded": true,
+      "title": "ARMS | 講師管理",
+      "width": 1440
+    },
+    {
+      "screen": "web/teacher-edit",
+      "font_loaded": true,
+      "title": "ARMS | 講師を登録",
+      "width": 1440
+    },
+    {
+      "screen": "web/students",
+      "font_loaded": true,
+      "title": "ARMS | 新入社員管理",
+      "width": 1440
+    },
+    {
+      "screen": "web/student-edit",
+      "font_loaded": true,
+      "title": "ARMS | 新入社員を登録",
+      "width": 1440
+    },
+    {
+      "screen": "web/classrooms",
+      "font_loaded": true,
+      "title": "ARMS | クラスルーム管理",
+      "width": 1440
+    },
+    {
+      "screen": "web/classroom-detail",
+      "font_loaded": true,
+      "title": "ARMS | Aクラスの詳細",
+      "width": 1440
+    },
+    {
+      "screen": "web/programs",
+      "font_loaded": true,
+      "title": "ARMS | 教育プログラム管理",
+      "width": 1440
+    },
+    {
+      "screen": "web/program-edit",
+      "font_loaded": true,
+      "title": "ARMS | 教育プログラム・教材を編集",
+      "width": 1440
+    },
+    {
+      "screen": "web/progress",
+      "font_loaded": true,
+      "title": "ARMS | 社員教育進捗管理",
+      "width": 1440
+    },
+    {
+      "screen": "web/progress-detail",
+      "font_loaded": true,
+      "title": "ARMS | 和田 一夫さんの教育進捗",
+      "width": 1440
+    },
+    {
+      "screen": "web/bookings",
+      "font_loaded": true,
+      "title": "ARMS | オンライン予約システム",
+      "width": 1440
+    },
+    {
+      "screen": "web/booking-detail",
+      "font_loaded": true,
+      "title": "ARMS | 予約申請の確認",
+      "width": 1440
+    },
+    {
+      "screen": "web/slot-edit",
+      "font_loaded": true,
+      "title": "ARMS | 授業・予約枠を追加",
+      "width": 1440
+    },
+    {
+      "screen": "web/settings",
+      "font_loaded": true,
+      "title": "ARMS | 設定",
+      "width": 1440
+    },
+    {
+      "screen": "web/import",
+      "font_loaded": true,
+      "title": "ARMS | 既存システムからのデータ移植",
+      "width": 1440
+    },
+    {
+      "screen": "web/users",
+      "font_loaded": true,
+      "title": "ARMS | ユーザー管理",
+      "width": 1440
+    },
+    {
+      "screen": "web/events",
+      "font_loaded": true,
+      "title": "ARMS | ログ・イベント",
+      "width": 1440
+    },
+    {
+      "screen": "ios/login",
+      "font_loaded": true,
+      "title": "ARMS | ログイン",
+      "width": 430
+    },
+    {
+      "screen": "ios/student-home",
+      "font_loaded": true,
+      "title": "ARMS | ホーム",
+      "width": 430
+    },
+    {
+      "screen": "ios/teacher-home",
+      "font_loaded": true,
+      "title": "ARMS | 講師ホーム",
+      "width": 430
+    },
+    {
+      "screen": "ios/progress",
+      "font_loaded": true,
+      "title": "ARMS | 研修の進捗",
+      "width": 430
+    },
+    {
+      "screen": "ios/teacher-students",
+      "font_loaded": true,
+      "title": "ARMS | 担当受講者の進捗",
+      "width": 430
+    },
+    {
+      "screen": "ios/student-detail",
+      "font_loaded": true,
+      "title": "ARMS | 受講者の詳細",
+      "width": 430
+    },
+    {
+      "screen": "ios/booking",
+      "font_loaded": true,
+      "title": "ARMS | オンライン予約",
+      "width": 430
+    },
+    {
+      "screen": "ios/booking-confirm",
+      "font_loaded": true,
+      "title": "ARMS | 予約内容の確認",
+      "width": 430
+    },
+    {
+      "screen": "ios/my-bookings",
+      "font_loaded": true,
+      "title": "ARMS | 自分の予約",
+      "width": 430
+    },
+    {
+      "screen": "ios/booking-detail",
+      "font_loaded": true,
+      "title": "ARMS | 予約の詳細",
+      "width": 430
+    },
+    {
+      "screen": "ios/today",
+      "font_loaded": true,
+      "title": "ARMS | 本日の授業",
+      "width": 430
+    },
+    {
+      "screen": "ios/materials",
+      "font_loaded": true,
+      "title": "ARMS | 教材・確認テスト",
+      "width": 430
+    },
+    {
+      "screen": "ios/voice",
+      "font_loaded": true,
+      "title": "ARMS | AI音声アシスタント",
+      "width": 430
+    },
+    {
+      "screen": "ios/voice-confirm",
+      "font_loaded": true,
+      "title": "ARMS | 音声で予約を確認",
+      "width": 430
+    },
+    {
+      "screen": "ios/notifications",
+      "font_loaded": true,
+      "title": "ARMS | お知らせ",
+      "width": 430
+    },
+    {
+      "screen": "ios/attendance",
+      "font_loaded": true,
+      "title": "ARMS | 出欠を記録",
+      "width": 430
+    },
+    {
+      "screen": "ios/teacher-bookings",
+      "font_loaded": true,
+      "title": "ARMS | 担当授業の予約",
+      "width": 430
+    },
+    {
+      "screen": "ios/settings",
+      "font_loaded": true,
+      "title": "ARMS | 設定",
+      "width": 430
+    },
+    {
+      "gallery_navigation": true,
+      "theme_switch": true
+    }
+  ],
+  "js_errors": []
+}

@@ -1,0 +1,8 @@
+# API実装補足
+OpenAPIは全routeと書込み入力・主要業務DTOを定義。responseに権限外のmeeting URL・quiz答え・秘密を混入させない。受講者用lesson DTOからmeeting_urlを除き、承認済み詳細にのみ含める。JSON errorはcode/message_ja/request_id/field_errors。
+
+予約判断はexpected_versionとIdempotency-Key必須。原始SQL関数の上にAPI idempotency_requests storeを用いactor/route/key/request hash/resultを同一transactionで保存する。Create関数の冪等キーも引き継ぐ。同じキー/異なる内容は409、同じ内容の再送は保存結果を返す。未完requestはbounded retry、API responseを保存してからcommit。
+
+GET reservationsはidempotency_key検索を提供。filterはallowlist、JST境界変換。SLOT_FULL「この授業は満席です」、TIME_CONFLICT「同じ時間に別の予約があります」、VERSION_CONFLICT「情報が更新されました。再読み込みしてください」、BOOKING_CLOSED「予約受付を終了しました」。内部SQLメッセージは返さない。
+
+教師/本人のread scopeは各repositoryでDB確認する。進捗完了は教材・出席・テスト・課題の条件からサーバー計算、受講者からstateを直接受け取って完了更新しない。ファイルupload completeはサーバーmagic byte確認と実scanner通知を完了条件にする。管理者inviteはAuth provider作成とDB profileのsagaをinvitation_jobsで追跡し失敗を再送可能にする。

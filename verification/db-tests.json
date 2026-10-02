@@ -1,0 +1,105 @@
+{
+  "runtime": "PGlite PostgreSQL WASM, btree_gist",
+  "tests": [
+    {
+      "name": "apply 001_schema.sql",
+      "result": "passed"
+    },
+    {
+      "name": "apply 002_reservations.sql",
+      "result": "passed"
+    },
+    {
+      "name": "apply 003_supporting_workflows.sql",
+      "result": "passed"
+    },
+    {
+      "name": "student reservation pending",
+      "result": "passed"
+    },
+    {
+      "name": "idempotent same reservation",
+      "result": "passed"
+    },
+    {
+      "name": "same key different slot rejected",
+      "result": "passed"
+    },
+    {
+      "name": "seat capacity rejected",
+      "result": "passed"
+    },
+    {
+      "name": "student cannot approve",
+      "result": "passed"
+    },
+    {
+      "name": "assigned teacher approve",
+      "result": "passed"
+    },
+    {
+      "name": "stale version refused",
+      "result": "passed"
+    },
+    {
+      "name": "slot update with active booking refused",
+      "result": "passed"
+    },
+    {
+      "name": "owner cancel",
+      "result": "passed"
+    },
+    {
+      "name": "seat restored after cancel",
+      "result": "passed"
+    },
+    {
+      "name": "reject requires reason",
+      "result": "passed"
+    },
+    {
+      "name": "teacher reject with reason",
+      "result": "passed"
+    },
+    {
+      "name": "soft removal retains row",
+      "result": "passed"
+    },
+    {
+      "name": "mutation audit and outbox atomic count",
+      "result": "passed"
+    },
+    {
+      "name": "weighted progress 20 percent",
+      "result": "passed"
+    },
+    {
+      "name": "published unit mutation rejected",
+      "result": "passed"
+    },
+    {
+      "name": "classroom capacity cannot shrink below active students",
+      "result": "passed"
+    },
+    {
+      "name": "classroom with active students cannot archive",
+      "result": "passed"
+    },
+    {
+      "name": "tenant RLS hides foreign students",
+      "result": "passed"
+    },
+    {
+      "name": "tenant RLS insert denied",
+      "result": "passed"
+    },
+    {
+      "name": "expired pending transitions",
+      "result": "passed"
+    }
+  ],
+  "limitations": [
+    "実PostgreSQL複数接続の同時実行・Hyperdrive・実API・iOSは未実行。"
+  ],
+  "assertions": 24
+}

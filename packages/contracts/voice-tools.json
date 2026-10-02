@@ -1,0 +1,148 @@
+{
+  "tools": [
+    {
+      "type": "function",
+      "name": "today_lessons",
+      "description": "日本時間の今日の授業。所属・本人・担当範囲はサーバーで決定。",
+      "parameters": {
+        "type": "object",
+        "properties": {},
+        "required": [],
+        "additionalProperties": false
+      }
+    },
+    {
+      "type": "function",
+      "name": "get_progress",
+      "description": "受講者本人または講師担当者の進捗をDBから取得。",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "student_id": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        "required": [],
+        "additionalProperties": false
+      }
+    },
+    {
+      "type": "function",
+      "name": "search_slots",
+      "description": "指定日と時間帯の所属クラス空き枠。",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "date": {
+            "type": "string",
+            "format": "date"
+          },
+          "time_band": {
+            "type": "string",
+            "enum": [
+              "morning",
+              "afternoon",
+              "evening",
+              "any"
+            ]
+          }
+        },
+        "required": [
+          "date",
+          "time_band"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "type": "function",
+      "name": "get_reservations",
+      "description": "本人または担当講師の予約状態をDB確認。",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "reservation_id": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        "required": [],
+        "additionalProperties": false
+      }
+    },
+    {
+      "type": "function",
+      "name": "prepare_reservation",
+      "description": "枠を特定し確認カードと短期action tokenを準備。予約変更なし。",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "slot_id": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        "required": [
+          "slot_id"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "type": "function",
+      "name": "commit_reservation",
+      "description": "利用者の明示確認後のみ、サーバーtoken照合して申請。",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "action_token": {
+            "type": "string",
+            "minLength": 32
+          }
+        },
+        "required": [
+          "action_token"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "type": "function",
+      "name": "prepare_cancellation",
+      "description": "取消対象・期限を検査し確認カード準備。",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "reservation_id": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        "required": [
+          "reservation_id"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "type": "function",
+      "name": "commit_cancellation",
+      "description": "明示確認後、本人tokenを検証して取消。",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "action_token": {
+            "type": "string",
+            "minLength": 32
+          }
+        },
+        "required": [
+          "action_token"
+        ],
+        "additionalProperties": false
+      }
+    }
+  ],
+  "executor_policy_ja": "schema検証、session ownership、DB membership、RBAC、call_id冪等、action token本人/session/期限/intentを必須。"
+}

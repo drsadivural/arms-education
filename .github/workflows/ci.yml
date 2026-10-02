@@ -1,0 +1,43 @@
+name: CI
+on:
+  push:
+  pull_request:
+permissions:
+  contents: read
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  web-api:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_PASSWORD: ci_pw
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 2s --health-timeout 5s --health-retries 30
+    env:
+      TEST_DATABASE_ADMIN_URL: postgres://postgres:ci_pw@127.0.0.1:5432/postgres
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Secret scan
+        run: pnpm secrets:scan
+      - name: Generated contract is up to date
+        run: pnpm gen:contracts && git diff --exit-code packages/contracts
+      - run: pnpm lint
+      - run: pnpm typecheck
+      - name: Unit + integration tests (API against PostgreSQL as NOSUPERUSER/NOBYPASSRLS role)
+        run: pnpm test
+      - name: Production builds (Web assets + Worker bundle dry run)
+        run: pnpm build
+      - name: Dependency audit (fail on critical)
+        run: pnpm audit --audit-level critical --prod

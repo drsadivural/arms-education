@@ -1,0 +1,15 @@
+packages:
+  - apps/web
+  - services/api
+  - packages/*
+allowBuilds:
+  esbuild: true
+  workerd: true
+  sharp: false
+minimumReleaseAgeExclude:
+  - '@cloudflare/workers-types@5.20261002.1'
+  - '@types/node@24.19.1'
+  - miniflare@5.20261001.0-alpha
+  - wrangler@4.146.0
+  - '@tanstack/query-core@5.104.1'
+  - '@tanstack/react-query@5.104.1'

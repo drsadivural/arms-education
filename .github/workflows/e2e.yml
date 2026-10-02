@@ -1,0 +1,55 @@
+name: E2E (Web, Chromium/Firefox/WebKit)
+on:
+  push:
+  pull_request:
+permissions:
+  contents: read
+concurrency:
+  group: e2e-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  web-e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        # One engine per job: each run seeds its own organisation (shared test data would collide across engines).
+        browser: [chromium, firefox, webkit]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Browsers (with OS dependencies)
+        run: pnpm --filter @arms/web exec playwright install --with-deps ${{ matrix.browser }}
+      - name: Local stack (PostgreSQL, PgBouncer, SeaweedFS S3, ClamAV scanner, Mailpit + mail relay) with generated local-only keys
+        run: |
+          node infra/local/setup.mjs
+          docker compose -f infra/local/compose.yaml up -d
+          wait_for() { for i in $(seq 1 "$2"); do curl -sf "$1" > /dev/null && return 0; sleep 2; done; echo "::error::$1 not ready"; docker compose -f infra/local/compose.yaml logs --tail 50; return 1; }
+          for i in $(seq 1 60); do docker compose -f infra/local/compose.yaml exec -T postgres pg_isready -U postgres -d arms > /dev/null && break; sleep 2; done
+          # Invitation / password-reset e-mails go Worker → relay → Mailpit (the E2E tests read the links from Mailpit).
+          wait_for http://localhost:9025/health 60
+          # Bucket created by s3-init; the scanner answers 200 only once clamd has loaded its signatures (first freshclam download).
+          for i in $(seq 1 90); do [ "$(docker compose -f infra/local/compose.yaml ps -a --format '{{.State}} {{.ExitCode}}' s3-init)" = "exited 0" ] && break; sleep 2; done
+          docker compose -f infra/local/compose.yaml logs s3-init | grep -q "bucket arms-materials ready" || { echo "::error::S3 bucket not created"; exit 1; }
+          wait_for http://localhost:9200/health 300
+      - name: Migrations, runtime role and first administrator
+        run: node infra/local/bootstrap.mjs ci-admin@arms.local "ci-$(openssl rand -hex 12)A1"
+      - name: Playwright (starts wrangler dev + vite)
+        working-directory: apps/web
+        env:
+          E2E_ALL_BROWSERS: '1'
+        run: pnpm exec playwright test --project=${{ matrix.browser }}
+      - if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report-${{ matrix.browser }}
+          path: |
+            apps/web/playwright-report
+            apps/web/test-results
+          retention-days: 7

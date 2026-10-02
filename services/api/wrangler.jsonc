@@ -1,0 +1,105 @@
+// ARMS Worker: Japanese Web admin SPA (static assets) + /api/v1 (Hono) + cron + notification queue consumer.
+// Account-specific ids (Hyperdrive, routes) are environment inputs — see docs/BLOCKERS_JA.md and
+// templates/config-inputs.json. Secrets are set with `wrangler secret put` and never committed.
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "arms-dev",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-10-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "workers_dev": true,
+  "assets": {
+    "directory": "../../apps/web/dist",
+    "binding": "ASSETS",
+    "not_found_handling": "single-page-application",
+    "run_worker_first": ["/api/*"]
+  },
+  "observability": { "enabled": true },
+  "triggers": { "crons": ["* * * * *"] },
+  "vars": {
+    "APP_ENV": "development",
+    "DEFAULT_TIMEZONE": "Asia/Tokyo",
+    "OPENAI_REALTIME_MODEL": "gpt-realtime-2.1",
+    "OPENAI_REALTIME_VOICE": "marin",
+    "VOICE_MAX_SESSION_SECONDS": "600",
+    "VOICE_DAILY_QUOTA_SECONDS": "900",
+    "BOOKING_PENDING_TTL_SECONDS": "86400",
+    "BOOKING_CANCEL_BEFORE_SECONDS": "86400"
+  },
+  // Local development: wrangler dev connects through the transaction-mode PgBouncer (infra/local, port 55434) as the
+  // runtime role (RLS enforced), mirroring Hyperdrive pooling.
+  "hyperdrive": [
+    {
+      "binding": "HYPERDRIVE",
+      "id": "00000000000000000000000000000000",
+      "localConnectionString": "postgres://arms_app:arms_app_dev_pw@127.0.0.1:55434/arms"
+    }
+  ],
+  "r2_buckets": [{ "binding": "R2_MATERIALS", "bucket_name": "arms-materials-dev" }],
+  "queues": {
+    "producers": [{ "binding": "NOTIFICATION_QUEUE", "queue": "arms-notifications-dev" }],
+    "consumers": [{ "queue": "arms-notifications-dev", "max_batch_size": 10, "max_batch_timeout": 5, "max_retries": 10, "dead_letter_queue": "arms-notifications-dev-dlq" }]
+  },
+  "ratelimits": [
+    { "name": "LOGIN_RATE_LIMITER", "namespace_id": "1001", "simple": { "limit": 10, "period": 60 } },
+    { "name": "API_RATE_LIMITER", "namespace_id": "1002", "simple": { "limit": 600, "period": 60 } }
+  ],
+  "env": {
+    "staging": {
+      "name": "arms-staging",
+      "workers_dev": false,
+      "vars": {
+        "APP_ENV": "staging",
+        "DEFAULT_TIMEZONE": "Asia/Tokyo",
+        "OPENAI_REALTIME_MODEL": "gpt-realtime-2.1",
+        "OPENAI_REALTIME_VOICE": "marin",
+        "VOICE_MAX_SESSION_SECONDS": "600",
+        "VOICE_DAILY_QUOTA_SECONDS": "900",
+        "BOOKING_PENDING_TTL_SECONDS": "86400",
+        "BOOKING_CANCEL_BEFORE_SECONDS": "86400"
+      },
+      // Create with: wrangler hyperdrive create arms-staging --connection-string=... --caching-disabled
+      "hyperdrive": [{ "binding": "HYPERDRIVE", "id": "REPLACE_WITH_STAGING_HYPERDRIVE_ID" }],
+      "r2_buckets": [{ "binding": "R2_MATERIALS", "bucket_name": "arms-materials-staging" }],
+      "queues": {
+        "producers": [{ "binding": "NOTIFICATION_QUEUE", "queue": "arms-notifications-staging" }],
+        "consumers": [{ "queue": "arms-notifications-staging", "max_batch_size": 10, "max_batch_timeout": 5, "max_retries": 10, "dead_letter_queue": "arms-notifications-staging-dlq" }]
+      },
+      "ratelimits": [
+        { "name": "LOGIN_RATE_LIMITER", "namespace_id": "2001", "simple": { "limit": 10, "period": 60 } },
+        { "name": "API_RATE_LIMITER", "namespace_id": "2002", "simple": { "limit": 600, "period": 60 } }
+      ],
+      "triggers": { "crons": ["* * * * *"] }
+    },
+    "production": {
+      "name": "arms-production",
+      "workers_dev": false,
+      // Cloudflare creates the proxied DNS record and certificate for the Workers Custom Domain on deploy (zone ayonix.com).
+      "routes": [{ "pattern": "arms.ayonix.com", "custom_domain": true }],
+      "vars": {
+        "APP_ENV": "production",
+        "APP_ORIGIN": "https://arms.ayonix.com",
+        "DEFAULT_TIMEZONE": "Asia/Tokyo",
+        "OPENAI_REALTIME_MODEL": "gpt-realtime-2.1",
+        "OPENAI_REALTIME_VOICE": "marin",
+        "VOICE_MAX_SESSION_SECONDS": "600",
+        "VOICE_DAILY_QUOTA_SECONDS": "900",
+        "BOOKING_PENDING_TTL_SECONDS": "86400",
+        "BOOKING_CANCEL_BEFORE_SECONDS": "86400"
+      },
+      // No production database exists yet (docs/BLOCKERS_JA.md). Until it does, the API answers 503 NOT_CONFIGURED
+      // and scheduled jobs are skipped. Once created (wrangler hyperdrive create arms-production … --caching-disabled), add:
+      //   "hyperdrive": [{ "binding": "HYPERDRIVE", "id": "<production hyperdrive id>" }],
+      "r2_buckets": [{ "binding": "R2_MATERIALS", "bucket_name": "arms-materials-production" }],
+      "queues": {
+        "producers": [{ "binding": "NOTIFICATION_QUEUE", "queue": "arms-notifications-production" }],
+        "consumers": [{ "queue": "arms-notifications-production", "max_batch_size": 10, "max_batch_timeout": 5, "max_retries": 10, "dead_letter_queue": "arms-notifications-production-dlq" }]
+      },
+      "ratelimits": [
+        { "name": "LOGIN_RATE_LIMITER", "namespace_id": "3001", "simple": { "limit": 10, "period": 60 } },
+        { "name": "API_RATE_LIMITER", "namespace_id": "3002", "simple": { "limit": 600, "period": 60 } }
+      ],
+      "triggers": { "crons": ["* * * * *"] }
+    }
+  }
+}

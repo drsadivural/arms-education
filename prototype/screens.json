@@ -1,0 +1,298 @@
+[
+  {
+    "mode": "web",
+    "id": "login",
+    "title": "ログイン",
+    "body": "<div class=\"loginhero\"><span class=\"eyebrow\">ARMS / 新入社員研修システム</span><h1>学びの一歩を、<br>成長につなげる。</h1><p>研修・教材・進捗・予約を、ひとつに。</p><div class=\"heroart\"><div class=\"orbit\"></div><div class=\"floating\">研修進捗 <b>76%</b></div><div class=\"floating second\">次の授業 <b>10:00</b></div></div></div><section class=\"logincard\"><h2>ARMSにログイン</h2><p class=\"muted\">管理者・講師向け管理画面</p><label class=\"field\"><span>利用区分</span><select><option>管理者</option><option>講師</option></select></label><label class=\"field\"><span>メールアドレス</span><input type=\"email\" value=\"admin@example.invalid\"><small></small></label><label class=\"field\"><span>パスワード</span><input type=\"password\" value=\"\"><small></small></label><button class=\"primary\">ログイン</button><a>パスワードをお忘れですか？</a><small>受講者の方はiOSアプリをご利用ください。</small></section>",
+    "description": "メール認証、利用区分照合、MFA、ログイン失敗・reset。",
+    "tab": ""
+  },
+  {
+    "mode": "web",
+    "id": "dashboard",
+    "title": "ダッシュボード",
+    "body": "<div class=\"welcome\"><div><span class=\"eyebrow\">2026年10月2日（金）</span><h2>新入社員の成長を、ひとつの画面で。</h2><p>本日の研修状況と、対応が必要な予約を確認できます。</p></div><button class=\"secondary\">今月のレポート</button></div><div class=\"stats\"><div class=\"stat\"><span class=\"statlabel\">在籍受講者</span><strong>128<small>名</small></strong><span class=\"muted\">6クラスで研修を実施</span></div><div class=\"stat\"><span class=\"statlabel\">平均研修進捗</span><strong>76<small>%</small></strong><span class=\"muted\">先月から +8ポイント</span></div><div class=\"stat\"><span class=\"statlabel\">承認待ち予約</span><strong>6<small>件</small></strong><span class=\"muted\">本日中の確認を推奨</span></div><div class=\"stat\"><span class=\"statlabel\">本日の授業</span><strong>8<small>コマ</small></strong><span class=\"muted\">オンライン 5 / 対面 3</span></div></div><div class=\"grid two\"><section class=\"card\"><div class=\"cardhead\"><h3>研修進捗の推移</h3><span class=\"muted\">2026年5月〜10月</span></div><div class=\"chart\"><div class=\"axislabels\">100%<br>75%<br>50%<br>25%</div><svg viewBox=\"0 0 620 230\"><defs><linearGradient id=\"fill\" x1=\"0\" y1=\"0\" x2=\"0\" y2=\"1\"><stop stop-color=\"#0076d1\" stop-opacity=\".17\"/><stop offset=\"1\" stop-color=\"#0076d1\" stop-opacity=\"0\"/></linearGradient></defs><g stroke=\"#e2eaf3\"><path d=\"M0 20H620M0 80H620M0 140H620M0 200H620\"/></g><path d=\"M10 183L120 160L230 128L340 113L450 81L600 60L600 220L10 220Z\" fill=\"url(#fill)\"/><polyline points=\"10,183 120,160 230,128 340,113 450,81 600,60\" stroke=\"#0076d1\" stroke-width=\"4\" fill=\"none\"/><polyline points=\"10,196 120,177 230,165 340,140 450,121 600,97\" stroke=\"#19ae97\" stroke-width=\"3\" fill=\"none\"/><g fill=\"#0076d1\"><circle cx=\"10\" cy=\"183\" r=\"5\"/><circle cx=\"120\" cy=\"160\" r=\"5\"/><circle cx=\"230\" cy=\"128\" r=\"5\"/><circle cx=\"340\" cy=\"113\" r=\"5\"/><circle cx=\"450\" cy=\"81\" r=\"5\"/><circle cx=\"600\" cy=\"60\" r=\"5\"/></g></svg><div class=\"chartmonths\">5月　 　　 6月　　 　 7月　　 　 8月　　 　 9月　　 　 10月</div></div><p class=\"legend\"><i></i> 全体平均　 <i class=\"green\"></i> 新入社員Aクラス</p></section><section class=\"card\"><div class=\"cardhead\"><h3>本日の授業</h3><span class=\"muted\">すべて見る →</span></div><div class=\"lesson\"><div class=\"time\">10:00<small>11:30</small></div><div class=\"grow\"><strong>ビジネスマナー</strong><p>新入社員Aクラス · 別府 悦子</p></div><span class=\"tag green\">承認済み</span></div><div class=\"lesson\"><div class=\"time\">14:00<small>15:30</small></div><div class=\"grow\"><strong>IT基礎・セキュリティ</strong><p>新入社員Aクラス · 田中 祥司</p></div><span class=\"tag green\">承認済み</span></div><div class=\"lesson\"><div class=\"time\">16:00<small>17:00</small></div><div class=\"grow\"><strong>研修振り返り面談</strong><p>新入社員Aクラス · 小山 祐介</p></div><span class=\"tag green\">承認済み</span></div></section></div><div class=\"grid two\"><section class=\"card\"><div class=\"cardhead\"><h3>新入社員の進捗</h3><span class=\"muted\"></span></div><div class=\"tablewrap\"><table><thead><tr><th>社員名</th><th>部署</th><th>進捗</th><th>状態</th></tr></thead><tbody><tr><td><div class=\"person\"><span class=\"avatar\">和</span><div><b>和田 一夫</b><small>E001</small></div></div></td><td>開発部</td><td><div class=\"progress\"><div style=\"width:76%\"></div></div><b class=\"percent\">76%</b></td><td><span class=\"tag blue\">受講中</span></td></tr><tr><td><div class=\"person\"><span class=\"avatar\">高</span><div><b>高橋 健太</b><small>E002</small></div></div></td><td>サポート部</td><td><div class=\"progress\"><div style=\"width:92%\"></div></div><b class=\"percent\">92%</b></td><td><span class=\"tag green\">順調</span></td></tr><tr><td><div class=\"person\"><span class=\"avatar\">加</span><div><b>加藤 美咲</b><small>E003</small></div></div></td><td>営業部</td><td><div class=\"progress\"><div style=\"width:58%\"></div></div><b class=\"percent\">58%</b></td><td><span class=\"tag red\">期限超過</span></td></tr></tbody></table></div></section><section class=\"card\"><div class=\"cardhead\"><h3>承認待ちの予約</h3><span class=\"muted\"></span></div><div class=\"tablewrap\"><table><thead><tr><th>申請者</th><th>希望日時</th><th>研修</th><th>操作</th></tr></thead><tbody><tr><td>和田 一夫</td><td>10/5 14:00</td><td>IT基礎</td><td><button class=\"secondary\">確認</button></td></tr><tr><td>加藤 美咲</td><td>10/6 10:00</td><td>ビジネスマナー</td><td><button class=\"secondary\">確認</button></td></tr><tr><td>高橋 健太</td><td>10/7 16:00</td><td>面談</td><td><button class=\"secondary\">確認</button></td></tr></tbody></table></div></section></div>",
+    "description": "在籍・平均進捗・承認待ち・今日の授業、部署・クラス絞込み。",
+    "tab": "dashboard"
+  },
+  {
+    "mode": "web",
+    "id": "teachers",
+    "title": "講師管理",
+    "body": "<div class=\"filters\"><span class=\"filter\">講師名・メールで検索</span><span class=\"filter\">所属部署：すべて</span><span class=\"filter\">状態：有効</span><span class=\"filter\">担当クラス：すべて</span></div><section class=\"card\"><div class=\"cardhead\"><h3>講師一覧</h3><span class=\"muted\">全4名</span></div><div class=\"tablewrap\"><table><thead><tr><th>講師名 / 番号</th><th>所属部署</th><th>専門分野</th><th>担当クラス</th><th>担当受講者</th><th>状態</th><th>操作</th></tr></thead><tbody><tr><td><div class=\"person\"><span class=\"avatar\">田</span><div><b>田中 祥司</b><small>T001</small></div></div></td><td>開発部</td><td>IT・プログラミング</td><td>Aクラス / Cクラス</td><td>42名</td><td><span class=\"tag green\">有効</span></td><td>編集　詳細</td></tr><tr><td><div class=\"person\"><span class=\"avatar\">小</span><div><b>小山 祐介</b><small>T002</small></div></div></td><td>サポート部</td><td>製品・メール対応</td><td>Bクラス</td><td>24名</td><td><span class=\"tag green\">有効</span></td><td>編集　詳細</td></tr><tr><td><div class=\"person\"><span class=\"avatar\">別</span><div><b>別府 悦子</b><small>T003</small></div></div></td><td>営業部</td><td>マナー・営業</td><td>Aクラス / Dクラス</td><td>38名</td><td><span class=\"tag green\">有効</span></td><td>編集　詳細</td></tr><tr><td><div class=\"person\"><span class=\"avatar\">山</span><div><b>山田 優子</b><small>T004</small></div></div></td><td>人事部</td><td>入社研修・コンプライアンス</td><td>Eクラス</td><td>24名</td><td><span class=\"tag green\">有効</span></td><td>編集　詳細</td></tr></tbody></table></div><div class=\"tablefooter\">4件の講師を表示 <span>1　次へ →</span></div></section>",
+    "description": "追加・編集・招待再送・停止、担当クラス・担当人数。",
+    "tab": "teachers"
+  },
+  {
+    "mode": "web",
+    "id": "teacher-edit",
+    "title": "講師を登録",
+    "body": "<div class=\"notice\">招待後、講師が初回ログインしてパスワードを設定します。</div><section class=\"card\"><div class=\"cardhead\"><h3>基本情報</h3><span class=\"muted\"></span></div><div class=\"formgrid\"><label class=\"field\"><span>講師番号 *</span><input type=\"text\" value=\"T005\"><small></small></label><label class=\"field\"><span>氏名 *</span><input type=\"text\" value=\"佐藤 直子\"><small></small></label><label class=\"field\"><span>ふりがな</span><input type=\"text\" value=\"さとう なおこ\"><small></small></label><label class=\"field\"><span>メールアドレス *</span><input type=\"email\" value=\"sato@example.invalid\"><small></small></label><label class=\"field\"><span>所属部署 *</span><select><option>人事部</option><option>開発部</option><option>営業部</option><option>サポート部</option></select></label><label class=\"field\"><span>専門分野</span><input type=\"text\" value=\"新入社員研修・コミュニケーション\"><small></small></label></div></section><section class=\"card\"><div class=\"cardhead\"><h3>担当と稼働時間</h3><span class=\"muted\"></span></div><div class=\"formgrid\"><label class=\"field\"><span>担当クラス</span><select><option>2026年度 Eクラス</option><option>2026年度 Aクラス</option></select></label><label class=\"field\"><span>稼働曜日</span><select><option>月〜金</option><option>月・水・金</option></select></label><label class=\"field\"><span>開始時刻</span><input type=\"time\" value=\"09:00\"><small></small></label><label class=\"field\"><span>終了時刻</span><input type=\"time\" value=\"17:00\"><small></small></label></div></section><div class=\"actions\"><button class=\"secondary\">キャンセル</button><button class=\"primary\">登録して招待</button></div>",
+    "description": "必須・メール重複・専門分野・稼働時間・有効状態。",
+    "tab": "teachers"
+  },
+  {
+    "mode": "web",
+    "id": "students",
+    "title": "新入社員管理",
+    "body": "<div class=\"filters\"><span class=\"filter\">社員名・社員番号で検索</span><span class=\"filter\">部署：すべて</span><span class=\"filter\">クラス：すべて</span><span class=\"filter\">担当講師：すべて</span></div><section class=\"card\"><div class=\"cardhead\"><h3>新入社員一覧</h3><span class=\"muted\">128名</span></div><div class=\"tablewrap\"><table><thead><tr><th>社員名 / 社員番号</th><th>所属部署</th><th>クラス</th><th>担当講師</th><th>進捗</th><th>状態</th><th>操作</th></tr></thead><tbody><tr><td><div class=\"person\"><span class=\"avatar\">和</span><div><b>和田 一夫</b><small>E001</small></div></div></td><td>開発部</td><td>Aクラス</td><td>田中 祥司</td><td><div class=\"progress\"><div style=\"width:76%\"></div></div><b class=\"percent\">76%</b></td><td><span class=\"tag blue\">受講中</span></td><td>詳細を見る</td></tr><tr><td><div class=\"person\"><span class=\"avatar\">高</span><div><b>高橋 健太</b><small>E002</small></div></div></td><td>サポート部</td><td>Aクラス</td><td>小山 祐介</td><td><div class=\"progress\"><div style=\"width:92%\"></div></div><b class=\"percent\">92%</b></td><td><span class=\"tag green\">順調</span></td><td>詳細を見る</td></tr><tr><td><div class=\"person\"><span class=\"avatar\">加</span><div><b>加藤 美咲</b><small>E003</small></div></div></td><td>営業部</td><td>Aクラス</td><td>別府 悦子</td><td><div class=\"progress\"><div style=\"width:58%\"></div></div><b class=\"percent\">58%</b></td><td><span class=\"tag red\">期限超過</span></td><td>詳細を見る</td></tr><tr><td><div class=\"person\"><span class=\"avatar\">鈴</span><div><b>鈴木 大輔</b><small>E004</small></div></div></td><td>開発部</td><td>Aクラス</td><td>田中 祥司</td><td><div class=\"progress\"><div style=\"width:83%\"></div></div><b class=\"percent\">83%</b></td><td><span class=\"tag blue\">受講中</span></td><td>詳細を見る</td></tr><tr><td><div class=\"person\"><span class=\"avatar\">佐</span><div><b>佐藤 玲奈</b><small>E005</small></div></div></td><td>営業部</td><td>Aクラス</td><td>別府 悦子</td><td><div class=\"progress\"><div style=\"width:100%\"></div></div><b class=\"percent\">100%</b></td><td><span class=\"tag green\">完了</span></td><td>詳細を見る</td></tr></tbody></table></div><div class=\"tablefooter\">1〜5件 / 128名 <span>1　2　3　次へ →</span></div></section>",
+    "description": "登録・編集・クラス所属・担当講師・CSV招待。",
+    "tab": "students"
+  },
+  {
+    "mode": "web",
+    "id": "student-edit",
+    "title": "新入社員を登録",
+    "body": "<section class=\"card\"><div class=\"cardhead\"><h3>社員情報</h3><span class=\"muted\"></span></div><div class=\"formgrid\"><label class=\"field\"><span>社員番号 *</span><input type=\"text\" value=\"E129\"><small></small></label><label class=\"field\"><span>氏名 *</span><input type=\"text\" value=\"中村 翔太\"><small></small></label><label class=\"field\"><span>ふりがな</span><input type=\"text\" value=\"なかむら しょうた\"><small></small></label><label class=\"field\"><span>メールアドレス *</span><input type=\"email\" value=\"nakamura@example.invalid\"><small></small></label><label class=\"field\"><span>会社名</span><input type=\"text\" value=\"H&A研修センター\"><small></small></label><label class=\"field\"><span>所属部署 *</span><select><option>開発部</option><option>営業部</option><option>サポート部</option></select></label><label class=\"field\"><span>入社日 *</span><input type=\"date\" value=\"2026-10-01\"><small></small></label></div></section><section class=\"card\"><div class=\"cardhead\"><h3>研修の割当</h3><span class=\"muted\"></span></div><div class=\"formgrid\"><label class=\"field\"><span>所属クラス *</span><select><option>2026年度 新入社員Aクラス（24 / 30名）</option><option>2026年度 新入社員Bクラス（22 / 30名）</option></select></label><label class=\"field\"><span>担当講師 *</span><select><option>田中 祥司</option><option>別府 悦子</option></select></label><label class=\"field\"><span>研修開始日 *</span><input type=\"date\" value=\"2026-10-01\"><small></small></label><label class=\"field\"><span>終了予定日 *</span><input type=\"date\" value=\"2026-12-31\"><small></small></label></div><div class=\"notice\">担当講師は、選択したクラスに所属する有効な講師から選べます。</div></section><div class=\"actions\"><button class=\"secondary\">キャンセル</button><button class=\"primary\">登録して招待</button></div>",
+    "description": "社員番号・メール重複、講師候補連動、定員、研修期間。",
+    "tab": "students"
+  },
+  {
+    "mode": "web",
+    "id": "classrooms",
+    "title": "クラスルーム管理",
+    "body": "<div class=\"filters\"><span class=\"filter\">クラス名で検索</span><span class=\"filter\">年度：2026年度</span><span class=\"filter\">状態：開講中</span></div><div class=\"grid three\"><section class=\"card\"><div class=\"cardhead\"><h3>2026年度 新入社員Aクラス</h3><span class=\"muted\"><span class=\"tag green\">開講中</span></span></div><div class=\"classcount\"><strong>24</strong><span>/ 30名</span></div><p class=\"muted\">主担当：田中 祥司</p><div class=\"progress\"><div style=\"width:80%\"></div></div><b class=\"percent\">80%</b><div class=\"classmeta\">研修期間<br><b>10月1日〜12月31日</b></div><div class=\"actions\"><button class=\"secondary\">詳細を見る</button></div></section><section class=\"card\"><div class=\"cardhead\"><h3>2026年度 新入社員Bクラス</h3><span class=\"muted\"><span class=\"tag green\">開講中</span></span></div><div class=\"classcount\"><strong>22</strong><span>/ 30名</span></div><p class=\"muted\">主担当：小山 祐介</p><div class=\"progress\"><div style=\"width:73%\"></div></div><b class=\"percent\">73%</b><div class=\"classmeta\">研修期間<br><b>10月1日〜12月31日</b></div><div class=\"actions\"><button class=\"secondary\">詳細を見る</button></div></section><section class=\"card\"><div class=\"cardhead\"><h3>2026年度 新入社員Cクラス</h3><span class=\"muted\"><span class=\"tag green\">開講中</span></span></div><div class=\"classcount\"><strong>18</strong><span>/ 30名</span></div><p class=\"muted\">主担当：田中 祥司</p><div class=\"progress\"><div style=\"width:60%\"></div></div><b class=\"percent\">60%</b><div class=\"classmeta\">研修期間<br><b>10月1日〜12月31日</b></div><div class=\"actions\"><button class=\"secondary\">詳細を見る</button></div></section><section class=\"card\"><div class=\"cardhead\"><h3>2026年度 新入社員Dクラス</h3><span class=\"muted\"><span class=\"tag green\">開講中</span></span></div><div class=\"classcount\"><strong>20</strong><span>/ 30名</span></div><p class=\"muted\">主担当：別府 悦子</p><div class=\"progress\"><div style=\"width:67%\"></div></div><b class=\"percent\">67%</b><div class=\"classmeta\">研修期間<br><b>10月1日〜12月31日</b></div><div class=\"actions\"><button class=\"secondary\">詳細を見る</button></div></section><section class=\"card\"><div class=\"cardhead\"><h3>2026年度 新入社員Eクラス</h3><span class=\"muted\"><span class=\"tag green\">開講中</span></span></div><div class=\"classcount\"><strong>24</strong><span>/ 30名</span></div><p class=\"muted\">主担当：山田 優子</p><div class=\"progress\"><div style=\"width:80%\"></div></div><b class=\"percent\">80%</b><div class=\"classmeta\">研修期間<br><b>10月1日〜12月31日</b></div><div class=\"actions\"><button class=\"secondary\">詳細を見る</button></div></section><section class=\"card\"><div class=\"cardhead\"><h3>2026年度 新入社員Fクラス</h3><span class=\"muted\"><span class=\"tag green\">開講中</span></span></div><div class=\"classcount\"><strong>20</strong><span>/ 30名</span></div><p class=\"muted\">主担当：別府 悦子</p><div class=\"progress\"><div style=\"width:67%\"></div></div><b class=\"percent\">67%</b><div class=\"classmeta\">研修期間<br><b>10月1日〜12月31日</b></div><div class=\"actions\"><button class=\"secondary\">詳細を見る</button></div></section></div>",
+    "description": "クラス追加、在籍/定員・主担当・期間を表示。人数はDB集計。",
+    "tab": "classrooms"
+  },
+  {
+    "mode": "web",
+    "id": "classroom-detail",
+    "title": "Aクラスの詳細",
+    "body": "<div class=\"stats\"><div class=\"stat\"><span class=\"statlabel\">在籍受講者</span><strong>24<small>名</small></strong><span class=\"muted\">定員30名 / 残り6名</span></div><div class=\"stat\"><span class=\"statlabel\">平均研修進捗</span><strong>76<small>%</small></strong><span class=\"muted\">先月から +8ポイント</span></div><div class=\"stat\"><span class=\"statlabel\">承認待ち予約</span><strong>6<small>件</small></strong><span class=\"muted\">本日中の確認を推奨</span></div><div class=\"stat\"><span class=\"statlabel\">本日の授業</span><strong>8<small>コマ</small></strong><span class=\"muted\">オンライン 5 / 対面 3</span></div></div><section class=\"card\"><div class=\"cardhead\"><h3>クラス設定</h3><span class=\"muted\"></span></div><div class=\"formgrid\"><label class=\"field\"><span>クラス名 *</span><input type=\"text\" value=\"2026年度 新入社員Aクラス\"><small></small></label><label class=\"field\"><span>定員 *</span><input type=\"number\" value=\"30\"><small></small></label><label class=\"field\"><span>主担当講師 *</span><select><option>田中 祥司</option><option>別府 悦子</option></select></label><label class=\"field\"><span>教育プログラム</span><select><option>新入社員 基礎研修 v1.0</option></select></label><label class=\"field\"><span>開始日</span><input type=\"date\" value=\"2026-10-01\"><small></small></label><label class=\"field\"><span>終了日</span><input type=\"date\" value=\"2026-12-31\"><small></small></label></div></section><section class=\"card\"><div class=\"cardhead\"><h3>所属する新入社員</h3><span class=\"muted\"></span></div><div class=\"tablewrap\"><table><thead><tr><th>社員名</th><th>所属部署</th><th>担当講師</th><th>進捗</th></tr></thead><tbody><tr><td><div class=\"person\"><span class=\"avatar\">和</span><div><b>和田 一夫</b><small>E001</small></div></div></td><td>開発部</td><td>田中 祥司</td><td><div class=\"progress\"><div style=\"width:76%\"></div></div><b class=\"percent\">76%</b></td></tr><tr><td><div class=\"person\"><span class=\"avatar\">高</span><div><b>高橋 健太</b><small>E002</small></div></div></td><td>サポート部</td><td>小山 祐介</td><td><div class=\"progress\"><div style=\"width:92%\"></div></div><b class=\"percent\">92%</b></td></tr><tr><td><div class=\"person\"><span class=\"avatar\">加</span><div><b>加藤 美咲</b><small>E003</small></div></div></td><td>営業部</td><td>別府 悦子</td><td><div class=\"progress\"><div style=\"width:58%\"></div></div><b class=\"percent\">58%</b></td></tr></tbody></table></div></section>",
+    "description": "クラス追加/編集共通form、主/補助講師、プログラム、在籍一覧。",
+    "tab": "classrooms"
+  },
+  {
+    "mode": "web",
+    "id": "programs",
+    "title": "教育プログラム管理",
+    "body": "<div class=\"filters\"><span class=\"filter\">プログラム名で検索</span><span class=\"filter\">対象部署：すべて</span><span class=\"filter\">公開状態：すべて</span></div><div class=\"grid three\"><section class=\"card\"><div class=\"cardhead\"><h3>新入社員 基礎研修</h3><span class=\"muted\"><span class=\"tag green\">公開中</span></span></div><div class=\"programart\">01</div><p>社会人としての基礎と、実務の第一歩を学ぶ。</p><div class=\"minimeta\">8単元　/　24教材</div><p class=\"muted\">バージョン 1.0 · 受講者 128名</p><div class=\"actions\"><button class=\"secondary\">教材を見る</button></div></section><section class=\"card\"><div class=\"cardhead\"><h3>IT基礎・セキュリティ</h3><span class=\"muted\"><span class=\"tag green\">公開中</span></span></div><div class=\"programart\">02</div><p>情報管理と業務システムを安全に使う。</p><div class=\"minimeta\">6単元　/　18教材</div><p class=\"muted\">バージョン 1.2 · 受講者 42名</p><div class=\"actions\"><button class=\"secondary\">教材を見る</button></div></section><section class=\"card\"><div class=\"cardhead\"><h3>営業・コミュニケーション</h3><span class=\"muted\"><span class=\"tag green\">公開中</span></span></div><div class=\"programart\">03</div><p>顧客対応、提案、チーム連携の基本。</p><div class=\"minimeta\">5単元　/　16教材</div><p class=\"muted\">バージョン 1.0 · 受講者 38名</p><div class=\"actions\"><button class=\"secondary\">教材を見る</button></div></section><section class=\"card\"><div class=\"cardhead\"><h3>製品サポート研修</h3><span class=\"muted\"><span class=\"tag green\">公開中</span></span></div><div class=\"programart\">04</div><p>製品理解とメール対応の実践。</p><div class=\"minimeta\">4単元　/　12教材</div><p class=\"muted\">バージョン 2.0 · 受講者 24名</p><div class=\"actions\"><button class=\"secondary\">教材を見る</button></div></section><section class=\"card\"><div class=\"cardhead\"><h3>コンプライアンス</h3><span class=\"muted\"><span class=\"tag green\">公開中</span></span></div><div class=\"programart\">05</div><p>職場のルールと責任ある行動を学ぶ。</p><div class=\"minimeta\">3単元　/　9教材</div><p class=\"muted\">バージョン 1.0 · 受講者 128名</p><div class=\"actions\"><button class=\"secondary\">教材を見る</button></div></section><section class=\"card\"><div class=\"cardhead\"><h3>チームワーク実践</h3><span class=\"muted\"><span class=\"tag amber\">下書き</span></span></div><div class=\"programart\">06</div><p>課題解決と振り返りのワークショップ。</p><div class=\"minimeta\">3単元　/　8教材</div><p class=\"muted\">バージョン 1.1 · 受講者 0名</p><div class=\"actions\"><button class=\"secondary\">教材を見る</button></div></section></div>",
+    "description": "プログラム登録・単元/教材数・対象・公開状態・version。",
+    "tab": "programs"
+  },
+  {
+    "mode": "web",
+    "id": "program-edit",
+    "title": "教育プログラム・教材を編集",
+    "body": "<div class=\"notice\">公開済み v1.0 の学習記録を保持し、変更は下書き v1.1 として保存します。</div><section class=\"card\"><div class=\"cardhead\"><h3>プログラム情報</h3><span class=\"muted\"></span></div><div class=\"formgrid\"><label class=\"field\"><span>名称 *</span><input type=\"text\" value=\"新入社員 基礎研修\"><small></small></label><label class=\"field\"><span>対象部署</span><select><option>全部署</option><option>開発部</option><option>営業部</option></select></label><label class=\"field\"><span>説明</span><input type=\"text\" value=\"入社後3か月の基礎研修プログラム\"><small></small></label><label class=\"field\"><span>公開状態</span><select><option>下書き v1.1</option><option>公開中 v1.0（参照のみ）</option></select></label></div></section><section class=\"card\"><div class=\"cardhead\"><h3>単元と教材</h3><span class=\"muted\"></span></div><div class=\"tablewrap\"><table><thead><tr><th>順序</th><th>単元</th><th>教材</th><th>完了条件</th><th>重み</th><th>操作</th></tr></thead><tbody><tr><td>01</td><td>ビジネスマナー</td><td>PDF / 動画 / テスト</td><td>確認 + 80点以上</td><td>20</td><td><button class=\"secondary\">編集</button></td></tr><tr><td>02</td><td>IT基礎・セキュリティ</td><td>PDF / テスト</td><td>確認 + 80点以上</td><td>30</td><td><button class=\"secondary\">編集</button></td></tr><tr><td>03</td><td>実践課題</td><td>課題ファイル</td><td>講師承認</td><td>30</td><td><button class=\"secondary\">編集</button></td></tr><tr><td>04</td><td>研修振り返り</td><td>授業 / 面談</td><td>出席 + 講師承認</td><td>20</td><td><button class=\"secondary\">編集</button></td></tr></tbody></table></div><div class=\"upload\"><b>教材を追加</b><p>PDF・動画・画像をアップロード / HTTPSリンクを登録</p><button class=\"secondary\">ファイルを選択</button><small>ファイルは安全性の検査後に公開できます。</small></div></section><div class=\"actions\"><button class=\"secondary\">下書き保存</button><button class=\"primary\">確認して公開</button></div>",
+    "description": "教材upload・検疫状態、リンク/テスト/課題、順序・重み・公開version。",
+    "tab": "programs"
+  },
+  {
+    "mode": "web",
+    "id": "progress",
+    "title": "社員教育進捗管理",
+    "body": "<div class=\"filters\"><span class=\"filter\">今月の教育</span><span class=\"filter\">来月の教育</span><span class=\"filter\">部署：すべて</span><span class=\"filter\">担当講師：すべて</span><span class=\"filter\">クラス：すべて</span></div><div class=\"monthnav\"><span>≪ 前の6か月　‹ 先月</span><b>2026年10月</b><span>来月 ›　次の6か月 ≫</span></div><section class=\"card\"><div class=\"cardhead\"><h3>10月の教育記録</h3><span class=\"muted\">添付画面の項目を継承</span></div><div class=\"tablewrap\"><table><thead><tr><th>終了予定日</th><th>社員名</th><th>教育担当部署</th><th>教育担当者</th><th>内容</th><th>進捗</th><th>状態</th><th>操作</th></tr></thead><tbody><tr><td>10月5日（月）</td><td>和田 一夫</td><td>開発部</td><td>田中 祥司</td><td>技術知識習得・プログラム言語習得</td><td><div class=\"progress\"><div style=\"width:76%\"></div></div><b class=\"percent\">76%</b></td><td><span class=\"tag blue\">受講中</span></td><td>閲覧　編集</td></tr><tr><td>10月6日（火）</td><td>高橋 健太</td><td>サポート部</td><td>小山 祐介</td><td>自社製品の使い込み・メールサポート</td><td><div class=\"progress\"><div style=\"width:92%\"></div></div><b class=\"percent\">92%</b></td><td><span class=\"tag amber\">確認待ち</span></td><td>閲覧　編集</td></tr><tr><td>10月8日（木）</td><td>加藤 美咲</td><td>営業部</td><td>別府 悦子</td><td>営業同行・提案書の作成</td><td><div class=\"progress\"><div style=\"width:58%\"></div></div><b class=\"percent\">58%</b></td><td><span class=\"tag blue\">受講中</span></td><td>閲覧　編集</td></tr><tr><td>10月9日（金）</td><td>鈴木 大輔</td><td>開発部</td><td>田中 祥司</td><td>サーバー構築・製品動作試験</td><td><div class=\"progress\"><div style=\"width:83%\"></div></div><b class=\"percent\">83%</b></td><td><span class=\"tag blue\">受講中</span></td><td>閲覧　編集</td></tr><tr><td>10月12日（月）</td><td>佐藤 玲奈</td><td>営業部</td><td>別府 悦子</td><td>新規顧客開拓・研修振り返り</td><td><div class=\"progress\"><div style=\"width:100%\"></div></div><b class=\"percent\">100%</b></td><td><span class=\"tag green\">完了</span></td><td>閲覧　編集</td></tr></tbody></table></div><div class=\"tablefooter\">全28件　/　表示 1〜5件 <span>CSV出力　PDF出力　1　2　次へ →</span></div></section><div class=\"notice\">終了予定日・社員名・教育担当部署・教育担当者・内容は、既存データを引き継いで管理できます。</div>",
+    "description": "添付の旧列保持・月移動・部署/講師/クラスfilter・CSV/PDF。",
+    "tab": "progress"
+  },
+  {
+    "mode": "web",
+    "id": "progress-detail",
+    "title": "和田 一夫さんの教育進捗",
+    "body": "<div class=\"grid two\"><section class=\"card\"><div class=\"cardhead\"><h3>研修サマリー</h3><span class=\"muted\"></span></div><div class=\"person large\"><span class=\"avatar\">和</span><div><h2>和田 一夫</h2><p>開発部 · 新入社員Aクラス · 担当 田中 祥司</p></div></div><div class=\"bigprogress\"><div class=\"progress\"><div style=\"width:76%\"></div></div><b class=\"percent\">76%</b></div><p>必須単元 6 / 8 完了　終了予定：2026年12月31日</p></section><section class=\"card\"><div class=\"cardhead\"><h3>教育記録を編集</h3><span class=\"muted\"></span></div><div class=\"formgrid\"><label class=\"field\"><span>終了予定日 *</span><input type=\"date\" value=\"2026-10-05\"><small></small></label><label class=\"field\"><span>教育担当部署 *</span><select><option>開発部</option><option>営業部</option><option>サポート部</option></select></label><label class=\"field\"><span>教育担当者 *</span><select><option>田中 祥司</option><option>別府 悦子</option></select></label><label class=\"field\"><span>内容 *</span><input type=\"text\" value=\"技術知識習得・プログラム言語習得\"><small></small></label></div></section></div><section class=\"card\"><div class=\"cardhead\"><h3>単元別の状況</h3><span class=\"muted\"></span></div><div class=\"tablewrap\"><table><thead><tr><th>単元</th><th>教材確認</th><th>テスト</th><th>講師評価</th><th>状態</th></tr></thead><tbody><tr><td>ビジネスマナー</td><td>確認済み</td><td>92点</td><td>合格</td><td><span class=\"tag green\">完了</span></td></tr><tr><td>IT基礎</td><td>確認済み</td><td>88点</td><td>合格</td><td><span class=\"tag green\">完了</span></td></tr><tr><td>実践課題</td><td>提出済み</td><td>—</td><td>評価待ち</td><td><span class=\"tag amber\">確認待ち</span></td></tr><tr><td>研修振り返り</td><td>未着手</td><td>—</td><td>—</td><td><span class=\"tag gray\">未着手</span></td></tr></tbody></table></div></section><section class=\"card\"><div class=\"cardhead\"><h3>変更履歴</h3><span class=\"muted\"></span></div><div class=\"timeline\"><b>10月2日 11:20　田中 祥司</b><p>IT基礎を完了に更新 · テスト88点、教材確認済み</p><b>10月1日 09:00　システム</b><p>新入社員 基礎研修 v1.0 を割当</p></div></section>",
+    "description": "詳細・教材/点数/評価・訂正理由・履歴・講師権限。",
+    "tab": "progress"
+  },
+  {
+    "mode": "web",
+    "id": "bookings",
+    "title": "オンライン予約システム",
+    "body": "<div class=\"tabs\"><b>予約申請 <span>6</span></b><span>授業カレンダー</span><span>空き枠管理</span><span>履歴</span></div><div class=\"filters\"><span class=\"filter\">申請者で検索</span><span class=\"filter\">期間：10月1日〜31日</span><span class=\"filter\">状態：すべて</span><span class=\"filter\">担当講師：すべて</span></div><section class=\"card\"><div class=\"cardhead\"><h3>予約申請と承認</h3><span class=\"muted\">iOS・Web・音声と同期</span></div><div class=\"tablewrap\"><table><thead><tr><th>受講者</th><th>希望日時</th><th>授業</th><th>担当講師</th><th>状態</th><th>操作</th></tr></thead><tbody><tr><td>和田 一夫</td><td>10/5（月）14:00–15:30</td><td>IT基礎</td><td>田中 祥司</td><td><span class=\"tag amber\">承認待ち</span></td><td><button class=\"primary\">承認</button> <button class=\"secondary\">却下</button>　詳細</td></tr><tr><td>加藤 美咲</td><td>10/6（火）10:00–11:30</td><td>ビジネスマナー</td><td>別府 悦子</td><td><span class=\"tag amber\">承認待ち</span></td><td><button class=\"primary\">承認</button> <button class=\"secondary\">却下</button>　詳細</td></tr><tr><td>高橋 健太</td><td>10/7（水）16:00–17:00</td><td>研修振り返り</td><td>小山 祐介</td><td><span class=\"tag green\">承認済み</span></td><td>詳細　削除</td></tr><tr><td>鈴木 大輔</td><td>10/8（木）14:00–15:30</td><td>IT基礎</td><td>田中 祥司</td><td><span class=\"tag red\">却下</span></td><td>理由を見る</td></tr><tr><td>佐藤 玲奈</td><td>10/9（金）10:00–11:30</td><td>ビジネスマナー</td><td>別府 悦子</td><td><span class=\"tag gray\">取消済み</span></td><td>詳細</td></tr></tbody></table></div></section><div class=\"notice\">承認待ちの申請も、保持期限までは席を確保します。却下・取消・削除・期限切れで席が解放されます。</div>",
+    "description": "申請一覧、承認/理由付き却下/削除、枠作成、履歴。",
+    "tab": "bookings"
+  },
+  {
+    "mode": "web",
+    "id": "booking-detail",
+    "title": "予約申請の確認",
+    "body": "<div class=\"grid two\"><section class=\"card\"><div class=\"cardhead\"><h3>申請内容</h3><span class=\"muted\"></span></div><div class=\"detailrows\"><p><span>受講者</span><b>和田 一夫 / 開発部</b></p><p><span>所属クラス</span><b>2026年度 新入社員Aクラス</b></p><p><span>授業</span><b>IT基礎・セキュリティ</b></p><p><span>担当講師</span><b>田中 祥司</b></p><p><span>希望日時</span><b>2026年10月5日（月）14:00–15:30</b></p><p><span>形式</span><b>オンライン</b></p><p><span>現在の状態</span><b>承認待ち</b></p><p><span>申請日時</span><b>2026年10月2日 14:20</b></p><p><span>席の保持期限</span><b>2026年10月3日 14:20</b></p></div></section><section class=\"card\"><div class=\"cardhead\"><h3>判断と理由</h3><span class=\"muted\"></span></div><div class=\"notice\">承認すると、受講者のiOSアプリと通知に反映されます。</div><label class=\"field\"><span>却下・削除の理由（必須）</span><textarea rows=\"4\" placeholder=\"受講者に伝える理由を入力してください\"></textarea></label><div class=\"actions\"><button class=\"primary\">承認する</button><button class=\"secondary\">却下する</button></div><div class=\"dangerzone\"><b>予約を削除</b><p>通常一覧から非表示にします。操作履歴は保持します。</p><button class=\"danger\">削除する</button></div></section></div><section class=\"card\"><div class=\"cardhead\"><h3>予約履歴</h3><span class=\"muted\"></span></div><div class=\"timeline\"><b>10月2日 14:20　和田 一夫</b><p>iOSアプリから予約申請 · 承認待ち</p></div></section>",
+    "description": "担当権限、保持期限、承認、理由却下、soft delete確認。",
+    "tab": "bookings"
+  },
+  {
+    "mode": "web",
+    "id": "slot-edit",
+    "title": "授業・予約枠を追加",
+    "body": "<section class=\"card\"><div class=\"cardhead\"><h3>授業情報</h3><span class=\"muted\"></span></div><div class=\"formgrid\"><label class=\"field\"><span>授業名 *</span><input type=\"text\" value=\"IT基礎・セキュリティ\"><small></small></label><label class=\"field\"><span>クラス *</span><select><option>2026年度 新入社員Aクラス</option></select></label><label class=\"field\"><span>担当講師 *</span><select><option>田中 祥司</option><option>別府 悦子</option></select></label><label class=\"field\"><span>教育単元</span><select><option>IT基礎 / 基礎研修 v1.0</option></select></label><label class=\"field\"><span>開始日時 *</span><input type=\"datetime-local\" value=\"2026-10-05T14:00\"><small></small></label><label class=\"field\"><span>終了日時 *</span><input type=\"datetime-local\" value=\"2026-10-05T15:30\"><small></small></label><label class=\"field\"><span>定員 *</span><input type=\"number\" value=\"10\"><small></small></label><label class=\"field\"><span>予約締切 *</span><input type=\"datetime-local\" value=\"2026-10-04T14:00\"><small></small></label><label class=\"field\"><span>オンライン授業URL</span><input type=\"url\" value=\"https://example.invalid/lesson/arms-001\"><small></small></label><label class=\"field\"><span>取消期限</span><select><option>開始24時間前</option><option>開始12時間前</option></select></label></div></section><div class=\"notice\">講師・クラスの時間重複を検査します。承認済み受講者だけに授業URLを表示します。</div><div class=\"actions\"><button class=\"secondary\">キャンセル</button><button class=\"primary\">枠を登録</button></div>",
+    "description": "授業枠日程・講師/クラス重複・定員・締切・private meeting URL。",
+    "tab": "bookings"
+  },
+  {
+    "mode": "web",
+    "id": "settings",
+    "title": "設定",
+    "body": "<div class=\"tabs\"><b>システム設定</b><span>データ移植</span><span>ユーザー管理</span><span>ログ・イベント</span></div><section class=\"card\"><div class=\"cardhead\"><h3>組織・予約の設定</h3><span class=\"muted\"></span></div><div class=\"formgrid\"><label class=\"field\"><span>組織名</span><input type=\"text\" value=\"H&A研修センター\"><small></small></label><label class=\"field\"><span>標準テーマ</span><select><option>システムに合わせる</option><option>ライト</option><option>ダーク</option></select></label><label class=\"field\"><span>タイムゾーン</span><select><option>日本標準時（Asia/Tokyo）</option></select></label><label class=\"field\"><span>取消期限</span><select><option>授業開始24時間前</option><option>授業開始12時間前</option></select></label><label class=\"field\"><span>承認待ちの席保持時間</span><input type=\"text\" value=\"24時間\"><small></small></label><label class=\"field\"><span>通知</span><select><option>アプリ内・メール・Push</option><option>アプリ内のみ</option></select></label></div></section><section class=\"card\"><div class=\"cardhead\"><h3>AI音声アシスタント</h3><span class=\"muted\"></span></div><div class=\"formgrid\"><label class=\"field\"><span>音声エンジン</span><select><option>OpenAI Realtime</option></select></label><label class=\"field\"><span>1回の最大利用時間</span><input type=\"text\" value=\"10分\"><small></small></label><label class=\"field\"><span>1人あたりの1日利用上限</span><input type=\"text\" value=\"15分\"><small></small></label><label class=\"field\"><span>会話記録の保存</span><select><option>保存しない</option><option>同意取得後のみ保存</option></select></label></div><div class=\"notice\">APIキーはサーバーで管理します。画面やiOSアプリには表示しません。</div></section><div class=\"actions\"><button class=\"primary\">設定を保存</button></div>",
+    "description": "組織・休日・予約締切・通知・テーマ・音声利用上限。",
+    "tab": "settings"
+  },
+  {
+    "mode": "web",
+    "id": "import",
+    "title": "既存システムからのデータ移植",
+    "body": "<div class=\"tabs\"><span>システム設定</span><b>データ移植</b><span>ユーザー管理</span><span>ログ・イベント</span></div><div class=\"steps\"><b>1 ファイル選択</b><b>2 項目の対応</b><b class=\"selected\">3 検証結果</b><span>4 移行確定</span></div><section class=\"card\"><div class=\"cardhead\"><h3>移行前の検証</h3><span class=\"muted\"></span></div><div class=\"importstats\"><div><strong>28</strong><p>対象レコード</p></div><div><strong>26</strong><p>移行可能</p></div><div class=\"redtext\"><strong>2</strong><p>要確認</p></div></div><div class=\"tablewrap\"><table><thead><tr><th>旧システム項目</th><th>ARMS項目</th><th>状態</th></tr></thead><tbody><tr><td>終了予定日</td><td>終了予定日</td><td><span class=\"tag green\">対応済み</span></td></tr><tr><td>社員名</td><td>社員番号で照合</td><td><span class=\"tag green\">対応済み</span></td></tr><tr><td>教育担当部署</td><td>教育担当部署</td><td><span class=\"tag green\">対応済み</span></td></tr><tr><td>教育担当者</td><td>講師番号に対応</td><td><span class=\"tag amber\">要確認 2件</span></td></tr><tr><td>内容</td><td>教育内容</td><td><span class=\"tag green\">対応済み</span></td></tr></tbody></table></div></section><div class=\"notice\">8行目・19行目の講師が未登録です。講師を登録するか対応を修正してから移行を確定してください。</div><div class=\"actions\"><button class=\"secondary\">エラー明細をダウンロード</button><button class=\"primary\">項目の対応を修正</button></div>",
+    "description": "CSV/Excel、encoding、mapping、dry run、errors、commit、rollback。",
+    "tab": "settings"
+  },
+  {
+    "mode": "web",
+    "id": "users",
+    "title": "ユーザー管理",
+    "body": "<div class=\"tabs\"><span>システム設定</span><span>データ移植</span><b>ユーザー管理</b><span>ログ・イベント</span></div><div class=\"filters\"><span class=\"filter\">氏名・メールで検索</span><span class=\"filter\">ロール：すべて</span><span class=\"filter\">状態：有効</span></div><section class=\"card\"><div class=\"cardhead\"><h3>アカウント一覧</h3><span class=\"muted\"></span></div><div class=\"tablewrap\"><table><thead><tr><th>氏名</th><th>メール</th><th>ロール</th><th>状態</th><th>最終ログイン</th><th>操作</th></tr></thead><tbody><tr><td>山田 太郎</td><td>admin@example.invalid</td><td><span class=\"tag blue\">管理者</span></td><td>有効</td><td>10/2 09:00</td><td>詳細</td></tr><tr><td>田中 祥司</td><td>tanaka@example.invalid</td><td><span class=\"tag blue\">講師</span></td><td>有効</td><td>10/2 09:30</td><td>詳細　停止</td></tr><tr><td>和田 一夫</td><td>wada@example.invalid</td><td><span class=\"tag blue\">受講者</span></td><td>有効</td><td>10/2 10:00</td><td>詳細　停止</td></tr><tr><td>佐藤 直子</td><td>sato@example.invalid</td><td><span class=\"tag blue\">講師</span></td><td><span class=\"tag amber\">招待中</span></td><td>—</td><td><button class=\"secondary\">招待を再送</button></td></tr></tbody></table></div></section><div class=\"notice\">受講者・講師の選択だけでは権限は変わりません。ロールは管理者が登録したアカウントに従います。</div>",
+    "description": "招待・再送・停止・管理者MFA・本人削除申請。",
+    "tab": "settings"
+  },
+  {
+    "mode": "web",
+    "id": "events",
+    "title": "ログ・イベント",
+    "body": "<div class=\"tabs\"><span>システム設定</span><span>データ移植</span><span>ユーザー管理</span><b>ログ・イベント</b></div><div class=\"filters\"><span class=\"filter\">期間：2026年10月</span><span class=\"filter\">操作者：すべて</span><span class=\"filter\">イベント：すべて</span></div><section class=\"card\"><div class=\"cardhead\"><h3>操作・処理履歴</h3><span class=\"muted\"></span></div><div class=\"tablewrap\"><table><thead><tr><th>日時</th><th>操作者</th><th>イベント</th><th>対象</th><th>結果</th><th>詳細</th></tr></thead><tbody><tr><td>10/2 14:20</td><td>和田 一夫</td><td>予約申請</td><td>IT基礎 / 10月5日</td><td><span class=\"tag green\">成功</span></td><td>履歴を見る</td></tr><tr><td>10/2 13:05</td><td>田中 祥司</td><td>課題の評価</td><td>和田 一夫</td><td><span class=\"tag green\">成功</span></td><td>履歴を見る</td></tr><tr><td>10/2 12:00</td><td>システム</td><td>通知配信</td><td>研修振り返り</td><td><span class=\"tag amber\">再送待ち</span></td><td>状況を見る</td></tr><tr><td>10/2 11:45</td><td>山田 太郎</td><td>移行の事前検証</td><td>教育進捗28件</td><td><span class=\"tag amber\">要確認</span></td><td>結果を見る</td></tr><tr><td>10/2 10:10</td><td>和田 一夫</td><td>AI音声：進捗確認</td><td>本人進捗</td><td><span class=\"tag green\">成功</span></td><td>履歴を見る</td></tr></tbody></table></div></section><div class=\"notice\">音声全文・パスワード・APIキーはログに保存しません。業務操作と処理結果を記録します。</div>",
+    "description": "監査・検索・業務ログ・通知失敗/再送、秘密redaction。",
+    "tab": "settings"
+  },
+  {
+    "mode": "ios",
+    "id": "login",
+    "title": "ログイン",
+    "body": "<div class=\"mobilebrand\"><img src=\"../assets/reference/logo.png\"><b>ARMS</b><span class=\"grow\"></span><span class=\"avatar\">和</span></div><div class=\"iosintro\"><span class=\"eyebrow\">新入社員研修システム</span><h1>今日の学びが、<br>明日の力に。</h1><p>授業・進捗・予約をかんたんに確認。</p></div><div class=\"segmented\"><b>受講者</b><span>講師</span></div><label class=\"field\"><span>メールアドレス</span><input type=\"email\" value=\"wada@example.invalid\"><small></small></label><label class=\"field\"><span>パスワード</span><input type=\"password\" value=\"\"><small></small></label><button class=\"primary\">ログイン</button><p class=\"center blueText\">パスワードをお忘れですか？</p><div class=\"iosfootnote\">組織から招待されたアカウントで<br>ログインしてください。</div>",
+    "description": "受講者/講師login、password reset、認証・ロール照合。",
+    "tab": ""
+  },
+  {
+    "mode": "ios",
+    "id": "student-home",
+    "title": "ホーム",
+    "body": "<div class=\"mobilebrand\"><img src=\"../assets/reference/logo.png\"><b>ARMS</b><span class=\"grow\"></span><span class=\"avatar\">和</span></div><p class=\"muted\">2026年10月2日（金）</p><h1>おはようございます、<br>和田さん。</h1><section class=\"card\"><div class=\"cardhead\"><h3>研修の進捗</h3><span class=\"muted\"></span></div><div class=\"ringrow\"><div class=\"ring\"><span><b>76</b><small>%</small></span></div><div><h3>順調に進んでいます</h3><p>必須単元 6 / 8 完了</p><a>進捗の詳細を見る →</a></div></div></section><div class=\"mobiletitle\"><h2>本日の授業</h2><a>すべて</a></div><div class=\"lesson\"><div class=\"time\">10:00<small>11:30</small></div><div class=\"grow\"><strong>ビジネスマナー</strong><p>新入社員Aクラス · 別府 悦子</p></div><span class=\"tag green\">承認済み</span></div><div class=\"lesson\"><div class=\"time\">14:00<small>15:30</small></div><div class=\"grow\"><strong>IT基礎</strong><p>新入社員Aクラス · 田中 祥司</p></div><span class=\"tag green\">承認済み</span></div><div class=\"voicecall\"><b>声でかんたん操作</b><p>「今日の授業を教えて」</p><button class=\"primary\">AI音声を開始</button></div>",
+    "description": "本人進捗・今日の承認済授業・通知・音声導線。",
+    "tab": "home"
+  },
+  {
+    "mode": "ios",
+    "id": "teacher-home",
+    "title": "講師ホーム",
+    "body": "<div class=\"mobilebrand\"><img src=\"../assets/reference/logo.png\"><b>ARMS</b><span class=\"grow\"></span><span class=\"avatar\">田</span></div><p class=\"muted\">2026年10月2日（金）</p><h1>田中先生、<br>本日もよろしくお願いします。</h1><div class=\"mobilemetrics\"><div><b>42</b><span>担当受講者</span></div><div><b>3</b><span>本日の授業</span></div><div><b>2</b><span>承認待ち</span></div></div><h2>担当授業</h2><div class=\"lesson\"><div class=\"time\">09:00<small>10:30</small></div><div class=\"grow\"><strong>プログラミング基礎</strong><p>新入社員Aクラス · 田中 祥司</p></div><span class=\"tag blue\">担当授業</span></div><div class=\"lesson\"><div class=\"time\">14:00<small>15:30</small></div><div class=\"grow\"><strong>IT基礎</strong><p>新入社員Aクラス · 田中 祥司</p></div><span class=\"tag blue\">担当授業</span></div><section class=\"card\"><div class=\"cardhead\"><h3>対応が必要な項目</h3><span class=\"muted\"></span></div><div class=\"listrow\"><b>課題の評価待ち</b><span>3件 →</span></div><div class=\"listrow\"><b>予約の承認待ち</b><span>2件 →</span></div></section><button class=\"primary\">担当受講者の進捗を見る</button>",
+    "description": "担当授業・評価待ち・担当者・承認待ち、teacher scope。",
+    "tab": "home"
+  },
+  {
+    "mode": "ios",
+    "id": "progress",
+    "title": "研修の進捗",
+    "body": "<section class=\"card\"><div class=\"cardhead\"><h3>新入社員 基礎研修 v1.0</h3><span class=\"muted\"></span></div><div class=\"ringrow\"><div class=\"ring\"><span><b>76</b><small>%</small></span></div><div><b>必須単元 6 / 8 完了</b><p>終了予定：12月31日</p><small>更新：10月2日 11:20</small></div></div></section><h2>単元ごとの状況</h2><section class=\"card\"><div class=\"cardhead\"><h3>ビジネスマナー</h3><span class=\"muted\"><span class=\"tag green\">完了</span></span></div><p class=\"muted\">教材確認・テスト92点・講師評価</p><div class=\"progress\"><div style=\"width:100%\"></div></div><b class=\"percent\">100%</b></section><section class=\"card\"><div class=\"cardhead\"><h3>IT基礎・セキュリティ</h3><span class=\"muted\"><span class=\"tag green\">完了</span></span></div><p class=\"muted\">教材確認・テスト88点</p><div class=\"progress\"><div style=\"width:100%\"></div></div><b class=\"percent\">100%</b></section><section class=\"card\"><div class=\"cardhead\"><h3>実践課題</h3><span class=\"muted\"><span class=\"tag amber\">確認待ち</span></span></div><p class=\"muted\">提出済み・講師の評価を待っています</p><div class=\"progress\"><div style=\"width:60%\"></div></div><b class=\"percent\">60%</b></section><section class=\"card\"><div class=\"cardhead\"><h3>研修振り返り</h3><span class=\"muted\"><span class=\"tag gray\">未着手</span></span></div><p class=\"muted\">10月7日 16:00の授業を予約済み</p><div class=\"progress\"><div style=\"width:0%\"></div></div><b class=\"percent\">0%</b></section>",
+    "description": "本人の全体/単元進捗・点数・完了条件・last update。",
+    "tab": "progress"
+  },
+  {
+    "mode": "ios",
+    "id": "teacher-students",
+    "title": "担当受講者の進捗",
+    "body": "<div class=\"filters\"><span class=\"filter\">社員名を検索</span><span class=\"filter\">Aクラス</span></div><section class=\"card\"><div class=\"cardhead\"><h3>和田 一夫</h3><span class=\"muted\"><span class=\"tag blue\">受講中</span></span></div><p>開発部 · 新入社員Aクラス</p><div class=\"progress\"><div style=\"width:76%\"></div></div><b class=\"percent\">76%</b><div class=\"listrow\"><small>担当：田中 祥司</small><a>詳細を見る →</a></div></section><section class=\"card\"><div class=\"cardhead\"><h3>鈴木 大輔</h3><span class=\"muted\"><span class=\"tag blue\">受講中</span></span></div><p>開発部 · 新入社員Aクラス</p><div class=\"progress\"><div style=\"width:83%\"></div></div><b class=\"percent\">83%</b><div class=\"listrow\"><small>担当：田中 祥司</small><a>詳細を見る →</a></div></section><section class=\"card\"><div class=\"cardhead\"><h3>中村 翔太</h3><span class=\"muted\"><span class=\"tag red\">期限超過</span></span></div><p>開発部 · 新入社員Aクラス</p><div class=\"progress\"><div style=\"width:42%\"></div></div><b class=\"percent\">42%</b><div class=\"listrow\"><small>担当：田中 祥司</small><a>詳細を見る →</a></div></section><section class=\"card\"><div class=\"cardhead\"><h3>伊藤 凛</h3><span class=\"muted\"><span class=\"tag green\">完了</span></span></div><p>開発部 · 新入社員Aクラス</p><div class=\"progress\"><div style=\"width:100%\"></div></div><b class=\"percent\">100%</b><div class=\"listrow\"><small>担当：田中 祥司</small><a>詳細を見る →</a></div></section>",
+    "description": "teacher担当者一覧・class filter・詳細・担当外拒否。",
+    "tab": "progress"
+  },
+  {
+    "mode": "ios",
+    "id": "student-detail",
+    "title": "受講者の詳細",
+    "body": "<section class=\"card\"><div class=\"cardhead\"><h3>和田 一夫</h3><span class=\"muted\"></span></div><p>開発部 / Aクラス / 社員番号 E001</p><div class=\"progress\"><div style=\"width:76%\"></div></div><b class=\"percent\">76%</b><p>終了予定：2026年12月31日</p></section><section class=\"card\"><div class=\"cardhead\"><h3>評価が必要な課題</h3><span class=\"muted\"></span></div><h3>実践課題：業務改善の提案</h3><p class=\"muted\">提出：10月2日 09:20</p><button class=\"secondary\">提出資料を見る</button><label class=\"field\"><span>講師コメント</span><input type=\"text\" value=\"課題の論点をよく整理できています。\"><small></small></label><div class=\"mobilebuttons\"><button class=\"secondary\">再提出を依頼</button><button class=\"primary\">合格にする</button></div></section><section class=\"card\"><div class=\"cardhead\"><h3>単元の状況</h3><span class=\"muted\"></span></div><div class=\"listrow\">ビジネスマナー<span class=\"tag green\">完了</span></div><div class=\"listrow\">IT基礎<span class=\"tag green\">完了</span></div><div class=\"listrow\">実践課題<span class=\"tag amber\">評価待ち</span></div></section>",
+    "description": "講師担当詳細・課題確認/評価・コメント・履歴。",
+    "tab": "progress"
+  },
+  {
+    "mode": "ios",
+    "id": "booking",
+    "title": "オンライン予約",
+    "body": "<div class=\"segmented\"><b>空き枠を探す</b><span>自分の予約</span></div><div class=\"calendar\"><div class=\"calhead\"><span>‹</span><b>2026年10月</b><span>›</span></div><div class=\"days\"><span>月</span><span>火</span><span>水</span><span>木</span><span>金</span><span>土</span><span>日</span></div><div class=\"dates\"><span class=\"muted\"></span><span class=\"muted\"></span><span class=\"muted\"></span><span class=\"\">1</span><span class=\"\">2</span><span class=\"\">3</span><span class=\"\">4</span><span class=\"selected\">5</span><span class=\"\">6</span><span class=\"\">7</span><span class=\"\">8</span><span class=\"\">9</span><span class=\"\">10</span><span class=\"\">11</span><span class=\"\">12</span><span class=\"\">13</span><span class=\"\">14</span><span class=\"\">15</span><span class=\"\">16</span><span class=\"\">17</span><span class=\"\">18</span><span class=\"\">19</span><span class=\"\">20</span><span class=\"\">21</span><span class=\"\">22</span><span class=\"\">23</span><span class=\"\">24</span><span class=\"\">25</span><span class=\"\">26</span><span class=\"\">27</span><span class=\"\">28</span><span class=\"\">29</span><span class=\"\">30</span><span class=\"\">31</span><span class=\"muted\"></span></div></div><h2>10月5日（月）の空き枠</h2><section class=\"card\"><div class=\"cardhead\"><h3>IT基礎・セキュリティ</h3><span class=\"muted\"></span></div><b>14:00–15:30</b><p>田中 祥司 / Aクラス / オンライン</p><div class=\"listrow\"><span class=\"tag green\">残り3席</span><button class=\"primary\">選択</button></div></section><section class=\"card\"><div class=\"cardhead\"><h3>研修振り返り面談</h3><span class=\"muted\"></span></div><b>16:00–17:00</b><p>田中 祥司 / Aクラス</p><div class=\"listrow\"><span class=\"tag amber\">残り1席</span><button class=\"secondary\">選択</button></div></section>",
+    "description": "所属クラスの空き枠・JST日付・remaining・teacher。",
+    "tab": "booking"
+  },
+  {
+    "mode": "ios",
+    "id": "booking-confirm",
+    "title": "予約内容の確認",
+    "body": "<div class=\"notice\">申請後、担当講師が確認します。承認されると予約が確定します。</div><section class=\"card\"><div class=\"cardhead\"><h3>IT基礎・セキュリティ</h3><span class=\"muted\"></span></div><div class=\"detailrows\"><p><span>日時</span><b>10月5日（月）</b></p><p><span>時間</span><b>14:00–15:30</b></p><p><span>担当講師</span><b>田中 祥司</b></p><p><span>クラス</span><b>新入社員Aクラス</b></p><p><span>形式</span><b>オンライン</b></p><p><span>受講者</span><b>和田 一夫</b></p></div></section><section class=\"card\"><div class=\"cardhead\"><h3>予約申請について</h3><span class=\"muted\"></span></div><p>承認待ちの間も、席の保持期限までは空き枠を確保します。</p><p>取消期限は、授業開始の24時間前です。</p></section><button class=\"primary\">この内容で予約を申請</button><p class=\"center muted\">申請結果は「自分の予約」で確認できます。</p>",
+    "description": "内容確認・pendingとして申請、二重タップ冪等。",
+    "tab": "booking"
+  },
+  {
+    "mode": "ios",
+    "id": "my-bookings",
+    "title": "自分の予約",
+    "body": "<div class=\"segmented\"><span>空き枠を探す</span><b>自分の予約</b></div><section class=\"card\"><div class=\"cardhead\"><h3>IT基礎・セキュリティ</h3><span class=\"muted\"><span class=\"tag amber\">承認待ち</span></span></div><h3>10月5日（月）14:00–15:30</h3><p>田中 祥司 / 新入社員Aクラス</p><p class=\"muted\">担当講師の承認を待っています。</p><div class=\"listrow\"><small>申請：10月2日 14:20</small><a>詳細 →</a></div></section><section class=\"card\"><div class=\"cardhead\"><h3>研修振り返り面談</h3><span class=\"muted\"><span class=\"tag green\">承認済み</span></span></div><h3>10月7日（水）16:00–17:00</h3><p>小山 祐介 / オンライン</p><div class=\"listrow\"><small>予約が確定しています。</small><a>詳細 →</a></div></section><section class=\"card\"><div class=\"cardhead\"><h3>ビジネスマナー</h3><span class=\"muted\"><span class=\"tag red\">却下</span></span></div><h3>10月8日（木）10:00–11:30</h3><p>理由：講師の日程変更のため</p><a>別の枠を探す →</a></section>",
+    "description": "pending/approved/rejected/cancelled/expired一覧と理由。",
+    "tab": "booking"
+  },
+  {
+    "mode": "ios",
+    "id": "booking-detail",
+    "title": "予約の詳細",
+    "body": "<section class=\"card\"><div class=\"cardhead\"><h3>IT基礎・セキュリティ</h3><span class=\"muted\"></span></div><div class=\"statusbanner\"><span class=\"tag green\">承認済み</span><h2>予約が確定しています</h2></div><div class=\"detailrows\"><p><span>日時</span><b>10月5日（月）14:00</b></p><p><span>終了</span><b>15:30</b></p><p><span>担当講師</span><b>田中 祥司</b></p><p><span>所属クラス</span><b>新入社員Aクラス</b></p><p><span>予約番号</span><b>ARMS-202610-001</b></p><p><span>取消期限</span><b>10月4日（日）14:00</b></p></div></section><button class=\"primary\">授業ページを開く</button><section class=\"card\"><div class=\"cardhead\"><h3>変更履歴</h3><span class=\"muted\"></span></div><p>10月2日 15:10　田中 祥司が承認</p><p>10月2日 14:20　予約を申請</p></section><button class=\"secondary\">予約を取消する</button>",
+    "description": "承認済meeting導線・取消期限・確認・履歴。",
+    "tab": "booking"
+  },
+  {
+    "mode": "ios",
+    "id": "today",
+    "title": "本日の授業",
+    "body": "<p class=\"muted\">2026年10月2日（金）</p><section class=\"card\"><div class=\"cardhead\"><h3>ビジネスマナー</h3><span class=\"muted\"><span class=\"tag green\">承認済み</span></span></div><h2>10:00–11:30</h2><p>別府 悦子 / 新入社員Aクラス</p><p class=\"muted\">社会人としての言葉づかいと、<br>職場での基本的な振る舞いを学びます。</p><button class=\"primary\">授業に参加する</button><div class=\"listrow\"><span>配布教材</span><a>PDFを見る →</a></div></section><section class=\"card\"><div class=\"cardhead\"><h3>IT基礎・セキュリティ</h3><span class=\"muted\"><span class=\"tag green\">承認済み</span></span></div><h2>14:00–15:30</h2><p>田中 祥司 / オンライン</p><p class=\"muted\">情報管理と安全なシステム利用。</p><button class=\"secondary\">教材を確認する</button></section><div class=\"notice\">授業の参加リンクは、承認済みの受講者だけに表示されます。</div>",
+    "description": "JST今日の承認済授業、private参加URL、教材。",
+    "tab": "home"
+  },
+  {
+    "mode": "ios",
+    "id": "materials",
+    "title": "教材・確認テスト",
+    "body": "<section class=\"card\"><div class=\"cardhead\"><h3>IT基礎・セキュリティ</h3><span class=\"muted\"></span></div><div class=\"materialpreview\"><span>ARMS</span><h2>情報セキュリティ<br>基本ガイド</h2><small>新入社員研修 / 第2単元</small></div><div class=\"listrow\"><b>基本ガイド.pdf</b><a>開く →</a></div><button class=\"secondary\">教材を確認しました</button></section><section class=\"card\"><div class=\"cardhead\"><h3>確認テスト</h3><span class=\"muted\"></span></div><p class=\"muted\">全5問 / 合格点80点 / 受験可能</p><b>Q1. 不審なメールを受信した場合は？</b><div class=\"option\">◯ 添付ファイルをすぐに開く</div><div class=\"option selected\">◉ 担当部署に確認して報告する</div><div class=\"option\">◯ 他の社員へ転送する</div><button class=\"primary\">次の問題へ</button></section>",
+    "description": "private PDF/動画/quiz/assignment・サーバー採点、確認記録。",
+    "tab": "progress"
+  },
+  {
+    "mode": "ios",
+    "id": "voice",
+    "title": "AI音声アシスタント",
+    "body": "<p class=\"center muted\">AIが生成した音声です</p><div class=\"wave\"><i style=\"height:10px\"></i><i style=\"height:18px\"></i><i style=\"height:30px\"></i><i style=\"height:16px\"></i><i style=\"height:46px\"></i><i style=\"height:65px\"></i><i style=\"height:36px\"></i><i style=\"height:78px\"></i><i style=\"height:54px\"></i><i style=\"height:24px\"></i><i style=\"height:62px\"></i><i style=\"height:80px\"></i><i style=\"height:46px\"></i><i style=\"height:26px\"></i><i style=\"height:55px\"></i><i style=\"height:30px\"></i><i style=\"height:18px\"></i><i style=\"height:10px\"></i></div><div class=\"voicepill\">● 聞いています</div><div class=\"chat me\">今日の授業を教えて</div><div class=\"chat assistant\">本日は10時からビジネスマナー、14時からIT基礎の授業があります。</div><section class=\"card\"><div class=\"cardhead\"><h3>本日の授業</h3><span class=\"muted\"></span></div><b>ビジネスマナー</b><p>10:00–11:30 / 別府 悦子</p><span class=\"tag green\">承認済み</span></section><div class=\"chat me\">10月5日の午後に予約したい</div><div class=\"chat assistant\">14時からIT基礎の空きがあります。予約内容を確認しますか？</div><div class=\"voicecontrols\"><button class=\"secondary\">ミュート</button><button class=\"secondary\">音声を終了</button></div><div class=\"textentry\">文字で入力する…</div>",
+    "description": "日本語音声・transcript・状態・mute/end/text・リアルDB回答。",
+    "tab": "voice"
+  },
+  {
+    "mode": "ios",
+    "id": "voice-confirm",
+    "title": "音声で予約を確認",
+    "body": "<div class=\"chat assistant\">10月5日（月）14時からのIT基礎を予約申請します。申請してよろしいですか？</div><section class=\"card\"><div class=\"cardhead\"><h3>予約申請の内容</h3><span class=\"muted\"></span></div><div class=\"detailrows\"><p><span>日時</span><b>10月5日（月）14:00–15:30</b></p><p><span>授業</span><b>IT基礎・セキュリティ</b></p><p><span>担当講師</span><b>田中 祥司</b></p><p><span>受講者</span><b>和田 一夫</b></p></div></section><div class=\"notice\">「はい、申請して」と話すか、下のボタンを押してください。まだ申請は送信されていません。</div><button class=\"primary\">この内容で申請する</button><button class=\"secondary\">内容を変更する</button><div class=\"wave\"><i style=\"height:10px\"></i><i style=\"height:18px\"></i><i style=\"height:30px\"></i><i style=\"height:16px\"></i><i style=\"height:46px\"></i><i style=\"height:65px\"></i><i style=\"height:36px\"></i><i style=\"height:78px\"></i><i style=\"height:54px\"></i><i style=\"height:24px\"></i><i style=\"height:62px\"></i><i style=\"height:80px\"></i><i style=\"height:46px\"></i><i style=\"height:26px\"></i><i style=\"height:55px\"></i><i style=\"height:30px\"></i><i style=\"height:18px\"></i><i style=\"height:10px\"></i></div><p class=\"center muted\">確認内容の有効時間：残り1分45秒</p>",
+    "description": "prepare/commit確認card、期限120秒、曖昧発話では書かない。",
+    "tab": "voice"
+  },
+  {
+    "mode": "ios",
+    "id": "notifications",
+    "title": "お知らせ",
+    "body": "<section class=\"card\"><div class=\"cardhead\"><h3>予約が承認されました</h3><span class=\"muted\">15:10</span></div><p>10月5日（月）14:00のIT基礎の予約が、田中講師に承認されました。</p><a>予約内容を確認 →</a></section><section class=\"card\"><div class=\"cardhead\"><h3>課題の評価が完了しました</h3><span class=\"muted\">11:20</span></div><p>実践課題に講師からコメントが届いています。</p><a>進捗を確認 →</a></section><section class=\"card\"><div class=\"cardhead\"><h3>教材が公開されました</h3><span class=\"muted\">昨日</span></div><p>IT基礎の教材を授業前に確認してください。</p><a>教材を開く →</a></section><section class=\"card\"><div class=\"cardhead\"><h3>10月の研修スケジュール</h3><span class=\"muted\">10月1日</span></div><p>所属クラスの授業日程が更新されました。</p></section>",
+    "description": "本人アプリ内通知・既読・deep link、APNs拒否可。",
+    "tab": "home"
+  },
+  {
+    "mode": "ios",
+    "id": "attendance",
+    "title": "出欠を記録",
+    "body": "<h2>IT基礎・セキュリティ</h2><p class=\"muted\">10月2日（金）14:00–15:30 / Aクラス</p><section class=\"card\"><div class=\"cardhead\"><h3>和田 一夫</h3><span class=\"muted\"></span></div><div class=\"segmented\"><b>出席</b><span>欠席</span><span>遅刻</span></div><small>必要に応じてコメントを記録できます。</small></section><section class=\"card\"><div class=\"cardhead\"><h3>鈴木 大輔</h3><span class=\"muted\"></span></div><div class=\"segmented\"><b>出席</b><span>欠席</span><span>遅刻</span></div><small>必要に応じてコメントを記録できます。</small></section><section class=\"card\"><div class=\"cardhead\"><h3>中村 翔太</h3><span class=\"muted\"></span></div><div class=\"segmented\"><b>出席</b><span>欠席</span><span>遅刻</span></div><small>必要に応じてコメントを記録できます。</small></section><button class=\"primary\">出欠を保存</button><div class=\"notice\">担当授業の出欠だけを記録できます。変更は操作履歴に残ります。</div>",
+    "description": "講師担当授業attendance、actor・理由・進捗算出へ連携。",
+    "tab": "home"
+  },
+  {
+    "mode": "ios",
+    "id": "teacher-bookings",
+    "title": "担当授業の予約",
+    "body": "<section class=\"card\"><div class=\"cardhead\"><h3>和田 一夫</h3><span class=\"muted\"><span class=\"tag amber\">承認待ち</span></span></div><h3>IT基礎 / 10月5日 14:00</h3><p>新入社員Aクラス</p><div class=\"mobilebuttons\"><button class=\"primary\">承認</button><button class=\"secondary\">却下</button></div></section><section class=\"card\"><div class=\"cardhead\"><h3>鈴木 大輔</h3><span class=\"muted\"><span class=\"tag amber\">承認待ち</span></span></div><h3>IT基礎 / 10月8日 14:00</h3><p>新入社員Aクラス</p><div class=\"mobilebuttons\"><button class=\"primary\">承認</button><button class=\"secondary\">却下</button></div></section><section class=\"card\"><div class=\"cardhead\"><h3>伊藤 凛</h3><span class=\"muted\"><span class=\"tag green\">承認済み</span></span></div><h3>プログラミング基礎 / 10月9日</h3><p>新入社員Cクラス</p><a>詳細を見る →</a></section><div class=\"notice\">却下には理由を入力します。担当外の予約は表示されません。</div>",
+    "description": "講師scope申請一覧・明示UI承認/理由却下、Webへ同期。",
+    "tab": "booking"
+  },
+  {
+    "mode": "ios",
+    "id": "settings",
+    "title": "設定",
+    "body": "<section class=\"card\"><div class=\"cardhead\"><h3>アカウント</h3><span class=\"muted\"></span></div><div class=\"person\"><span class=\"avatar\">和</span><div><b>和田 一夫</b><small>受講者 / 新入社員Aクラス</small></div></div></section><section class=\"card\"><div class=\"cardhead\"><h3>表示と通知</h3><span class=\"muted\"></span></div><div class=\"listrow\">テーマ <b>システムに合わせる ›</b></div><div class=\"listrow\">通知 <b>オン ›</b></div><div class=\"listrow\">言語 <b>日本語</b></div></section><section class=\"card\"><div class=\"cardhead\"><h3>音声とプライバシー</h3><span class=\"muted\"></span></div><div class=\"listrow\">マイクの設定 <b>›</b></div><div class=\"listrow\">本日の音声利用 <b>3分 / 15分</b></div><p class=\"muted\">音声・会話全文は保存しません。</p></section><section class=\"card\"><div class=\"cardhead\"><h3>サポート</h3><span class=\"muted\"></span></div><div class=\"listrow\">利用規約 <b>›</b></div><div class=\"listrow\">プライバシーポリシー <b>›</b></div><div class=\"listrow\">アカウント削除の申請 <b>›</b></div></section><button class=\"secondary\">ログアウト</button>",
+    "description": "theme light/dark/system、通知・マイク・quota・規約・logout。",
+    "tab": "home"
+  }
+]

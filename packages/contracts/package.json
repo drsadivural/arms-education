@@ -1,0 +1,25 @@
+{
+  "name": "@arms/contracts",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./openapi.json": "./openapi.json",
+    "./voice-tools.json": "./voice-tools.json"
+  },
+  "scripts": {
+    "gen": "node ../../scripts/contracts/merge.mjs && openapi-typescript ./openapi.json -o ./src/openapi.d.ts",
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "zod": "4.6.5"
+  },
+  "devDependencies": {
+    "@apidevtools/swagger-parser": "13.1.0",
+    "openapi-typescript": "7.13.0",
+    "typescript": "5.9.3",
+    "vitest": "3.2.7"
+  }
+}

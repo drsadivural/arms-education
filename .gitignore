@@ -1,30 +1,42 @@
-# Environment
+# Environment / secrets
 .env
 .env.*
 !.env.example
+.dev.vars
+.dev.vars.*
+!.dev.vars.example
+*.p12
+*.p8
+*.pem
+*.key
+*.mobileprovision
 
 # Node.js
 node_modules/
+.pnpm-store/
 npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
 pnpm-debug.log*
-.next/
 dist/
 build/
 coverage/
+.wrangler/
+*.tsbuildinfo
+.vite/
 
-# macOS
+# Test evidence is generated per run (commit selected evidence explicitly)
+tests/results/*
+!tests/results/evidence/
+!tests/results/README.md
+playwright-report/
+test-results/
+
+# macOS / IDE
 .DS_Store
-
-# IDE
 .vscode/
 .idea/
 
-# Logs
+# Logs / temp
 *.log
-
-# Temporary
 tmp/
 temp/
 .cache/
@@ -37,13 +49,9 @@ xcuserdata/
 *.dSYM.zip
 *.dSYM
 Pods/
+apps/ios/ARMS.xcodeproj/
 
 # Swift Package Manager
 .build/
 .swiftpm/
-
-# Secrets / certificates
-*.p12
-*.mobileprovision
-*.pem
-*.key
+.playwright-mcp/

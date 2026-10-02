@@ -1,0 +1,96 @@
+# Local development stack: PostgreSQL 17 (+ PgBouncer), SeaweedFS (S3-compatible stand-in for private R2 presigned
+# URLs), ClamAV + scanner adapter, and Mailpit behind a Resend-compatible relay (captures invitation, password-reset
+# and notification e-mail). Authentication is the API's own (PostgreSQL); there is no separate auth server.
+# Run `node infra/local/setup.mjs` once to generate infra/local/.env.local and services/api/.dev.vars.
+name: arms
+services:
+  postgres:
+    image: postgres:17-alpine
+    # Each API test run creates its own database and pools; parallel runs need more than the default 100 connections.
+    command: ["postgres", "-c", "max_connections=500"]
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: arms_dev_pw
+      POSTGRES_DB: arms
+    ports: ["127.0.0.1:55433:5432"]
+    volumes: ["arms-pg:/var/lib/postgresql/data"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d arms"]
+      interval: 2s
+      retries: 30
+
+  # Transaction-mode pooler in front of PostgreSQL for the Worker (wrangler dev), mirroring Hyperdrive's pooling.
+  # The API sets tenant context with set_config(..., true) inside each transaction, so transaction pooling is safe.
+  pooler:
+    image: edoburu/pgbouncer:latest
+    depends_on:
+      postgres: { condition: service_healthy }
+    environment:
+      DB_HOST: postgres
+      DB_PORT: "5432"
+      DB_NAME: arms
+      DB_USER: arms_app
+      DB_PASSWORD: arms_app_dev_pw
+      AUTH_TYPE: scram-sha-256
+      POOL_MODE: transaction
+      MAX_CLIENT_CONN: "2000"
+      DEFAULT_POOL_SIZE: "40"
+      IGNORE_STARTUP_PARAMETERS: extra_float_digits,options
+    ports: ["127.0.0.1:55434:5432"]
+
+  # S3 API on :9100 (path-style, SigV4, presigned URLs with signed Content-Length/Content-Type, CORS for the Web app).
+  # MinIO images are no longer published to public registries, so SeaweedFS stands in for R2 locally and in CI.
+  # Local-only credentials: infra/local/seaweedfs/s3.json (matches R2_ACCESS_KEY_ID/R2_SECRET_ACCESS_KEY from setup.mjs).
+  s3:
+    image: chrislusf/seaweedfs:4.48
+    command: server -dir=/data -s3 -s3.config=/etc/seaweedfs/s3.json -volume.max=8 -master.volumeSizeLimitMB=256
+    ports: ["127.0.0.1:9100:8333"]
+    volumes: ["arms-s3:/data", "./seaweedfs/s3.json:/etc/seaweedfs/s3.json:ro"]
+
+  s3-init:
+    image: chrislusf/seaweedfs:4.48
+    depends_on: [s3]
+    # Retries until the master/filer answer; idempotent (an existing bucket is left as is).
+    entrypoint: >
+      /bin/sh -c "until echo 's3.bucket.create -name arms-materials' | timeout 20 weed shell -master=s3:9333 2>&1 | grep -q -E 'created bucket|already exists'; do sleep 2; done; echo bucket arms-materials ready"
+
+  # Real malware scanning for local development: ClamAV (signatures updated by freshclam on start) behind the
+  # ARMS scanner-protocol adapter (infra/scanner/server.mjs). Without a scanner, files are never published.
+  clamav:
+    image: clamav/clamav:1.4
+    ports: ["127.0.0.1:3310:3310"]
+    volumes: ["arms-clamav:/var/lib/clamav"]
+
+  scanner:
+    image: node:22-alpine
+    # Host networking so the adapter can fetch S3 presigned URLs (127.0.0.1:9100) and call back the local API.
+    network_mode: host
+    depends_on: [clamav]
+    command: ["node", "/app/server.mjs"]
+    volumes: ["../scanner:/app:ro"]
+    env_file: [.env.local]
+    environment:
+      PORT: "9200"
+      CLAMD_HOST: 127.0.0.1
+      CLAMD_PORT: "3310"
+
+  mailpit:
+    image: axllent/mailpit:v1.27
+    ports: ["127.0.0.1:8025:8025", "127.0.0.1:1025:1025"]
+
+  # Resend-compatible HTTP API on :9025 (what the Worker calls in every environment) → Mailpit.
+  mail-relay:
+    image: node:22-alpine
+    depends_on: [mailpit]
+    command: ["node", "/app/server.mjs"]
+    volumes: ["../mail-relay:/app:ro"]
+    env_file: [.env.local]
+    environment:
+      PORT: "9025"
+      MAILPIT_URL: http://mailpit:8025
+    ports: ["127.0.0.1:9025:9025"]
+
+volumes:
+  arms-pg: {}
+  arms-s3: {}
+  arms-clamav: {}

@@ -1,0 +1,275 @@
+[
+  {
+    "screen_id": "web/login",
+    "title_ja": "ログイン",
+    "path": "design/web/01-login.png",
+    "mode": "web",
+    "theme": "light"
+  },
+  {
+    "screen_id": "web/dashboard",
+    "title_ja": "ダッシュボード",
+    "path": "design/web/02-dashboard.png",
+    "mode": "web",
+    "theme": "light"
+  },
+  {
+    "screen_id": "web/teachers",
+    "title_ja": "講師管理",
+    "path": "design/web/03-teachers.png",
+    "mode": "web",
+    "theme": "light"
+  },
+  {
+    "screen_id": "web/teacher-edit",
+    "title_ja": "講師を登録",
+    "path": "design/web/04-teacher-edit.png",
+    "mode": "web",
+    "theme": "light"
+  },
+  {
+    "screen_id": "web/students",
+    "title_ja": "新入社員管理",
+    "path": "design/web/05-students.png",
+    "mode": "web",
+    "theme": "light"
+  },
+  {
+    "screen_id": "web/student-edit",
+    "title_ja": "新入社員を登録",
+    "path": "design/web/06-student-edit.png",
+    "mode": "web",
+    "theme": "light"
+  },
+  {
+    "screen_id": "web/classrooms",
+    "title_ja": "クラスルーム管理",
+    "path": "design/web/07-classrooms.png",
+    "mode": "web",
+    "theme": "light"
+  },
+  {
+    "screen_id": "web/classroom-detail",
+    "title_ja": "Aクラスの詳細",
+    "path": "design/web/08-classroom-detail.png",
+    "mode": "web",
+    "theme": "light"
+  },
+  {
+    "screen_id": "web/programs",
+    "title_ja": "教育プログラム管理",
+    "path": "design/web/09-programs.png",
+    "mode": "web",
+    "theme": "light"
+  },
+  {
+    "screen_id": "web/program-edit",
+    "title_ja": "教育プログラム・教材を編集",
+    "path": "design/web/10-program-edit.png",
+    "mode": "web",
+    "theme": "light"
+  },
+  {
+    "screen_id": "web/progress",
+    "title_ja": "社員教育進捗管理",
+    "path": "design/web/11-progress.png",
+    "mode": "web",
+    "theme": "light"
+  },
+  {
+    "screen_id": "web/progress-detail",
+    "title_ja": "和田 一夫さんの教育進捗",
+    "path": "design/web/12-progress-detail.png",
+    "mode": "web",
+    "theme": "light"
+  },
+  {
+    "screen_id": "web/bookings",
+    "title_ja": "オンライン予約システム",
+    "path": "design/web/13-bookings.png",
+    "mode": "web",
+    "theme": "light"
+  },
+  {
+    "screen_id": "web/booking-detail",
+    "title_ja": "予約申請の確認",
+    "path": "design/web/14-booking-detail.png",
+    "mode": "web",
+    "theme": "light"
+  },
+  {
+    "screen_id": "web/slot-edit",
+    "title_ja": "授業・予約枠を追加",
+    "path": "design/web/15-slot-edit.png",
+    "mode": "web",
+    "theme": "light"
+  },
+  {
+    "screen_id": "web/settings",
+    "title_ja": "設定",
+    "path": "design/web/16-settings.png",
+    "mode": "web",
+    "theme": "light"
+  },
+  {
+    "screen_id": "web/import",
+    "title_ja": "既存システムからのデータ移植",
+    "path": "design/web/17-import.png",
+    "mode": "web",
+    "theme": "light"
+  },
+  {
+    "screen_id": "web/users",
+    "title_ja": "ユーザー管理",
+    "path": "design/web/18-users.png",
+    "mode": "web",
+    "theme": "light"
+  },
+  {
+    "screen_id": "web/events",
+    "title_ja": "ログ・イベント",
+    "path": "design/web/19-events.png",
+    "mode": "web",
+    "theme": "light"
+  },
+  {
+    "screen_id": "ios/login",
+    "title_ja": "ログイン",
+    "path": "design/ios/01-login.png",
+    "mode": "ios",
+    "theme": "light"
+  },
+  {
+    "screen_id": "ios/student-home",
+    "title_ja": "ホーム",
+    "path": "design/ios/02-student-home.png",
+    "mode": "ios",
+    "theme": "light"
+  },
+  {
+    "screen_id": "ios/teacher-home",
+    "title_ja": "講師ホーム",
+    "path": "design/ios/03-teacher-home.png",
+    "mode": "ios",
+    "theme": "light"
+  },
+  {
+    "screen_id": "ios/progress",
+    "title_ja": "研修の進捗",
+    "path": "design/ios/04-progress.png",
+    "mode": "ios",
+    "theme": "light"
+  },
+  {
+    "screen_id": "ios/teacher-students",
+    "title_ja": "担当受講者の進捗",
+    "path": "design/ios/05-teacher-students.png",
+    "mode": "ios",
+    "theme": "light"
+  },
+  {
+    "screen_id": "ios/student-detail",
+    "title_ja": "受講者の詳細",
+    "path": "design/ios/06-student-detail.png",
+    "mode": "ios",
+    "theme": "light"
+  },
+  {
+    "screen_id": "ios/booking",
+    "title_ja": "オンライン予約",
+    "path": "design/ios/07-booking.png",
+    "mode": "ios",
+    "theme": "light"
+  },
+  {
+    "screen_id": "ios/booking-confirm",
+    "title_ja": "予約内容の確認",
+    "path": "design/ios/08-booking-confirm.png",
+    "mode": "ios",
+    "theme": "light"
+  },
+  {
+    "screen_id": "ios/my-bookings",
+    "title_ja": "自分の予約",
+    "path": "design/ios/09-my-bookings.png",
+    "mode": "ios",
+    "theme": "light"
+  },
+  {
+    "screen_id": "ios/booking-detail",
+    "title_ja": "予約の詳細",
+    "path": "design/ios/10-booking-detail.png",
+    "mode": "ios",
+    "theme": "light"
+  },
+  {
+    "screen_id": "ios/today",
+    "title_ja": "本日の授業",
+    "path": "design/ios/11-today.png",
+    "mode": "ios",
+    "theme": "light"
+  },
+  {
+    "screen_id": "ios/materials",
+    "title_ja": "教材・確認テスト",
+    "path": "design/ios/12-materials.png",
+    "mode": "ios",
+    "theme": "light"
+  },
+  {
+    "screen_id": "ios/voice",
+    "title_ja": "AI音声アシスタント",
+    "path": "design/ios/13-voice.png",
+    "mode": "ios",
+    "theme": "light"
+  },
+  {
+    "screen_id": "ios/voice-confirm",
+    "title_ja": "音声で予約を確認",
+    "path": "design/ios/14-voice-confirm.png",
+    "mode": "ios",
+    "theme": "light"
+  },
+  {
+    "screen_id": "ios/notifications",
+    "title_ja": "お知らせ",
+    "path": "design/ios/15-notifications.png",
+    "mode": "ios",
+    "theme": "light"
+  },
+  {
+    "screen_id": "ios/attendance",
+    "title_ja": "出欠を記録",
+    "path": "design/ios/16-attendance.png",
+    "mode": "ios",
+    "theme": "light"
+  },
+  {
+    "screen_id": "ios/teacher-bookings",
+    "title_ja": "担当授業の予約",
+    "path": "design/ios/17-teacher-bookings.png",
+    "mode": "ios",
+    "theme": "light"
+  },
+  {
+    "screen_id": "ios/settings",
+    "title_ja": "設定",
+    "path": "design/ios/18-settings.png",
+    "mode": "ios",
+    "theme": "light"
+  },
+  {
+    "screen_id": "web/dashboard",
+    "title_ja": "ダークテーマ",
+    "path": "design/web/20-dashboard-dark.png",
+    "mode": "web",
+    "theme": "dark"
+  },
+  {
+    "screen_id": "ios/student-home",
+    "title_ja": "ダークテーマ",
+    "path": "design/ios/19-student-home-dark.png",
+    "mode": "ios",
+    "theme": "dark"
+  }
+]

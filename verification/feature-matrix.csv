@@ -1,0 +1,19 @@
+﻿ID,要件,画面参照,実装後検証
+R01,ARMS名称・添付H&Aロゴ,全画面,原本SHA一致
+R02,Web指定8メニュー,Web 02〜19,8項目順の画面・権限確認
+R03,講師管理・招待,Web 03/04,登録・再送・停止・担当
+R04,新入社員とクラス/講師選択,Web 05/06,定員・候補連動・担当外422
+R05,クラス追加・人数,Web 07/08,CRUD・人数集計・同時追加
+R06,プログラムと教材追加,Web 09/10 / iOS 12,version・scan・private download
+R07,旧社員教育進捗管理,Web 11/12,旧5列・月・部署・履歴
+R08,予約のWeb承認/却下/削除,Web 13/14/15,pending/approvedと履歴・席解放
+R09,データ移植・設定,Web 16/17,dry run・mapping・commit・rollback
+R10,ユーザーとログ,Web 18/19,招待・停止・redaction
+R11,iOS受講者/講師login,iOS 01/02/03,サーバーロール検証
+R12,iOS本人/担当進捗,iOS 04/05/06,API scopeと点数/評価
+R13,iOSオンライン予約,iOS 07/08/09/10/17,申請・状態・取消・Web同期
+R14,今日の授業・教材・出欠,iOS 11/12/16,JST日付・private URL・出欠
+R15,OpenAI日本語AI音声,iOS 13/14,tools・prepare/commit・key非露出
+R16,通知と設定,iOS 15/18,通知・deep link・拒否・theme
+R17,レスポンシブ/ライトダーク/アクセシビリティ,全画面,390px・Dynamic Type・VoiceOver
+R18,開発指示・スキル・検証・deploy,docs / prompts / scripts,受入証拠と外部値の分離

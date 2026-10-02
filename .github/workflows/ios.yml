@@ -1,0 +1,114 @@
+name: iOS
+
+on:
+  push:
+    paths:
+      - "apps/ios/**"
+      - ".github/workflows/ios.yml"
+  pull_request:
+    paths:
+      - "apps/ios/**"
+      - ".github/workflows/ios.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ios-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  armskit-linux:
+    name: ARMSKit (Linux, Swift 6.1)
+    runs-on: ubuntu-24.04
+    container: swift:6.1-noble
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build
+        run: swift build --package-path apps/ios/ARMSKit
+      - name: Test
+        run: swift test --package-path apps/ios/ARMSKit
+      # The SwiftUI app needs the iOS SDK (type-checked in the macOS job); a parse catches syntax errors early.
+      - name: Parse app sources
+        run: find apps/ios/ARMS apps/ios/ARMSTests -name '*.swift' -print0 | xargs -0 swiftc -parse
+
+  ios:
+    name: iOS app (Xcode, simulator)
+    runs-on: macos-15
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Select Xcode 16.4 (Swift 6.1, the toolchain this project is verified with)
+        run: |
+          if [ -d /Applications/Xcode_16.4.app ]; then
+            sudo xcode-select -s /Applications/Xcode_16.4.app
+          fi
+          xcodebuild -version
+          swift --version
+
+      - name: ARMSKit tests (macOS)
+        run: swift test --package-path apps/ios/ARMSKit
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Generate Xcode project
+        working-directory: apps/ios
+        run: |
+          xcodegen generate
+          mkdir -p ARMS.xcodeproj/project.xcworkspace/xcshareddata/swiftpm
+          cp Package.resolved ARMS.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved
+
+      - name: Pick an iPhone simulator
+        id: simulator
+        run: |
+          UDID=$(xcrun simctl list devices available -j | python3 -c '
+          import json, re, sys
+          data = json.load(sys.stdin)["devices"]
+          best = None
+          for runtime, devices in data.items():
+              m = re.search(r"iOS-(\d+)-(\d+)", runtime)
+              if not m:
+                  continue
+              version = (int(m.group(1)), int(m.group(2)))
+              if version < (17, 0):
+                  continue
+              for d in devices:
+                  if d.get("isAvailable") and d["name"].startswith("iPhone"):
+                      key = (version, d["name"])
+                      if best is None or key > best[0]:
+                          best = (key, d["udid"])
+          print(best[1] if best else "")
+          ')
+          if [ -n "$UDID" ]; then
+            echo "destination=id=$UDID" >> "$GITHUB_OUTPUT"
+          else
+            echo "destination=platform=iOS Simulator,name=iPhone 16" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Build and test (simulator, unsigned)
+        working-directory: apps/ios
+        run: |
+          set -o pipefail
+          xcodebuild \
+            -project ARMS.xcodeproj \
+            -scheme ARMS \
+            -destination "${{ steps.simulator.outputs.destination }}" \
+            -resultBundlePath TestResults.xcresult \
+            -skipMacroValidation \
+            -skipPackagePluginValidation \
+            CODE_SIGNING_ALLOWED=NO \
+            build test 2>&1 | tee xcodebuild.log
+
+      - name: Upload logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-build-logs
+          path: |
+            apps/ios/xcodebuild.log
+            apps/ios/TestResults.xcresult
+          if-no-files-found: ignore
