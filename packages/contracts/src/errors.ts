@@ -73,6 +73,13 @@ export const ERROR_CATALOG = {
   NOT_CONFIGURED: { status: 503, message_ja: "この機能は必要な外部サービスが未設定のため利用できません。管理者にお問い合わせください。" },
 
   // ---- area: admin (append new codes directly below this line) ----
+  TEACHER_IS_PRIMARY: { status: 409, message_ja: "主担当のクラスがあるため停止できません。先にクラスの主担当講師を変更してください。" },
+  TEACHER_HAS_FUTURE_SLOTS: { status: 409, message_ja: "今後の授業枠があるため停止できません。先に授業枠の講師変更または取消を行ってください。" },
+  CLASSROOM_TEACHER_IN_USE: { status: 409, message_ja: "担当受講者または授業枠（過去分を含む）があるため、この講師をクラスから外せません。" },
+  CLASSROOM_NAME_TAKEN: { status: 409, message_ja: "同じ名称・開始日のクラスが既に登録されています。" },
+  INVITATION_IN_PROGRESS: { status: 409, message_ja: "このメールアドレスの招待を処理中です。しばらくしてから一覧で状態を確認してください。" },
+  CANNOT_DISABLE_SELF: { status: 409, message_ja: "自分自身のアカウントは停止できません。" },
+  LAST_ADMIN: { status: 409, message_ja: "有効な管理者が1人だけのため停止できません。先に別の管理者を追加してください。" },
 
   // ---- area: learning (append new codes directly below this line) ----
 

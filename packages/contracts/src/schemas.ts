@@ -106,6 +106,21 @@ export const DeviceInput = z.strictObject({
 
 // ---- people & classrooms -------------------------------------------------------------------
 
+/** "HH:MM" (24h) wall-clock time in the organisation timezone. */
+export const zTimeOfDay = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, { message: "時刻を HH:MM 形式で入力してください（例: 09:00）。" });
+/** Weekdays (0=日曜〜6=土曜) and a time window; used for teacher availability and business hours. */
+export const WeeklyHours = z
+  .strictObject({
+    weekdays: z
+      .array(z.int().min(0).max(6))
+      .min(1, { message: "曜日を1つ以上選択してください。" })
+      .max(7)
+      .refine((v) => new Set(v).size === v.length, { message: "曜日が重複しています。" }),
+    start_time: zTimeOfDay,
+    end_time: zTimeOfDay,
+  })
+  .refine((v) => v.end_time > v.start_time, { path: ["end_time"], message: "終了時刻は開始時刻より後にしてください。" });
+
 export const TeacherInput = z.strictObject({
   display_name: required(100),
   kana: trimmed(100).optional(),
@@ -113,7 +128,7 @@ export const TeacherInput = z.strictObject({
   teacher_number: required(50),
   department_name: trimmed(100),
   specialties: z.array(required(50)).max(20).optional(),
-  availability: z.record(z.string(), z.unknown()).optional(),
+  availability: WeeklyHours.optional(),
   active: z.boolean(),
 });
 
@@ -174,6 +189,14 @@ export const SettingsInput = z.strictObject({
   voice_max_session_seconds: z.int().min(60).max(60 * 60).optional(),
   holidays: z.array(zDate).max(366).optional(),
   notifications_enabled: z.boolean().optional(),
+  require_admin_mfa: z.boolean().optional(),
+  default_theme: z.enum(["light", "dark", "system"]).optional(),
+  departments: z
+    .array(required(100))
+    .max(100)
+    .refine((v) => new Set(v).size === v.length, { message: "部署名が重複しています。" })
+    .optional(),
+  business_hours: WeeklyHours.optional(),
 });
 
 // ---- programs & materials ------------------------------------------------------------------

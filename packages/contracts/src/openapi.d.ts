@@ -113,7 +113,7 @@ export interface paths {
         };
         /**
          * 集計ダッシュボード
-         * @description 許可ロール: admin/teacher。組織・本人・担当範囲は認証情報とDBから決定する。
+         * @description 許可ロール: admin/teacher。講師は担当範囲（担当受講者・担当クラス・自分の授業枠）のみ集計する。部署（受講者の所属部署）とクラスで絞り込める。
          */
         get: operations["get_dashboard"];
         put?: never;
@@ -138,8 +138,8 @@ export interface paths {
         get: operations["get_teachers"];
         put?: never;
         /**
-         * 講師追加
-         * @description 許可ロール: admin。組織・本人・担当範囲は認証情報とDBから決定する。
+         * 講師追加（招待）
+         * @description 許可ロール: admin。Auth providerのユーザー作成→DBプロフィール作成→招待メール送信をinvitation_jobsで追跡するsaga。同じIdempotency-Keyの再送は同じジョブを再開し、Authユーザーを二重に作成しない。招待メールの送信に失敗してもプロフィールは作成済みで、invitation.state=failed（再送可能）を返す。
          */
         post: operations["post_teachers"];
         delete?: never;
@@ -190,8 +190,8 @@ export interface paths {
         get: operations["get_students"];
         put?: never;
         /**
-         * 新入社員追加
-         * @description 許可ロール: admin。組織・本人・担当範囲は認証情報とDBから決定する。
+         * 新入社員追加（招待）
+         * @description 許可ロール: admin。講師追加と同じ招待saga。講師は選択クラスに割り当てられた有効な講師であること（422 TEACHER_CLASSROOM_MISMATCH / TEACHER_INACTIVE）。定員はDBで保証（409 CLASSROOM_FULL）。
          */
         post: operations["post_students"];
         delete?: never;
@@ -1005,7 +1005,7 @@ export interface paths {
         };
         /**
          * ユーザー管理
-         * @description 許可ロール: admin。組織・本人・担当範囲は認証情報とDBから決定する。
+         * @description 許可ロール: admin。組織のすべてのアカウント（ロール・有効状態・招待状態）。
          */
         get: operations["get_settings_users"];
         put?: never;
@@ -1026,8 +1026,8 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * ユーザー招待
-         * @description 許可ロール: admin。組織・本人・担当範囲は認証情報とDBから決定する。
+         * 管理者の招待
+         * @description 許可ロール: admin。管理者アカウントのみ招待する。講師・受講者はプロフィール（講師番号・社員番号・クラス等）が必須のため、講師管理・新入社員管理から登録する（role=teacher/studentは422）。講師追加と同じ招待saga。
          */
         post: operations["post_settings_users_invite"];
         delete?: never;
@@ -1085,7 +1085,7 @@ export interface paths {
         };
         /**
          * 監査ログ
-         * @description 許可ロール: admin。組織・本人・担当範囲は認証情報とDBから決定する。
+         * @description 許可ロール: admin。detailsは秘密情報（token/secret/password/meeting_url/answer_key/transcript等のキー）を除去して返す。from/toは組織タイムゾーン（JST）の日付。
          */
         get: operations["get_events"];
         put?: never;
@@ -1536,6 +1536,106 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/events/deliveries": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * 通知配信状況
+         * @description 許可ロール: admin。outboxの配信状況（読み取り専用）。state=failedで送信失敗のみ。
+         */
+        get: operations["get_event_deliveries"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/events/deliveries/{id}/retry": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * 通知の手動再送
+         * @description 許可ロール: admin。送信失敗（failed）の配信のみ送信待ちに戻す。監査に記録する。
+         */
+        post: operations["post_event_delivery_retry"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/settings/users/{id}/enable": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * アカウント再開
+         * @description 許可ロール: admin。membershipを有効に戻し、Auth providerのログイン停止を解除する。受講者の在籍状態は変更しない。
+         */
+        post: operations["post_settings_users_enable"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/settings/account-deletion-requests": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * 本人削除申請一覧
+         * @description 許可ロール: admin。POST /me/account-deletion で作成された申請。
+         */
+        get: operations["get_account_deletion_requests"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/settings/account-deletion-requests/{id}/complete": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * 本人削除申請の対応完了
+         * @description 許可ロール: admin。アカウントを停止（membership無効・Webセッション失効・Auth providerでログイン停止）し、申請をcompletedにする。研修記録は保持する。
+         */
+        post: operations["post_account_deletion_request_complete"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -1568,13 +1668,20 @@ export interface components {
         TeacherInput: {
             display_name: string;
             kana?: string;
-            /** Format: email */
+            /**
+             * Format: email
+             * @description 登録後は変更できない（Auth providerのログインIDのため）。
+             */
             email: string;
             teacher_number: string;
             department_name: string;
             specialties?: string[];
+            /** @description 稼働曜日と時間帯（任意） */
             availability?: {
-                [key: string]: unknown;
+                /** @description 0=日曜〜6=土曜 */
+                weekdays: number[];
+                start_time: string;
+                end_time: string;
             };
             active: boolean;
         };
@@ -1767,6 +1874,7 @@ export interface components {
             /** @enum {string} */
             purpose: "material" | "assignment" | "import";
         };
+        /** @description 省略した項目は変更しない。予約設定の変更は新しい申請・授業枠にのみ適用し、既存の予約は変更しない。 */
         SettingsInput: {
             organization_name: string;
             booking_cancel_before_seconds?: number;
@@ -1775,6 +1883,17 @@ export interface components {
             voice_max_session_seconds?: number;
             holidays?: string[];
             notifications_enabled?: boolean;
+            require_admin_mfa?: boolean;
+            /** @enum {string} */
+            default_theme?: "light" | "dark" | "system";
+            departments?: string[];
+            /** @description 営業時間（曜日と時間帯） */
+            business_hours?: {
+                /** @description 0=日曜〜6=土曜 */
+                weekdays: number[];
+                start_time: string;
+                end_time: string;
+            };
         };
         AttendanceInput: {
             records: {
@@ -1867,14 +1986,35 @@ export interface components {
             /** Format: uuid */
             id: string;
             display_name: string;
+            kana: string;
             /** Format: email */
             email: string;
             teacher_number: string;
             department_name: string;
             specialties: string[];
+            /** @description 稼働曜日と時間帯 */
+            availability: {
+                /** @description 0=日曜〜6=土曜 */
+                weekdays: number[];
+                start_time: string;
+                end_time: string;
+            } | null;
+            /** @description 担当（主・補助）している未アーカイブのクラス */
             classroom_ids: string[];
+            classrooms: {
+                /** Format: uuid */
+                id: string;
+                name: string;
+                is_primary: boolean;
+            }[];
+            /** @description 担当講師として割り当てられた在籍中の受講者数（DB集計） */
             student_count: number;
             active: boolean;
+            /**
+             * @description 最新の招待ジョブの状態（招待ジョブがない移行ユーザー等はnull）。failed=送信失敗（再送可能）。
+             * @enum {string|null}
+             */
+            invitation_state: "pending" | "auth_created" | "profile_created" | "sent" | "failed" | null;
             row_version: number;
         };
         TeacherResponse: {
@@ -1902,15 +2042,24 @@ export interface components {
             joined_on: string;
             /** Format: uuid */
             classroom_id: string;
+            classroom_name: string;
             /** Format: uuid */
             teacher_id: string;
+            teacher_name: string;
             /** Format: date */
             training_starts_on: string;
             /** Format: date */
             training_due_on: string;
+            /** @description 在籍状態（定員の集計対象） */
             active: boolean;
             row_version: number;
+            /** @description 受講者の全enrollmentの進捗率の平均を四捨五入。enrollmentがない場合null。 */
             progress_percent: number | null;
+            /**
+             * @description 最新の招待ジョブの状態（招待ジョブがない移行ユーザー等はnull）。failed=送信失敗（再送可能）。
+             * @enum {string|null}
+             */
+            invitation_state: "pending" | "auth_created" | "profile_created" | "sent" | "failed" | null;
         };
         StudentResponse: {
             data: components["schemas"]["Student"];
@@ -1934,9 +2083,20 @@ export interface components {
             ends_on: string;
             /** Format: uuid */
             primary_teacher_id: string;
+            primary_teacher_name: string;
             assistant_teacher_ids: string[];
             program_version_ids: string[];
+            programs: {
+                /** Format: uuid */
+                id: string;
+                /** Format: uuid */
+                program_id: string;
+                name: string;
+                version_number: number;
+            }[];
+            /** @description 在籍中の受講者数。保存値ではなく毎回DBで集計する。 */
             student_count: number;
+            average_progress_percent: number | null;
             archived: boolean;
             row_version: number;
         };
@@ -2150,12 +2310,16 @@ export interface components {
         AuditEvent: {
             /** Format: uuid */
             id: string;
+            /** Format: uuid */
+            actor_id: string | null;
+            /** @description 操作者の氏名。システム処理は「システム」。 */
             actor_name: string;
             event_type: string;
             /** Format: uuid */
-            entity_id: string;
+            entity_id: string | null;
             /** Format: date-time */
             created_at: string;
+            /** @description 秘密情報のキーを除去済み */
             details: {
                 [key: string]: unknown;
             };
@@ -2487,7 +2651,7 @@ export interface components {
             }[];
         };
         SettingsResponse: {
-            data: components["schemas"]["SettingsInput"];
+            data: components["schemas"]["Settings"];
             row_version: number;
             /** Format: date-time */
             checked_at: string;
@@ -2552,6 +2716,88 @@ export interface components {
         };
         MeResponse: {
             data: components["schemas"]["Me"];
+            /** Format: date-time */
+            checked_at: string;
+        };
+        TeacherCreateResponse: {
+            data: components["schemas"]["Teacher"];
+            invitation: components["schemas"]["InviteResult"];
+            /** Format: date-time */
+            checked_at: string;
+        };
+        StudentCreateResponse: {
+            data: components["schemas"]["Student"];
+            invitation: components["schemas"]["InviteResult"];
+            /** Format: date-time */
+            checked_at: string;
+        };
+        Settings: {
+            organization_name: string;
+            timezone: string;
+            booking_cancel_before_seconds: number;
+            booking_pending_ttl_seconds: number;
+            voice_daily_quota_seconds: number;
+            voice_max_session_seconds: number;
+            holidays: string[];
+            notifications_enabled: boolean;
+            require_admin_mfa: boolean;
+            /** @enum {string} */
+            default_theme: "light" | "dark" | "system";
+            departments: string[];
+            /** @description 営業時間 */
+            business_hours: {
+                /** @description 0=日曜〜6=土曜 */
+                weekdays: number[];
+                start_time: string;
+                end_time: string;
+            };
+        };
+        AccountDeletionRequest: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            user_id: string;
+            display_name: string;
+            /** Format: email */
+            email: string;
+            /** @enum {string} */
+            role: "admin" | "teacher" | "student";
+            user_active: boolean;
+            reason: string;
+            /** @enum {string} */
+            state: "requested" | "reviewing" | "completed";
+            /** Format: date-time */
+            created_at: string;
+        };
+        AccountDeletionRequestPage: {
+            items: components["schemas"]["AccountDeletionRequest"][];
+            next_cursor: string | null;
+            /** Format: date-time */
+            checked_at: string;
+        };
+        Delivery: {
+            /** Format: uuid */
+            id: string;
+            event_type: string;
+            /** Format: uuid */
+            entity_id: string;
+            /** @enum {string} */
+            state: "pending" | "processing" | "delivered" | "failed";
+            attempts: number;
+            /** @description 配信処理が記録した直近のエラーコード（記録列がない環境ではnull） */
+            last_error_code: string | null;
+            /** Format: date-time */
+            next_attempt_at: string;
+            /** Format: date-time */
+            locked_until: string | null;
+            /** Format: date-time */
+            delivered_at: string | null;
+            /** Format: date-time */
+            created_at: string;
+        };
+        DeliveryPage: {
+            items: components["schemas"]["Delivery"][];
+            next_cursor: string | null;
             /** Format: date-time */
             checked_at: string;
         };
@@ -2721,7 +2967,12 @@ export interface operations {
     };
     get_dashboard: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description 受講者の所属部署（完全一致）。受講者数・進捗・承認待ち予約に適用。 */
+                department?: string;
+                /** @description クラス。全指標に適用。 */
+                classroom_id?: string;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -2810,7 +3061,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["TeacherPage"];
+                    "application/json": components["schemas"]["TeacherCreateResponse"];
                 };
             };
             400: components["responses"]["Error"];
@@ -2990,7 +3241,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["StudentPage"];
+                    "application/json": components["schemas"]["StudentCreateResponse"];
                 };
             };
             400: components["responses"]["Error"];
@@ -4882,15 +5133,10 @@ export interface operations {
             query?: {
                 cursor?: string;
                 limit?: number;
+                /** @description 氏名・メールの部分一致 */
                 q?: string;
-                classroom_id?: string;
-                teacher_id?: string;
-                student_id?: string;
-                status?: string;
-                from?: string;
-                to?: string;
-                month?: string;
-                department?: string;
+                role?: "admin" | "teacher" | "student";
+                status?: "active" | "inactive" | "invite_failed";
             };
             header?: never;
             path?: never;
@@ -5025,15 +5271,14 @@ export interface operations {
             query?: {
                 cursor?: string;
                 limit?: number;
+                /** @description イベント種別・操作者名の部分一致 */
                 q?: string;
-                classroom_id?: string;
-                teacher_id?: string;
-                student_id?: string;
-                status?: string;
+                /** @description イベント種別の前方一致（例: reservation. ） */
+                event_type?: string;
+                actor_id?: string;
+                entity_id?: string;
                 from?: string;
                 to?: string;
-                month?: string;
-                department?: string;
             };
             header?: never;
             path?: never;
@@ -5787,6 +6032,169 @@ export interface operations {
             };
             401: components["responses"]["Error"];
             403: components["responses"]["Error"];
+            422: components["responses"]["Error"];
+            429: components["responses"]["Error"];
+            503: components["responses"]["Error"];
+        };
+    };
+    get_event_deliveries: {
+        parameters: {
+            query?: {
+                cursor?: string;
+                limit?: number;
+                state?: "pending" | "processing" | "delivered" | "failed";
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 成功 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeliveryPage"];
+                };
+            };
+            400: components["responses"]["Error"];
+            401: components["responses"]["Error"];
+            403: components["responses"]["Error"];
+            404: components["responses"]["Error"];
+            409: components["responses"]["Error"];
+            422: components["responses"]["Error"];
+            429: components["responses"]["Error"];
+            503: components["responses"]["Error"];
+        };
+    };
+    post_event_delivery_retry: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description cookie認証の場合必須。Bearer専用iOSには不要。 */
+                "X-CSRF-Token"?: string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 成功 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ActionResult"];
+                };
+            };
+            400: components["responses"]["Error"];
+            401: components["responses"]["Error"];
+            403: components["responses"]["Error"];
+            404: components["responses"]["Error"];
+            409: components["responses"]["Error"];
+            422: components["responses"]["Error"];
+            429: components["responses"]["Error"];
+            503: components["responses"]["Error"];
+        };
+    };
+    post_settings_users_enable: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description cookie認証の場合必須。Bearer専用iOSには不要。 */
+                "X-CSRF-Token"?: string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 成功 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ActionResult"];
+                };
+            };
+            400: components["responses"]["Error"];
+            401: components["responses"]["Error"];
+            403: components["responses"]["Error"];
+            404: components["responses"]["Error"];
+            409: components["responses"]["Error"];
+            422: components["responses"]["Error"];
+            429: components["responses"]["Error"];
+            503: components["responses"]["Error"];
+        };
+    };
+    get_account_deletion_requests: {
+        parameters: {
+            query?: {
+                cursor?: string;
+                limit?: number;
+                state?: "requested" | "reviewing" | "completed";
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 成功 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountDeletionRequestPage"];
+                };
+            };
+            400: components["responses"]["Error"];
+            401: components["responses"]["Error"];
+            403: components["responses"]["Error"];
+            404: components["responses"]["Error"];
+            409: components["responses"]["Error"];
+            422: components["responses"]["Error"];
+            429: components["responses"]["Error"];
+            503: components["responses"]["Error"];
+        };
+    };
+    post_account_deletion_request_complete: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description cookie認証の場合必須。Bearer専用iOSには不要。 */
+                "X-CSRF-Token"?: string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 成功 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ActionResult"];
+                };
+            };
+            400: components["responses"]["Error"];
+            401: components["responses"]["Error"];
+            403: components["responses"]["Error"];
+            404: components["responses"]["Error"];
+            409: components["responses"]["Error"];
             422: components["responses"]["Error"];
             429: components["responses"]["Error"];
             503: components["responses"]["Error"];
