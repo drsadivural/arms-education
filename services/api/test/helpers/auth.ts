@@ -1,150 +1,89 @@
 /**
- * Test-only Auth provider and token issuer. Tokens are real ES256 JWTs verified by the production
- * JwtVerifier against a local JWKS, so signature/issuer/audience/expiry checks are exercised.
+ * Test helpers for ARMS's own authentication (PostgreSQL): real credentials in the test database (scrypt hashes),
+ * a capturing mailer whose e-mails carry the real one-time links, and TOTP codes computed from an enrollment URI.
  */
-import { SignJWT, createLocalJWKSet, exportJWK, generateKeyPair, type JWK } from "jose";
-import { ApiError } from "../../src/http/errors";
-import type { AuthProvider, ProviderSession, TotpEnrollment } from "../../src/integrations/supabase-auth";
+import type pg from "pg";
+import { hashPassword } from "../../src/auth/password";
+import { hotp, timeStep } from "../../src/auth/totp";
+import { MailDeliveryError, type Mailer, type MailMessage } from "../../src/integrations/mail";
 
-export const TEST_ISSUER = "https://auth.test.invalid/auth/v1";
-export const TEST_AUDIENCE = "authenticated";
-export const TEST_TOTP_CODE = "246810";
+/** Captures e-mails; `failNext` makes the next send fail like a provider outage. */
+export class TestMailer implements Mailer {
+  readonly sent: MailMessage[] = [];
+  failNext: MailDeliveryError | null = null;
 
-const keyPair = await generateKeyPair("ES256", { extractable: true });
-const publicJwk: JWK = { ...(await exportJWK(keyPair.publicKey)), kid: "test-key-1", alg: "ES256", use: "sig" };
-export const testKeySet = createLocalJWKSet({ keys: [publicJwk] });
+  async send(message: MailMessage) {
+    if (this.failNext) {
+      const e = this.failNext;
+      this.failNext = null;
+      throw e;
+    }
+    this.sent.push(message);
+    return { providerMessageId: `test-${this.sent.length}` };
+  }
 
-/** A second key that is NOT in the JWKS — used to prove forged tokens are rejected. */
-const foreignKey = await generateKeyPair("ES256", { extractable: true });
-
-export async function issueToken(
-  userId: string,
-  opts: { aal?: "aal1" | "aal2"; expiresInSeconds?: number; email?: string; issuer?: string; audience?: string; forged?: boolean } = {},
-): Promise<string> {
-  const now = Math.floor(Date.now() / 1000);
-  return new SignJWT({ role: "authenticated", aal: opts.aal ?? "aal1", session_id: crypto.randomUUID(), email: opts.email })
-    .setProtectedHeader({ alg: "ES256", kid: "test-key-1" })
-    .setSubject(userId)
-    .setIssuer(opts.issuer ?? TEST_ISSUER)
-    .setAudience(opts.audience ?? TEST_AUDIENCE)
-    .setIssuedAt(now)
-    .setExpirationTime(now + (opts.expiresInSeconds ?? 3600))
-    .sign(opts.forged ? foreignKey.privateKey : keyPair.privateKey);
+  /** The one-time link (token + type) of the newest e-mail sent to `to`. */
+  lastLink(to: string): { token: string; type: string } | null {
+    const message = [...this.sent].reverse().find((m) => m.to.toLowerCase() === to.toLowerCase());
+    const m = message ? /\/auth\/callback#token=([^&\s]+)&type=(\w+)/.exec(message.text) : null;
+    return m ? { token: decodeURIComponent(m[1] as string), type: m[2] as string } : null;
+  }
 }
 
-interface TestUser {
-  userId: string;
-  email: string;
-  password: string;
-  banned: boolean;
-  factors: { id: string; status: "verified" | "unverified" }[];
+const hashCache = new Map<string, Promise<string>>();
+/** scrypt is deliberately slow (~170 ms); tests reuse one hash per distinct password. */
+export function testPasswordHash(password: string): Promise<string> {
+  let h = hashCache.get(password);
+  if (!h) {
+    h = hashPassword(password);
+    hashCache.set(password, h);
+  }
+  return h;
 }
 
-export class TestAuthProvider implements AuthProvider {
-  readonly users = new Map<string, TestUser>();
-  private readonly refreshTokens = new Map<string, { userId: string; aal: "aal1" | "aal2" }>();
-  readonly invitesSent: { email: string; metadata: Record<string, unknown> }[] = [];
-  readonly passwordResets: string[] = [];
-  failNextInvite = false;
-  accessTtlSeconds = 3600;
+/** Authentication fixtures for one test context. */
+export class TestAuthKit {
+  constructor(
+    private readonly admin: pg.Pool,
+    readonly mailer: TestMailer,
+  ) {}
 
-  register(email: string, password: string, userId: string): void {
-    this.users.set(email.toLowerCase(), { userId, email, password, banned: false, factors: [] });
+  /** Gives an existing app user a password (as if they had used their invitation link). */
+  async register(email: string, password: string, userId: string): Promise<void> {
+    void email;
+    await this.admin.query(
+      `INSERT INTO app.user_credentials(user_id, password_hash, password_changed_at) VALUES ($1, $2, now())
+       ON CONFLICT (user_id) DO UPDATE SET password_hash = EXCLUDED.password_hash, failed_login_count = 0, locked_until = NULL`,
+      [userId, await testPasswordHash(password)],
+    );
   }
 
-  private byId(userId: string): TestUser | undefined {
-    return [...this.users.values()].find((u) => u.userId === userId);
+  /** Invitation e-mails sent so far. */
+  get invitesSent(): { email: string }[] {
+    return this.mailer.sent.filter((m) => m.subject.includes("ご招待")).map((m) => ({ email: m.to }));
   }
 
-  private async session(userId: string, aal: "aal1" | "aal2"): Promise<ProviderSession> {
-    const refreshToken = crypto.randomUUID();
-    this.refreshTokens.set(refreshToken, { userId, aal });
-    return {
-      accessToken: await issueToken(userId, { aal, expiresInSeconds: this.accessTtlSeconds }),
-      refreshToken,
-      expiresAt: Math.floor(Date.now() / 1000) + this.accessTtlSeconds,
-      userId,
-    };
+  /** The next invitation/reset e-mail fails with a (retryable) provider outage. */
+  set failNextInvite(fail: boolean) {
+    this.mailer.failNext = fail ? new MailDeliveryError("MAIL_PROVIDER_UNAVAILABLE", true, 503) : null;
   }
 
-  private async userFromAccessToken(accessToken: string): Promise<TestUser> {
-    const [, payload] = accessToken.split(".");
-    const sub = JSON.parse(Buffer.from(payload ?? "", "base64url").toString()).sub as string;
-    const u = this.byId(sub);
-    if (!u) throw new ApiError("SESSION_EXPIRED");
-    return u;
+  async userCount(): Promise<number> {
+    return Number((await this.admin.query("SELECT count(*)::int AS n FROM app.users")).rows[0].n);
   }
 
-  async signInWithPassword(email: string, password: string) {
-    const u = this.users.get(email.toLowerCase());
-    if (!u || u.password !== password) throw new ApiError("INVALID_CREDENTIALS");
-    if (u.banned) throw new ApiError("ACCOUNT_DISABLED");
-    return this.session(u.userId, "aal1");
+  /** Open (unrevoked, unexpired) iOS sessions of the user. */
+  async openBearerSessions(userId: string): Promise<number> {
+    return Number(
+      (await this.admin.query("SELECT count(*)::int AS n FROM app.bearer_sessions WHERE user_id = $1 AND revoked_at IS NULL AND expires_at > now()", [userId]))
+        .rows[0].n,
+    );
   }
+}
 
-  async refresh(refreshToken: string) {
-    const entry = this.refreshTokens.get(refreshToken);
-    if (!entry) throw new ApiError("SESSION_EXPIRED");
-    this.refreshTokens.delete(refreshToken);
-    return this.session(entry.userId, entry.aal);
-  }
-
-  async signOut() {}
-
-  async sendPasswordReset(email: string) {
-    this.passwordResets.push(email);
-  }
-
-  async listTotpFactors(accessToken: string) {
-    return (await this.userFromAccessToken(accessToken)).factors;
-  }
-
-  async enrollTotp(accessToken: string): Promise<TotpEnrollment> {
-    const u = await this.userFromAccessToken(accessToken);
-    const id = crypto.randomUUID();
-    u.factors.push({ id, status: "unverified" });
-    return { factorId: id, qrCode: "data:image/svg+xml;utf-8,<svg/>", uri: `otpauth://totp/ARMS:${u.email}?secret=TEST` };
-  }
-
-  async verifyTotp(accessToken: string, factorId: string, code: string) {
-    const u = await this.userFromAccessToken(accessToken);
-    const f = u.factors.find((x) => x.id === factorId);
-    if (!f || code !== TEST_TOTP_CODE) {
-      throw new ApiError("VALIDATION_FAILED", { field_errors: { code: "認証コードが正しくありません。" } });
-    }
-    f.status = "verified";
-    return this.session(u.userId, "aal2");
-  }
-
-  async adminCreateUser(email: string) {
-    const existing = this.users.get(email.toLowerCase());
-    if (existing) throw new ApiError("EMAIL_TAKEN");
-    const userId = crypto.randomUUID();
-    this.register(email, crypto.randomUUID(), userId);
-    return { userId };
-  }
-
-  async adminSendInvite(email: string, metadata: Record<string, unknown>) {
-    if (this.failNextInvite) {
-      this.failNextInvite = false;
-      throw new ApiError("AUTH_PROVIDER_UNAVAILABLE");
-    }
-    const u = this.users.get(email.toLowerCase());
-    if (!u) throw new ApiError("AUTH_PROVIDER_UNAVAILABLE");
-    this.invitesSent.push({ email, metadata });
-    return { userId: u.userId };
-  }
-
-  readonly passwordUpdates: { userId: string; password: string }[] = [];
-  async updatePassword(accessToken: string, password: string) {
-    const u = await this.userFromAccessToken(accessToken);
-    if (password === u.password) throw new ApiError("VALIDATION_FAILED", { field_errors: { password: "以前と異なるパスワードを入力してください。" } });
-    u.password = password;
-    this.passwordUpdates.push({ userId: u.userId, password });
-  }
-
-  async adminSetBanned(userId: string, banned: boolean) {
-    const u = this.byId(userId);
-    if (u) u.banned = banned;
-  }
+/** Current TOTP code for the secret in an otpauth:// URI (as an authenticator app would show it). */
+export async function totpFromUri(uri: string, at = Date.now()): Promise<string> {
+  const secret = new URL(uri).searchParams.get("secret");
+  if (!secret) throw new Error("no secret in otpauth URI");
+  return hotp(secret, timeStep(at));
 }

@@ -34,6 +34,32 @@ export default async function setup(project: TestProject) {
   const client = new pg.Client({ connectionString: dbAdminUrl });
   await client.connect();
   await migrate(client, { runtimeRole: RUNTIME_ROLE });
+  // Test-only fault injection (this throwaway database only): public.arms_test_arm_fault(email) makes the next
+  // teacher/student profile insert for that e-mail fail once with SQLSTATE 57P01 (server shutdown → DB_UNAVAILABLE, not
+  // retried by the transaction helper), like a database outage in the middle of the invitation saga. A per-email
+  // sequence counts attempts because nextval() survives the rollback of the failing transaction.
+  await client.query(`
+    CREATE TABLE public.arms_test_faults(email text PRIMARY KEY, seq text NOT NULL);
+    CREATE FUNCTION public.arms_test_arm_fault(target text) RETURNS void LANGUAGE plpgsql AS $$
+    DECLARE s text := 'arms_test_fault_' || md5(lower(target));
+    BEGIN
+      EXECUTE format('CREATE SEQUENCE public.%I', s);
+      INSERT INTO public.arms_test_faults(email, seq) VALUES (lower(target), s);
+    END $$;
+    CREATE FUNCTION public.arms_test_fault_profile() RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER
+      SET search_path = pg_catalog, public AS $$
+    DECLARE s text; n bigint;
+    BEGIN
+      SELECT f.seq INTO s FROM public.arms_test_faults f JOIN app.users u ON lower(u.email) = f.email WHERE u.id = NEW.id;
+      IF s IS NOT NULL THEN
+        EXECUTE format('SELECT nextval(%L)', 'public.' || s) INTO n;
+        IF n = 1 THEN RAISE EXCEPTION 'injected test fault' USING ERRCODE = '57P01'; END IF;
+      END IF;
+      RETURN NEW;
+    END $$;
+    CREATE TRIGGER arms_test_fault BEFORE INSERT ON app.teacher_profiles FOR EACH ROW EXECUTE FUNCTION public.arms_test_fault_profile();
+    CREATE TRIGGER arms_test_fault BEFORE INSERT ON app.student_profiles FOR EACH ROW EXECUTE FUNCTION public.arms_test_fault_profile();
+  `);
   await client.end();
 
   const runtimeUrl = new URL(dbAdminUrl);

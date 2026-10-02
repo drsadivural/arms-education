@@ -1,20 +1,39 @@
+/**
+ * Authentication endpoints. ARMS authenticates against its own PostgreSQL tables (app.user_credentials etc.):
+ * - Web (admin/teacher): POST /auth/login → HttpOnly session cookie + CSRF token; administrators then pass TOTP.
+ * - iOS (student/teacher): POST /auth/tokens → opaque Bearer access token + rotating refresh token.
+ * - Invitation / password reset: one-time e-mail link tokens → POST /auth/password.
+ * Roles always come from DB memberships, never from the client.
+ */
 import { Hono } from "hono";
 import { deleteCookie, setCookie } from "hono/cookie";
-import { LoginInput, MfaVerifyInput, PasswordResetInput, PasswordSetInput } from "@arms/contracts";
+import { createMiddleware } from "hono/factory";
+import { LoginInput, MfaVerifyInput, PasswordResetInput, PasswordSetInput, TokenGrantInput, TokenRefreshInput } from "@arms/contracts";
 import type { AppContext, AppEnv } from "../context";
 import { sql } from "../db/sql";
-import { json } from "../db/client";
-import { createMiddleware } from "hono/factory";
+import { json, type Tx } from "../db/client";
 import { membershipsOf, type MembershipRow } from "../auth/middleware";
-import { InvalidTokenError } from "../auth/jwt";
-import { SESSION_COOKIE, SESSION_TTL_SECONDS, createWebSession, decryptSecrets, findWebSession, revokeWebSession, storeRefreshedTokens } from "../auth/session";
-import { ApiError, fail } from "../http/errors";
+import { checkLogin, setPassword, totpEnrolled, beginTotpEnrollment, verifyTotpCode } from "../auth/credentials";
+import { SESSION_COOKIE, SESSION_TTL_SECONDS, createWebSession, elevateWebSession, findWebSession, readCsrfToken, revokeAllUserWebSessions, revokeWebSession } from "../auth/session";
+import {
+  ACCESS_TTL_SECONDS,
+  consumeLinkToken,
+  createLinkToken,
+  issueBearerSession,
+  refreshBearerSession,
+  revokeBearerByRefresh,
+  revokeUserBearerSessions,
+  type TokenPair,
+} from "../auth/tokens";
+import { sendLinkEmail } from "../auth/emails";
+import { otpauthUri, qrCodeDataUrl } from "../auth/totp";
+import { fail } from "../http/errors";
 import { readBody } from "../http/validation";
 import { action } from "../http/respond";
 import { rateLimit } from "../http/rate-limit";
 
-
 const cookieOptions = (secure: boolean, maxAge: number) => ({ path: "/", httpOnly: true, secure, sameSite: "Strict" as const, maxAge });
+const clientIp = (c: AppContext) => c.req.header("CF-Connecting-IP") ?? "local";
 
 interface SessionInfoParams {
   userId: string;
@@ -42,12 +61,42 @@ function sessionInfo(c: AppContext, p: SessionInfoParams) {
   });
 }
 
+function tokenResponse(c: AppContext, userId: string, t: TokenPair) {
+  return c.json({
+    data: {
+      access_token: t.accessToken,
+      refresh_token: t.refreshToken,
+      token_type: "Bearer",
+      expires_in: ACCESS_TTL_SECONDS,
+      refresh_expires_at: t.sessionExpiresAt.toISOString(),
+      user_id: userId,
+    },
+    checked_at: c.get("deps").now().toISOString(),
+  });
+}
+
+async function authAudit(tx: Tx, orgId: string, userId: string, eventType: string, payload: Record<string, unknown> = {}): Promise<void> {
+  await tx.exec(sql`INSERT INTO app.audit_events(org_id, actor_id, event_type, entity_id, payload)
+    VALUES (${orgId}, ${userId}, ${eventType}, ${userId}, ${json(payload)}::jsonb)`);
+}
+
+/**
+ * E-mail + password check in its own transaction. A failure is raised only after the failed-attempt counter has
+ * been committed (lockout after repeated failures).
+ */
+async function authenticatePassword(c: AppContext, email: string, password: string): Promise<string> {
+  const now = c.get("deps").now();
+  const result = await c.get("db").tx({}, (tx) => checkLogin(tx, email, password, now));
+  if (!result.ok) throw result.error;
+  return result.userId;
+}
+
 export const authRoutes = new Hono<AppEnv>();
 
 /** WEB-01: password login, server-side role check, HttpOnly session. Students use the iOS app. */
 authRoutes.post("/auth/login", async (c) => {
   const input = await readBody(c, LoginInput);
-  await rateLimit(c, "login", `${c.req.header("CF-Connecting-IP") ?? "local"}:${input.email.toLowerCase()}`);
+  await rateLimit(c, "login", `${clientIp(c)}:${input.email.toLowerCase()}`);
   if (input.selected_role === "student") {
     fail("ROLE_MISMATCH", { message_ja: "受講者の方はiOSアプリをご利用ください。" });
   }
@@ -55,54 +104,26 @@ authRoutes.post("/auth/login", async (c) => {
   if (!deps.config.sessionKey) fail("NOT_CONFIGURED");
   const db = c.get("db");
 
-  const provider = await deps.auth.signInWithPassword(input.email, input.password);
-  let verified;
-  try {
-    verified = await deps.jwt.verify(provider.accessToken);
-  } catch (e) {
-    if (e instanceof InvalidTokenError) fail("AUTH_PROVIDER_UNAVAILABLE");
-    throw e;
-  }
-  const memberships = await db.tx({ authUserId: verified.userId }, (tx) => membershipsOf(tx, verified.userId));
+  const userId = await authenticatePassword(c, input.email, input.password);
+  const memberships = await db.tx({ authUserId: userId }, (tx) => membershipsOf(tx, userId));
   const forRole = memberships.filter((m) => m.role === input.selected_role && (!input.organization_id || m.org_id === input.organization_id));
   const activeForRole = forRole.filter((m) => m.active);
-  if (activeForRole.length === 0) {
-    await deps.auth.signOut(provider.accessToken);
-    if (forRole.length > 0) fail("ACCOUNT_DISABLED");
-    fail("ROLE_MISMATCH");
-  }
+  if (activeForRole.length === 0) fail(forRole.length > 0 ? "ACCOUNT_DISABLED" : "ROLE_MISMATCH");
   if (activeForRole.length > 1) {
-    await deps.auth.signOut(provider.accessToken);
     fail("ORG_SELECTION_REQUIRED", { details: { organizations: activeForRole.map((m) => ({ id: m.org_id, name: m.org_name })) } });
   }
   const m = activeForRole[0] as MembershipRow;
+  const mfaRequired = m.role === "admin" && m.require_admin_mfa;
 
-  let mfaRequired = false;
-  let mfaEnrolled = false;
-  if (m.role === "admin" && m.require_admin_mfa && verified.aal !== "aal2") {
-    mfaRequired = true;
-    mfaEnrolled = (await deps.auth.listTotpFactors(provider.accessToken)).some((f) => f.status === "verified");
-  }
-
-  const created = await db.tx({ orgId: m.org_id, userId: verified.userId }, async (tx) => {
-    const s = await createWebSession(tx, deps.config.sessionKey, {
-      userId: verified.userId,
-      orgId: m.org_id,
-      role: m.role,
-      aal: verified.aal,
-      accessToken: provider.accessToken,
-      refreshToken: provider.refreshToken,
-      accessExpiresAt: provider.expiresAt,
-      now: deps.now(),
-    });
-    await tx.exec(sql`INSERT INTO app.audit_events(org_id, actor_id, event_type, entity_id, payload)
-      VALUES (${m.org_id}, ${verified.userId}, 'auth.login', ${verified.userId}, ${json({ role: m.role, method: "web", mfa_required: mfaRequired })}::jsonb)`);
-    const email = await tx.one<{ email: string }>(sql`SELECT email FROM app.users WHERE id = ${verified.userId}`);
-    return { ...s, email: email.email };
+  const created = await db.tx({ orgId: m.org_id, userId }, async (tx) => {
+    const s = await createWebSession(tx, deps.config.sessionKey, { userId, orgId: m.org_id, role: m.role, aal: "aal1", now: deps.now() });
+    await authAudit(tx, m.org_id, userId, "auth.login", { role: m.role, method: "web", mfa_required: mfaRequired });
+    const user = await tx.one<{ email: string }>(sql`SELECT email FROM app.users WHERE id = ${userId}`);
+    return { ...s, email: user.email, mfaEnrolled: mfaRequired ? await totpEnrolled(tx, userId) : false };
   });
   setCookie(c, SESSION_COOKIE, created.sessionId, cookieOptions(deps.config.cookieSecure, SESSION_TTL_SECONDS));
   return sessionInfo(c, {
-    userId: verified.userId,
+    userId,
     displayName: m.display_name,
     email: created.email,
     role: m.role,
@@ -110,44 +131,122 @@ authRoutes.post("/auth/login", async (c) => {
     csrfToken: created.csrfToken,
     expiresAt: created.expiresAt,
     mfaRequired,
-    mfaEnrolled,
+    mfaEnrolled: created.mfaEnrolled,
   });
 });
 
-/** Anti-enumeration: always the same response unless the provider is down. */
+/** IOS-01: password sign-in for the iOS app → Bearer tokens. The role is checked afterwards by GET /me. */
+authRoutes.post("/auth/tokens", async (c) => {
+  const input = await readBody(c, TokenGrantInput);
+  await rateLimit(c, "login", `${clientIp(c)}:${input.email.toLowerCase()}`);
+  const deps = c.get("deps");
+  const userId = await authenticatePassword(c, input.email, input.password);
+  const memberships = await c.get("db").tx({ authUserId: userId }, (tx) => membershipsOf(tx, userId));
+  const active = memberships.filter((m) => m.active);
+  if (active.length === 0) fail(memberships.length ? "ACCOUNT_DISABLED" : "FORBIDDEN");
+  const first = active[0] as MembershipRow;
+  const tokens = await c.get("db").tx({ orgId: first.org_id, userId }, async (tx) => {
+    const t = await issueBearerSession(tx, userId, input.device_label ?? null, deps.now());
+    await authAudit(tx, first.org_id, userId, "auth.login", { role: first.role, method: "ios" });
+    return t;
+  });
+  return tokenResponse(c, userId, tokens);
+});
+
+authRoutes.post("/auth/tokens/refresh", async (c) => {
+  const input = await readBody(c, TokenRefreshInput);
+  await rateLimit(c, "login", `refresh:${clientIp(c)}`);
+  const deps = c.get("deps");
+  const result = await c.get("db").tx({}, (tx) => refreshBearerSession(tx, input.refresh_token, deps.now()));
+  if (!result.ok) {
+    if (result.reason === "reused") deps.log({ level: "warn", msg: "refresh_token_reuse", request_id: c.get("requestId") });
+    fail("SESSION_EXPIRED");
+  }
+  // A disabled account cannot keep refreshing (its requests would be refused by the membership check anyway).
+  const memberships = await c.get("db").tx({ authUserId: result.userId }, (tx) => membershipsOf(tx, result.userId));
+  if (!memberships.some((m) => m.active)) {
+    await c.get("db").tx({}, (tx) => revokeUserBearerSessions(tx, result.userId, "account_disabled", deps.now()));
+    fail("ACCOUNT_DISABLED");
+  }
+  return tokenResponse(c, result.userId, result.tokens);
+});
+
+authRoutes.post("/auth/tokens/revoke", async (c) => {
+  const input = await readBody(c, TokenRefreshInput);
+  await rateLimit(c, "login", `revoke:${clientIp(c)}`);
+  const deps = c.get("deps");
+  const userId = await c.get("db").tx({}, (tx) => revokeBearerByRefresh(tx, input.refresh_token, deps.now()));
+  if (userId) {
+    const first = (await c.get("db").tx({ authUserId: userId }, (tx) => membershipsOf(tx, userId)))[0];
+    if (first) await c.get("db").tx({ orgId: first.org_id, userId }, (tx) => authAudit(tx, first.org_id, userId, "auth.logout", { method: "ios" }));
+  }
+  return action(c);
+});
+
+/**
+ * Sends a one-hour reset link to registered users with an active membership. Anti-enumeration: unknown, disabled and
+ * known addresses get the same answer; only a missing or failing mail service is reported (503).
+ */
 authRoutes.post("/auth/password-reset", async (c) => {
   const input = await readBody(c, PasswordResetInput);
-  await rateLimit(c, "login", `reset:${c.req.header("CF-Connecting-IP") ?? "local"}:${input.email.toLowerCase()}`);
-  await c.get("deps").auth.sendPasswordReset(input.email);
+  await rateLimit(c, "login", `reset:${clientIp(c)}:${input.email.toLowerCase()}`);
+  const deps = c.get("deps");
+  if (!deps.integrations.mail) fail("NOT_CONFIGURED", { message_ja: "メール送信サービスが未設定のため、再設定メールを送信できません。管理者にお問い合わせください。" });
+  const db = c.get("db");
+  const user = await db.tx({}, (tx) =>
+    tx.maybeOne<{ id: string; email: string; display_name: string }>(sql`SELECT id, email, display_name FROM app.users WHERE lower(email) = lower(${input.email})`),
+  );
+  const active = user ? (await db.tx({ authUserId: user.id }, (tx) => membershipsOf(tx, user.id))).filter((m) => m.active) : [];
+  if (user && active.length > 0) {
+    const org = active[0] as MembershipRow;
+    const link = await db.tx({ orgId: org.org_id, userId: user.id }, async (tx) => {
+      const l = await createLinkToken(tx, user.id, "password_reset", deps.now());
+      await authAudit(tx, org.org_id, user.id, "auth.password_reset_requested");
+      return l;
+    });
+    await sendLinkEmail(deps, {
+      to: user.email,
+      displayName: user.display_name,
+      orgName: org.org_name,
+      token: link.token,
+      tokenId: link.id,
+      purpose: "password_reset",
+      expiresAt: link.expiresAt,
+    });
+  }
   return action(c, { message_ja: "登録済みのメールアドレスの場合、再設定の案内を送信しました。" });
 });
 
 /**
- * Sets the password after following an invitation or password-reset e-mail link. The link's short-lived access token
- * (from the URL fragment, never sent to our logs) is verified against the Auth provider's keys; the account must have
- * an organisation membership. Students are told to sign in from the iOS app, staff from the Web login.
+ * Sets the password from an invitation or password-reset e-mail link (one-time token). The account must have an
+ * active organisation membership. A reset signs the user out everywhere. Students are told to sign in from the iOS
+ * app, staff from the Web login.
  */
 authRoutes.post("/auth/password", async (c) => {
   const input = await readBody(c, PasswordSetInput);
-  await rateLimit(c, "login", `password:${c.req.header("CF-Connecting-IP") ?? "local"}`);
+  await rateLimit(c, "login", `password:${clientIp(c)}`);
   const deps = c.get("deps");
-  let verified;
-  try {
-    verified = await deps.jwt.verify(input.access_token);
-  } catch (e) {
-    if (e instanceof InvalidTokenError) fail("SESSION_EXPIRED", { message_ja: "リンクの有効期限が切れています。もう一度メールのリンクからお試しください。" });
-    throw e;
-  }
-  const memberships = await c.get("db").tx({ authUserId: verified.userId }, (tx) => membershipsOf(tx, verified.userId));
-  const active = memberships.filter((m) => m.active);
-  if (active.length === 0) fail(memberships.length ? "ACCOUNT_DISABLED" : "FORBIDDEN");
-  await deps.auth.updatePassword(input.access_token, input.password);
-  const first = active[0] as MembershipRow;
-  await c.get("db").tx({ orgId: first.org_id, userId: verified.userId }, (tx) =>
-    tx.exec(sql`INSERT INTO app.audit_events(org_id, actor_id, event_type, entity_id, payload)
-      VALUES (${first.org_id}, ${verified.userId}, 'auth.password_set', ${verified.userId}, '{}'::jsonb)`),
+  const now = deps.now();
+  const result = await c.get("db").tx({}, async (tx) => {
+    const link = await consumeLinkToken(tx, input.token, now);
+    if (!link) fail("SESSION_EXPIRED", { message_ja: "リンクの有効期限が切れているか、既に使用されています。もう一度メールのリンクを発行してください。" });
+    await tx.exec(sql`SELECT set_config('app.auth_user_id', ${link.userId}, true)`);
+    const memberships = await membershipsOf(tx, link.userId);
+    const active = memberships.filter((m) => m.active);
+    // Raised inside the transaction so the link stays usable when the account is (temporarily) disabled.
+    if (active.length === 0) fail(memberships.length ? "ACCOUNT_DISABLED" : "FORBIDDEN");
+    await setPassword(tx, link.userId, input.password, now);
+    if (link.purpose === "password_reset") {
+      await revokeAllUserWebSessions(tx, link.userId);
+      await revokeUserBearerSessions(tx, link.userId, "password_reset", now);
+    }
+    return { userId: link.userId, purpose: link.purpose, active };
+  });
+  const first = result.active[0] as MembershipRow;
+  await c.get("db").tx({ orgId: first.org_id, userId: result.userId }, (tx) =>
+    authAudit(tx, first.org_id, result.userId, "auth.password_set", { via: result.purpose }),
   );
-  const roles = [...new Set(active.map((m) => m.role))];
+  const roles = [...new Set(result.active.map((m) => m.role))];
   return action(c, {
     roles,
     sign_in: roles.some((r) => r !== "student") ? "web" : "ios",
@@ -163,61 +262,56 @@ const cookieOnly = createMiddleware<AppEnv>(async (c, next) => {
   await next();
 });
 
-async function loadSecrets(c: AppContext) {
-  const deps = c.get("deps");
-  const actor = c.get("actor");
-  const row = await c.get("db").tx({}, (tx) => findWebSession(tx, actor.sessionHash as string));
+async function currentSession(c: AppContext) {
+  const row = await c.get("db").tx({}, (tx) => findWebSession(tx, c.get("actor").sessionHash as string));
   if (!row) fail("SESSION_EXPIRED");
-  return { row, secrets: await decryptSecrets(deps.config.sessionKey, row.id, row.encrypted_provider_tokens) };
+  return { row, csrfToken: await readCsrfToken(c.get("deps").config.sessionKey, row) };
 }
 
 authRoutes.get("/auth/session", cookieOnly, async (c) => {
   const actor = c.get("actor");
-  const { row, secrets } = await loadSecrets(c);
-  const email = await c.get("db").tx({ orgId: actor.orgId, userId: actor.userId }, (tx) => tx.one<{ email: string; require_admin_mfa: boolean }>(sql`
-    SELECT u.email, coalesce((o.settings->>'require_admin_mfa')::boolean, true) AS require_admin_mfa
-    FROM app.users u, app.organizations o WHERE u.id = ${actor.userId} AND o.id = ${actor.orgId}`));
-  const mfaRequired = actor.role === "admin" && email.require_admin_mfa && actor.aal !== "aal2";
-  const mfaEnrolled = mfaRequired
-    ? (await c.get("deps").auth.listTotpFactors(secrets.accessToken)).some((f) => f.status === "verified")
-    : actor.aal === "aal2";
+  const { row, csrfToken } = await currentSession(c);
+  const info = await c.get("db").tx({ orgId: actor.orgId, userId: actor.userId }, async (tx) => {
+    const r = await tx.one<{ email: string; require_admin_mfa: boolean }>(sql`
+      SELECT u.email, coalesce((o.settings->>'require_admin_mfa')::boolean, true) AS require_admin_mfa
+      FROM app.users u, app.organizations o WHERE u.id = ${actor.userId} AND o.id = ${actor.orgId}`);
+    return { ...r, enrolled: await totpEnrolled(tx, actor.userId) };
+  });
+  const mfaRequired = actor.role === "admin" && info.require_admin_mfa && actor.aal !== "aal2";
   return sessionInfo(c, {
     userId: actor.userId,
     displayName: actor.displayName,
-    email: email.email,
+    email: info.email,
     role: actor.role,
     orgName: actor.orgName,
-    csrfToken: secrets.csrfToken,
+    csrfToken,
     expiresAt: new Date(row.expires_at),
     mfaRequired,
-    mfaEnrolled,
+    mfaEnrolled: mfaRequired ? info.enrolled : actor.aal === "aal2",
   });
 });
 
 authRoutes.post("/auth/logout", cookieOnly, async (c) => {
   const actor = c.get("actor");
-  const { secrets } = await loadSecrets(c);
   await c.get("db").tx({ orgId: actor.orgId, userId: actor.userId }, async (tx) => {
     await revokeWebSession(tx, actor.sessionHash as string);
-    await tx.exec(sql`INSERT INTO app.audit_events(org_id, actor_id, event_type, entity_id, payload)
-      VALUES (${actor.orgId}, ${actor.userId}, 'auth.logout', ${actor.userId}, '{}'::jsonb)`);
+    await authAudit(tx, actor.orgId, actor.userId, "auth.logout", { method: "web" });
   });
-  await c.get("deps").auth.signOut(secrets.accessToken);
   deleteCookie(c, SESSION_COOKIE, { path: "/", secure: c.get("deps").config.cookieSecure, httpOnly: true, sameSite: "Strict" });
   return action(c);
 });
 
+/** Starts TOTP enrollment: a new secret as QR code + otpauth URI (confirmed by the first successful verification). */
 authRoutes.post("/auth/mfa/enroll", cookieOnly, async (c) => {
   const actor = c.get("actor");
   if (actor.role !== "admin") fail("FORBIDDEN");
-  const { secrets } = await loadSecrets(c);
-  const existing = await c.get("deps").auth.listTotpFactors(secrets.accessToken);
-  if (existing.some((f) => f.status === "verified")) fail("INVALID_STATE", { message_ja: "二段階認証は登録済みです。認証コードを入力してください。" });
-  const enrollment = await c.get("deps").auth.enrollTotp(secrets.accessToken, `ARMS ${actor.orgName}`);
-  return c.json({
-    data: { factor_id: enrollment.factorId, qr_code: enrollment.qrCode, uri: enrollment.uri },
-    checked_at: c.get("deps").now().toISOString(),
-  });
+  const deps = c.get("deps");
+  const { secret, email } = await c.get("db").tx({ orgId: actor.orgId, userId: actor.userId }, async (tx) => ({
+    secret: await beginTotpEnrollment(tx, deps.config.sessionKey, actor.userId, deps.now()),
+    email: (await tx.one<{ email: string }>(sql`SELECT email FROM app.users WHERE id = ${actor.userId}`)).email,
+  }));
+  const uri = otpauthUri(secret, `${email} (${actor.orgName})`);
+  return c.json({ data: { factor_id: actor.userId, qr_code: qrCodeDataUrl(uri), uri }, checked_at: deps.now().toISOString() });
 });
 
 authRoutes.post("/auth/mfa/verify", cookieOnly, async (c) => {
@@ -226,28 +320,14 @@ authRoutes.post("/auth/mfa/verify", cookieOnly, async (c) => {
   const input = await readBody(c, MfaVerifyInput);
   await rateLimit(c, "login", `mfa:${actor.userId}`);
   const deps = c.get("deps");
-  const { secrets } = await loadSecrets(c);
-  // A freshly enrolled factor stays "unverified" until its first successful verification.
-  const factors = await deps.auth.listTotpFactors(secrets.accessToken);
-  const factorId = (factors.find((f) => f.status === "verified") ?? factors[factors.length - 1])?.id;
-  if (!factorId) fail("INVALID_STATE", { message_ja: "二段階認証が登録されていません。" });
-  const upgraded = await deps.auth.verifyTotp(secrets.accessToken, factorId, input.code);
-  const verified = await deps.jwt.verify(upgraded.accessToken).catch(() => {
-    throw new ApiError("AUTH_PROVIDER_UNAVAILABLE");
-  });
-  if (verified.userId !== actor.userId || verified.aal !== "aal2") fail("AUTH_PROVIDER_UNAVAILABLE");
   const sessionHash = actor.sessionHash as string;
   const row = await c.get("db").tx({ orgId: actor.orgId, userId: actor.userId }, async (tx) => {
     const locked = await findWebSession(tx, sessionHash, true);
     if (!locked) fail("SESSION_EXPIRED");
-    await storeRefreshedTokens(tx, deps.config.sessionKey, locked, {
-      accessToken: upgraded.accessToken,
-      refreshToken: upgraded.refreshToken,
-      accessExpiresAt: upgraded.expiresAt,
-      csrfToken: secrets.csrfToken,
-    }, "aal2");
-    await tx.exec(sql`INSERT INTO app.audit_events(org_id, actor_id, event_type, entity_id, payload)
-      VALUES (${actor.orgId}, ${actor.userId}, 'auth.mfa_verified', ${actor.userId}, '{}'::jsonb)`);
+    const { enrolledNow } = await verifyTotpCode(tx, deps.config.sessionKey, actor.userId, input.code, deps.now());
+    await elevateWebSession(tx, sessionHash);
+    if (enrolledNow) await authAudit(tx, actor.orgId, actor.userId, "auth.mfa_enrolled");
+    await authAudit(tx, actor.orgId, actor.userId, "auth.mfa_verified");
     return { ...locked, email: (await tx.one<{ email: string }>(sql`SELECT email FROM app.users WHERE id = ${actor.userId}`)).email };
   });
   return sessionInfo(c, {
@@ -256,10 +336,9 @@ authRoutes.post("/auth/mfa/verify", cookieOnly, async (c) => {
     email: row.email,
     role: actor.role,
     orgName: actor.orgName,
-    csrfToken: secrets.csrfToken,
+    csrfToken: await readCsrfToken(deps.config.sessionKey, row),
     expiresAt: new Date(row.expires_at),
     mfaRequired: false,
     mfaEnrolled: true,
   });
 });
-

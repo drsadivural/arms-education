@@ -83,9 +83,8 @@ describe("POST /settings/users/invite", () => {
 });
 
 describe("POST /settings/users/{id}/resend-invite", () => {
-  it("resends for accounts without a job and is idempotent per key", async () => {
+  it("resends for accounts without a job and is idempotent per key; only the newest link works", async () => {
     const u = await createTeacher(ctx.admin, org.orgId);
-    ctx.auth.register(u.email, "pw", u.userId);
     const key = crypto.randomUUID();
     const sentBefore = ctx.auth.invitesSent.length;
     const res = await call(ctx, admin, "POST", `/settings/users/${u.userId}/resend-invite`, { idempotencyKey: key });
@@ -95,14 +94,25 @@ describe("POST /settings/users/{id}/resend-invite", () => {
     const replay = await call(ctx, admin, "POST", `/settings/users/${u.userId}/resend-invite`, { idempotencyKey: key });
     expect(replay.status).toBe(200);
     expect(ctx.auth.invitesSent.length).toBe(sentBefore + 1);
+    const firstLink = ctx.mailer.lastLink(u.email);
     const again = await call(ctx, admin, "POST", `/settings/users/${u.userId}/resend-invite`);
     expect(again.status).toBe(200);
     expect(ctx.auth.invitesSent.length).toBe(sentBefore + 2);
+    const secondLink = ctx.mailer.lastLink(u.email);
+    expect(secondLink?.type).toBe("invite");
+    expect(secondLink?.token).not.toBe(firstLink?.token);
+    const stale = await call(ctx, null, "POST", "/auth/password", { body: { token: firstLink?.token, password: "Welcome2026a" } });
+    expect(stale.status).toBe(401);
+    const used = await call(ctx, null, "POST", "/auth/password", { body: { token: secondLink?.token, password: "Welcome2026a" } });
+    expect(used.status).toBe(200);
+    // After the password is set the person is registered: a further invitation is refused.
+    const registered = await call(ctx, admin, "POST", `/settings/users/${u.userId}/resend-invite`);
+    expect(registered.status).toBe(409);
+    expect(registered.body.message_ja).toContain("既に登録");
   });
 
   it("records a failed resend as 送信失敗（再送可能）", async () => {
     const u = await createTeacher(ctx.admin, org.orgId);
-    ctx.auth.register(u.email, "pw", u.userId);
     ctx.auth.failNextInvite = true;
     const res = await call(ctx, admin, "POST", `/settings/users/${u.userId}/resend-invite`);
     expect(res.status).toBe(200);
@@ -123,26 +133,30 @@ describe("POST /settings/users/{id}/resend-invite", () => {
 });
 
 describe("POST /settings/users/{id}/disable and /enable", () => {
-  it("disables (sessions revoked, provider banned, audited) and re-enables", async () => {
+  it("disables (Web and iOS sessions revoked, audited) and re-enables", async () => {
     const s = await createStudent(ctx.admin, org.orgId, { classroomId: org.classroomId, teacherId: org.teacher.userId });
-    ctx.auth.register(s.email, "pw", s.userId);
+    await ctx.auth.register(s.email, "pw", s.userId);
     const bearer = await bearerCaller(s.userId, org.orgId);
     expect((await call(ctx, bearer, "GET", "/me")).status).toBe(200);
     const res = await call(ctx, admin, "POST", `/settings/users/${s.userId}/disable`);
     expect(res.status).toBe(200);
     expectContract(res, "post", "/settings/users/{id}/disable");
-    expect(res.body.data).toMatchObject({ active: false, changed: true, provider_synced: true });
-    expect((await call(ctx, bearer, "GET", "/me")).status).toBe(403);
-    expect(ctx.auth.users.get(s.email.toLowerCase())?.banned).toBe(true);
+    expect(res.body.data).toMatchObject({ active: false, changed: true });
+    expect((await call(ctx, bearer, "GET", "/me")).status).toBe(401);
+    expect(await ctx.auth.openBearerSessions(s.userId)).toBe(0);
+    const signIn = await call(ctx, null, "POST", "/auth/tokens", { body: { email: s.email, password: "pw" } });
+    expect(signIn.status).toBe(403);
+    expect(signIn.body.code).toBe("ACCOUNT_DISABLED");
     const again = await call(ctx, admin, "POST", `/settings/users/${s.userId}/disable`);
     expect(again.body.data.changed).toBe(false);
 
     const enable = await call(ctx, admin, "POST", `/settings/users/${s.userId}/enable`);
     expect(enable.status).toBe(200);
     expectContract(enable, "post", "/settings/users/{id}/enable");
-    expect(ctx.auth.users.get(s.email.toLowerCase())?.banned).toBe(false);
-    expect((await call(ctx, bearer, "GET", "/me")).status).toBe(200);
-    const audit = await ctx.admin.query("SELECT event_type FROM app.audit_events WHERE entity_id = $1 ORDER BY created_at", [s.userId]);
+    const fresh = await call(ctx, null, "POST", "/auth/tokens", { body: { email: s.email, password: "pw" } });
+    expect(fresh.status).toBe(200);
+    expect((await call(ctx, null, "GET", "/me", { headers: { Authorization: `Bearer ${fresh.body.data.access_token}` } })).status).toBe(200);
+    const audit = await ctx.admin.query("SELECT event_type FROM app.audit_events WHERE entity_id = $1 AND event_type LIKE 'user.%' ORDER BY created_at", [s.userId]);
     expect(audit.rows.map((r) => r.event_type)).toEqual(["user.disabled", "user.enabled"]);
   });
 
@@ -202,15 +216,19 @@ describe("POST /settings/users/{id}/disable and /enable", () => {
     expect((await call(ctx, null, "POST", `/settings/users/${org.student.userId}/enable`)).status).toBe(401);
   });
 
-  it("does not ban the shared provider account while another organisation still uses it", async () => {
+  it("keeps sign-in for another organisation where the person is still active", async () => {
     const s = await createStudent(ctx.admin, org.orgId, { classroomId: org.classroomId, teacherId: org.teacher.userId });
-    ctx.auth.register(s.email, "pw", s.userId);
-    await ctx.admin.query("INSERT INTO app.memberships(org_id, id, role, active) VALUES ($1, $2, 'admin', true)", [other.orgId, s.userId]);
+    await ctx.auth.register(s.email, "pw", s.userId);
+    await ctx.admin.query("INSERT INTO app.memberships(org_id, id, role, active) VALUES ($1, $2, 'teacher', true)", [other.orgId, s.userId]);
     const res = await call(ctx, admin, "POST", `/settings/users/${s.userId}/disable`);
     expect(res.status).toBe(200);
-    expect(res.body.data.provider_synced).toBe(true);
-    expect(res.body.data.message_ja).toContain("他の組織");
-    expect(ctx.auth.users.get(s.email.toLowerCase())?.banned).toBe(false);
+    const signIn = await call(ctx, null, "POST", "/auth/tokens", { body: { email: s.email, password: "pw" } });
+    expect(signIn.status).toBe(200);
+    const auth = { Authorization: `Bearer ${signIn.body.data.access_token}` };
+    expect((await call(ctx, null, "GET", "/me", { headers: { ...auth, "X-ARMS-Org": other.orgId } })).status).toBe(200);
+    const here = await call(ctx, null, "GET", "/me", { headers: { ...auth, "X-ARMS-Org": org.orgId } });
+    expect(here.status).toBe(403);
+    expect(here.body.code).toBe("ACCOUNT_DISABLED");
   });
 });
 
@@ -231,7 +249,8 @@ describe("account deletion requests", () => {
     expect(done.status).toBe(200);
     expectContract(done, "post", "/settings/account-deletion-requests/{id}/complete");
     expect(done.body.data).toMatchObject({ state: "completed", already_completed: false });
-    expect((await call(ctx, bearer, "GET", "/me")).status).toBe(403);
+    // Completion stops the account: its iOS session ends at once.
+    expect((await call(ctx, bearer, "GET", "/me")).status).toBe(401);
     const again = await call(ctx, admin, "POST", `/settings/account-deletion-requests/${requestId}/complete`);
     expect(again.body.data.already_completed).toBe(true);
     const audit = await ctx.admin.query("SELECT count(*)::int AS n FROM app.audit_events WHERE entity_id = $1 AND event_type = 'account.deletion_completed'", [requestId]);
@@ -256,5 +275,43 @@ describe("account deletion requests", () => {
     const self = await call(ctx, admin, "POST", `/settings/account-deletion-requests/${own.rows[0].id}/complete`);
     expect(self.status).toBe(409);
     expect(self.body.code).toBe("CANNOT_DISABLE_SELF");
+  });
+});
+
+describe("POST /settings/users/{id}/mfa-reset", () => {
+  it("removes another administrator's TOTP factor, ends their sessions and audits; they enroll again at sign-in", async () => {
+    const other_admin = await createUser(ctx.admin, org.orgId, "admin");
+    await ctx.auth.register(other_admin.email, "Admin-pass-2026", other_admin.userId);
+    // The other administrator signs in and enrolls an authenticator.
+    const login = await call(ctx, null, "POST", "/auth/login", { body: { email: other_admin.email, password: "Admin-pass-2026", selected_role: "admin" } });
+    const cookie = /arms_session=([^;]+)/.exec(login.headers.get("set-cookie") ?? "")?.[1] as string;
+    const web = { Cookie: `arms_session=${cookie}`, "X-CSRF-Token": login.body.data.csrf_token, Origin: "https://arms.test.invalid" };
+    const enroll = await call(ctx, null, "POST", "/auth/mfa/enroll", { headers: web });
+    const { totpFromUri } = await import("../helpers/auth");
+    expect((await call(ctx, null, "POST", "/auth/mfa/verify", { headers: web, body: { code: await totpFromUri(enroll.body.data.uri) } })).status).toBe(200);
+
+    const res = await call(ctx, admin, "POST", `/settings/users/${other_admin.userId}/mfa-reset`);
+    expect(res.status).toBe(200);
+    expectContract(res, "post", "/settings/users/{id}/mfa-reset");
+    expect(res.body.data).toMatchObject({ id: other_admin.userId, had_factor: true });
+    expect((await call(ctx, null, "GET", "/auth/session", { headers: { Cookie: `arms_session=${cookie}` } })).status).toBe(401);
+    const cred = await ctx.admin.query("SELECT totp_secret_enc, totp_enrolled_at FROM app.user_credentials WHERE user_id = $1", [other_admin.userId]);
+    expect(cred.rows[0]).toEqual({ totp_secret_enc: null, totp_enrolled_at: null });
+    const audit = await ctx.admin.query("SELECT payload FROM app.audit_events WHERE entity_id = $1 AND event_type = 'auth.mfa_reset'", [other_admin.userId]);
+    expect(audit.rows[0].payload).toEqual({ had_factor: true });
+    const again = await call(ctx, null, "POST", "/auth/login", { body: { email: other_admin.email, password: "Admin-pass-2026", selected_role: "admin" } });
+    expect(again.body.data).toMatchObject({ mfa_required: true, mfa_enrolled: false });
+  });
+
+  it("refuses self, non-admin targets, other organisations and non-admin callers", async () => {
+    const self = await call(ctx, admin, "POST", `/settings/users/${org.admin.userId}/mfa-reset`);
+    expect(self.status).toBe(422);
+    expect(self.body.message_ja).toContain("自分自身");
+    const notAdmin = await call(ctx, admin, "POST", `/settings/users/${org.teacher.userId}/mfa-reset`);
+    expect(notAdmin.status).toBe(422);
+    expect((await call(ctx, admin, "POST", `/settings/users/${other.admin.userId}/mfa-reset`)).status).toBe(404);
+    expect((await call(ctx, teacher, "POST", `/settings/users/${org.admin.userId}/mfa-reset`)).status).toBe(403);
+    const bearerAdmin = await bearerCaller(org.admin.userId, org.orgId);
+    expect((await call(ctx, bearerAdmin, "POST", `/settings/users/${org.admin.userId}/mfa-reset`)).body.code).toBe("ADMIN_USE_WEB");
   });
 });

@@ -3,7 +3,7 @@ import { fileURLToPath } from "node:url";
 import { defineConfig, devices } from "@playwright/test";
 
 /**
- * End-to-end tests against the local stack (infra/local/compose.yaml): real Supabase Auth (GoTrue),
+ * End-to-end tests against the local stack (infra/local/compose.yaml): PostgreSQL-backed sign-in, Mailpit e-mail,
  * the Worker API under wrangler dev and the Vite dev server. global-setup seeds an isolated organisation.
  */
 const webPort = Number(process.env.ARMS_WEB_PORT ?? 5188);

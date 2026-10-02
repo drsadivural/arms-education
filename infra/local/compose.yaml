@@ -1,5 +1,6 @@
-# Local development stack: PostgreSQL 17, Supabase Auth (GoTrue, ES256 asymmetric JWT), SeaweedFS (S3-compatible
-# stand-in for private R2 presigned URLs) and Mailpit (captures Auth invitation/reset e-mail).
+# Local development stack: PostgreSQL 17 (+ PgBouncer), SeaweedFS (S3-compatible stand-in for private R2 presigned
+# URLs), ClamAV + scanner adapter, and Mailpit behind a Resend-compatible relay (captures invitation, password-reset
+# and notification e-mail). Authentication is the API's own (PostgreSQL); there is no separate auth server.
 # Run `node infra/local/setup.mjs` once to generate infra/local/.env.local and services/api/.dev.vars.
 name: arms
 services:
@@ -12,7 +13,7 @@ services:
       POSTGRES_PASSWORD: arms_dev_pw
       POSTGRES_DB: arms
     ports: ["127.0.0.1:55433:5432"]
-    volumes: ["arms-pg:/var/lib/postgresql/data", "./initdb:/docker-entrypoint-initdb.d:ro"]
+    volumes: ["arms-pg:/var/lib/postgresql/data"]
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres -d arms"]
       interval: 2s
@@ -36,50 +37,6 @@ services:
       DEFAULT_POOL_SIZE: "40"
       IGNORE_STARTUP_PARAMETERS: extra_float_digits,options
     ports: ["127.0.0.1:55434:5432"]
-
-  auth:
-    image: supabase/gotrue:v2.180.0
-    depends_on:
-      postgres: { condition: service_healthy }
-      templates: { condition: service_started }
-    env_file: [.env.local]
-    environment:
-      GOTRUE_API_HOST: 0.0.0.0
-      PORT: "9999"
-      API_EXTERNAL_URL: http://localhost:9999
-      GOTRUE_DB_DRIVER: postgres
-      DB_NAMESPACE: auth
-      DATABASE_URL: postgres://postgres:arms_dev_pw@postgres:5432/arms?search_path=auth
-      GOTRUE_SITE_URL: http://localhost:5188
-      GOTRUE_URI_ALLOW_LIST: http://localhost:5188/**,arms://**
-      GOTRUE_DISABLE_SIGNUP: "true"
-      GOTRUE_EXTERNAL_EMAIL_ENABLED: "true"
-      GOTRUE_MAILER_AUTOCONFIRM: "false"
-      GOTRUE_JWT_EXP: "3600"
-      GOTRUE_JWT_AUD: authenticated
-      GOTRUE_JWT_ISSUER: http://localhost:9999
-      GOTRUE_JWT_ADMIN_ROLES: service_role
-      GOTRUE_MFA_TOTP_ENROLL_ENABLED: "true"
-      GOTRUE_MFA_TOTP_VERIFY_ENABLED: "true"
-      GOTRUE_SMTP_HOST: mailpit
-      GOTRUE_SMTP_PORT: "1025"
-      GOTRUE_SMTP_ADMIN_EMAIL: noreply@arms.local
-      GOTRUE_SMTP_SENDER_NAME: ARMS 新入社員研修システム
-      GOTRUE_MAILER_SUBJECTS_INVITE: ARMSへの招待
-      GOTRUE_MAILER_SUBJECTS_RECOVERY: ARMSパスワード再設定のご案内
-      GOTRUE_MAILER_TEMPLATES_INVITE: http://templates/invite.html
-      GOTRUE_MAILER_TEMPLATES_RECOVERY: http://templates/recovery.html
-      GOTRUE_MAILER_URLPATHS_INVITE: /verify
-      GOTRUE_MAILER_URLPATHS_RECOVERY: /verify
-      GOTRUE_LOG_LEVEL: warn
-      # Local only: E2E runs invite many users per minute (the hosted default is far lower — keep it there).
-      GOTRUE_RATE_LIMIT_EMAIL_SENT: "10000"
-    ports: ["127.0.0.1:9999:9999"]
-
-  # Serves the Japanese Auth e-mail templates (infra/supabase/templates) to GoTrue inside the compose network.
-  templates:
-    image: nginx:1.27-alpine
-    volumes: ["../supabase/templates:/usr/share/nginx/html:ro"]
 
   # S3 API on :9100 (path-style, SigV4, presigned URLs with signed Content-Length/Content-Type, CORS for the Web app).
   # MinIO images are no longer published to public registries, so SeaweedFS stands in for R2 locally and in CI.
@@ -120,6 +77,18 @@ services:
   mailpit:
     image: axllent/mailpit:v1.27
     ports: ["127.0.0.1:8025:8025", "127.0.0.1:1025:1025"]
+
+  # Resend-compatible HTTP API on :9025 (what the Worker calls in every environment) → Mailpit.
+  mail-relay:
+    image: node:22-alpine
+    depends_on: [mailpit]
+    command: ["node", "/app/server.mjs"]
+    volumes: ["../mail-relay:/app:ro"]
+    env_file: [.env.local]
+    environment:
+      PORT: "9025"
+      MAILPIT_URL: http://mailpit:8025
+    ports: ["127.0.0.1:9025:9025"]
 
 volumes:
   arms-pg: {}

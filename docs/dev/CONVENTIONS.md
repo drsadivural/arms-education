@@ -15,15 +15,18 @@ or the relevant doc.
 | `services/api` | Cloudflare Worker (Hono). `src/routes/<area>.ts`, `src/domain/`, `src/repositories/`, `src/integrations/`, `src/jobs/`. |
 | `apps/web` | React + Vite + Tailwind admin/teacher Web app (served as Worker static assets). |
 | `apps/ios` | SwiftUI app (XcodeGen project) + `ARMSKit` Swift package (Linux-testable core). |
-| `infra/local` | Docker compose: PostgreSQL 17, PgBouncer, Supabase Auth (GoTrue, ES256), SeaweedFS (S3 API standing in for R2), ClamAV + scanner adapter, Mailpit. |
+| `infra/local` | Docker compose: PostgreSQL 17, PgBouncer, SeaweedFS (S3 API standing in for R2), ClamAV + scanner adapter, Resend-compatible mail relay + Mailpit. No auth server: the API authenticates against PostgreSQL. |
 
 Migration number ranges (to avoid collisions between parallel work): `004` core, `010–019` admin,
 `020–029` learning, `030–039` booking/notifications, `040–049` voice, `050–059` imports/exports.
 
 ## API rules (services/api)
 
-**Authentication is default-deny.** `routes/index.ts` authenticates every request except
-`GET /health`, `POST /auth/login`, `POST /auth/password-reset`. Never call `app.use("*", …)` inside a route
+**Authentication is default-deny.** `routes/index.ts` authenticates every request except the sign-in endpoints,
+which carry their own credential (`GET /health`, `POST /auth/login`, `POST /auth/tokens`, `/auth/tokens/refresh`,
+`/auth/tokens/revoke`, `POST /auth/password-reset`, `POST /auth/password`) and the scanner's signed callback.
+Credentials live in PostgreSQL (`src/auth/`: scrypt passwords, TOTP, opaque bearer/refresh tokens, one-time e-mail
+link tokens — only hashes or AES-GCM ciphertext are stored). Never call `app.use("*", …)` inside a route
 module (Hono applies it to every route of the parent app). Per-route guards:
 
 ```ts
@@ -103,4 +106,5 @@ duplicate-submit prevention, dirty-leave confirmation, success toast.
 
 SwiftUI, iOS 17+, NavigationStack/TabView (ホーム/進捗/予約/AI音声), MVVM with `@Observable` view models on the
 MainActor, `ARMSKit` package for DTOs/API client/auth token storage/business formatting (compiles and tests on
-Linux with `swift test`; UI target is built in macOS CI). Bearer tokens from Supabase Auth stored in Keychain.
+Linux with `swift test`; UI target is built in macOS CI). Opaque Bearer tokens from `POST /auth/tokens` (APIAuthService)
+stored in Keychain.

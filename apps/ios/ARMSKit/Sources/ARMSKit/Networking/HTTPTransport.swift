@@ -78,25 +78,55 @@ public final class URLSessionTransport: HTTPTransport, @unchecked Sendable {
     urlRequest.httpBody = request.body
     urlRequest.httpShouldHandleCookies = false
     let session = self.session
-    let result: Result<HTTPResponse, TransportError> = await withCheckedContinuation { continuation in
-      let task = session.dataTask(with: urlRequest) { data, response, error in
-        if let error {
-          continuation.resume(returning: .failure(URLSessionTransport.map(error)))
-          return
+    // Cancelling the Swift task cancels the URLSession task (the request ends with `.cancelled`).
+    let running = RunningTask()
+    let result: Result<HTTPResponse, TransportError> = await withTaskCancellationHandler {
+      await withCheckedContinuation { continuation in
+        let task = session.dataTask(with: urlRequest) { data, response, error in
+          if let error {
+            continuation.resume(returning: .failure(URLSessionTransport.map(error)))
+            return
+          }
+          guard let http = response as? HTTPURLResponse else {
+            continuation.resume(returning: .failure(.other("no HTTP response")))
+            return
+          }
+          var headers: [String: String] = [:]
+          for (key, value) in http.allHeaderFields {
+            if let k = key as? String, let v = value as? String { headers[k] = v }
+          }
+          continuation.resume(returning: .success(HTTPResponse(status: http.statusCode, headers: headers, body: data ?? Data())))
         }
-        guard let http = response as? HTTPURLResponse else {
-          continuation.resume(returning: .failure(.other("no HTTP response")))
-          return
-        }
-        var headers: [String: String] = [:]
-        for (key, value) in http.allHeaderFields {
-          if let k = key as? String, let v = value as? String { headers[k] = v }
-        }
-        continuation.resume(returning: .success(HTTPResponse(status: http.statusCode, headers: headers, body: data ?? Data())))
+        running.start(task)
       }
-      task.resume()
+    } onCancel: {
+      running.cancel()
     }
     return try result.get()
+  }
+
+  /// Holds the data task so a cancellation that races with its creation still cancels it.
+  private final class RunningTask: @unchecked Sendable {
+    private let lock = NSLock()
+    private var task: URLSessionDataTask?
+    private var cancelled = false
+
+    func start(_ task: URLSessionDataTask) {
+      let cancelNow = lock.withLock {
+        self.task = task
+        return cancelled
+      }
+      task.resume()
+      if cancelNow { task.cancel() }
+    }
+
+    func cancel() {
+      let task = lock.withLock {
+        cancelled = true
+        return self.task
+      }
+      task?.cancel()
+    }
   }
 
   static func map(_ error: any Error) -> TransportError {

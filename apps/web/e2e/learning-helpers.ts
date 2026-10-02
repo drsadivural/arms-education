@@ -1,24 +1,14 @@
 /**
  * E2E helpers for the learning screens (WEB-09〜12). Test data is created through the real API exactly as the apps
- * do it: admin/teacher calls with the signed-in Web session (Origin + CSRF + Idempotency-Key), students with a
- * Supabase Auth Bearer token (iOS). No data is written to the database directly.
+ * do it: admin/teacher calls with the signed-in Web session (Origin + CSRF + Idempotency-Key), students with the
+ * Bearer token from POST /auth/tokens after setting their password from the invitation e-mail (iOS). No data is
+ * written to the database directly.
  */
 import { randomUUID } from "node:crypto";
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
 import { expect, request as playwrightRequest, type APIRequestContext, type Page } from "@playwright/test";
+import { WEB_ORIGIN, acceptInvitation, iosApi } from "./accounts";
 
-const root = join(import.meta.dirname, "..", "..", "..");
-const vars = Object.fromEntries(
-  readFileSync(join(root, "services/api/.dev.vars"), "utf8")
-    .split("\n")
-    .filter((l) => l.includes("="))
-    .map((l) => [l.slice(0, l.indexOf("=")), l.slice(l.indexOf("=") + 1)]),
-) as Record<string, string>;
-const AUTH = vars.SUPABASE_AUTH_URL ?? "http://localhost:9999";
-const ADMIN_SECRET = vars.SUPABASE_ADMIN_SECRET ?? "";
-
-export const WEB_ORIGIN = `http://localhost:${process.env.ARMS_WEB_PORT ?? 5188}`;
+export { WEB_ORIGIN };
 
 export const uniq = () => `${Date.now().toString(36)}${Math.floor(Math.random() * 1e6).toString(36)}`;
 
@@ -63,7 +53,7 @@ export interface StudentActor {
   api: APIRequestContext;
 }
 
-/** Registers a student (admin Web session) and signs them in like the iOS app (GoTrue password grant → Bearer). */
+/** Registers a student (admin Web session) and, with `withLogin`, sets the password from the invitation e-mail and signs in like the iOS app. */
 export async function createStudent(
   adminPage: Page,
   input: { classroomId: string; teacherId: string; name: string; department?: string; withLogin?: boolean },
@@ -90,17 +80,8 @@ export async function createStudent(
   let api: APIRequestContext;
   if (input.withLogin) {
     const password = `E2e-${id}-Learner!`;
-    const admin = { "Content-Type": "application/json", Authorization: `Bearer ${ADMIN_SECRET}`, apikey: ADMIN_SECRET };
-    const pw = await fetch(`${AUTH}/admin/users/${userId}`, { method: "PUT", headers: admin, body: JSON.stringify({ password, email_confirm: true }) });
-    expect(pw.status, "GoTrue admin password").toBe(200);
-    const tokenRes = await fetch(`${AUTH}/token?grant_type=password`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email, password }) });
-    expect(tokenRes.status, "GoTrue password grant").toBe(200);
-    const { access_token } = (await tokenRes.json()) as { access_token: string };
-    api = await playwrightRequest.newContext({
-      baseURL: WEB_ORIGIN,
-      storageState: { cookies: [], origins: [] },
-      extraHTTPHeaders: { Authorization: `Bearer ${access_token}`, Accept: "application/json" },
-    });
+    await acceptInvitation(email, password);
+    api = await iosApi(email, password);
   } else {
     api = await playwrightRequest.newContext({ baseURL: WEB_ORIGIN });
   }

@@ -6,12 +6,10 @@ import Foundation
 typealias Material = ARMSKit.Material
 
 /// Build-time configuration read from Info.plist (values come from the xcconfig files:
-/// `API_BASE_URL`, `SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEY`, `TERMS_URL`, `PRIVACY_POLICY_URL`).
+/// `API_BASE_URL`, `TERMS_URL`, `PRIVACY_POLICY_URL`). Sign-in goes to the same ARMS API (`POST /auth/tokens`).
 /// Real values are customer inputs and are never committed.
 struct AppConfiguration: Equatable {
   let apiBaseURL: URL
-  let supabaseURL: URL
-  let supabasePublishableKey: String
   let termsURL: URL?
   let privacyPolicyURL: URL?
   let apnsEnvironment: APNsEnvironment
@@ -37,28 +35,22 @@ struct AppConfiguration: Equatable {
     var missing: [String] = []
     var invalid: [String] = []
     let api = value("ARMSAPIBaseURL")
-    let supabase = value("ARMSSupabaseURL")
-    let key = value("ARMSSupabasePublishableKey")
     if api == nil { missing.append("API_BASE_URL") }
-    if supabase == nil { missing.append("SUPABASE_URL") }
-    if key == nil { missing.append("SUPABASE_PUBLISHABLE_KEY") }
     if !missing.isEmpty { return .failure(.missing(missing)) }
 
     let apiURL = api.flatMap(validatedURL).map(withAPIPath)
-    let supabaseURL = supabase.flatMap(validatedURL)
     if apiURL == nil { invalid.append("API_BASE_URL") }
-    if supabaseURL == nil { invalid.append("SUPABASE_URL") }
     if !invalid.isEmpty { return .failure(.invalid(invalid)) }
 
     return .success(
       AppConfiguration(
-        apiBaseURL: apiURL!, supabaseURL: supabaseURL!, supabasePublishableKey: key!,
+        apiBaseURL: apiURL!,
         termsURL: value("ARMSTermsURL").flatMap(validatedURL),
         privacyPolicyURL: value("ARMSPrivacyPolicyURL").flatMap(validatedURL),
         apnsEnvironment: value("ARMSAPNsEnvironment") == "production" ? .production : .sandbox))
   }
 
-  /// HTTPS only; plain HTTP is accepted for localhost (local Workers / Supabase during development).
+  /// HTTPS only; plain HTTP is accepted for localhost (local Workers during development).
   static func validatedURL(_ raw: String) -> URL? {
     guard let url = URL(string: raw), let scheme = url.scheme?.lowercased(), let host = url.host, !host.isEmpty else {
       return nil

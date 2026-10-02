@@ -8,9 +8,9 @@
  *   - progress records / classrooms created by the import are deleted (a classroom that has students, lesson
  *     slots or programs attached is left for manual reconciliation); updated rows get their before_data back
  *   - people (teachers / new employees): accounts are never deleted — the person may already have signed in and
- *     the Auth provider account is shared across organisations. An account the import created is stopped
- *     (membership inactive, web sessions revoked, student profile out of enrolment, provider sign-in blocked
- *     after commit) with the same guards as 講師管理/新入社員管理 (primary classroom, future lesson slots,
+ *     the account may belong to other organisations too. An account the import created is stopped
+ *     (membership inactive, Web and iOS sessions revoked, student profile out of enrolment)
+ *     with the same guards as 講師管理/新入社員管理 (primary classroom, future lesson slots,
  *     active reservations → manual). Updated people get their previous name/kana/department/dates back.
  * The job keeps its state while rolling back (rollback_key set) and becomes rolled_back when every applied row is
  * reverted or marked manual. Retries continue with the remaining rows.
@@ -23,7 +23,7 @@ import { sql } from "../../db/sql";
 import { ApiError, fail } from "../../http/errors";
 import { requireIdempotencyKey } from "../../http/idempotency";
 import { activeReservationCount } from "../../repositories/admin/students";
-import { assertCanDeactivate, lockMembership, setMembershipActive, syncProviderBan } from "../admin/accounts";
+import { assertCanDeactivate, lockMembership, setMembershipActive } from "../admin/accounts";
 import { audit } from "../admin/common";
 import { insertAudits, underSavepoint, type AuditEvent } from "./apply";
 import { findJob } from "./jobs";
@@ -183,7 +183,6 @@ async function revertPerson(
   jobId: string,
   item: RollbackItem,
   audits: AuditEvent[],
-  banned: string[],
 ): Promise<RowOutcome> {
   const actor = c.get("actor");
   const orgId = actor.orgId;
@@ -208,7 +207,6 @@ async function revertPerson(
       return {
         version: current.row_version + 1,
         event: { event_type: entity === "teachers" ? "teacher.archived" : "student.archived", entity_id: id, payload: { ...meta(jobId, item.row_number), account_kept: true } },
-        ban: target.active,
       };
     }
     const b = item.before_data ?? {};
@@ -226,7 +224,6 @@ async function revertPerson(
     return {
       version: current.row_version + 1,
       event: { event_type: entity === "teachers" ? "teacher.updated" : "student.updated", entity_id: id, payload: { ...meta(jobId, item.row_number), restored: true } },
-      ban: false,
     };
   });
   if (!outcome.ok) {
@@ -237,7 +234,6 @@ async function revertPerson(
     return { row_number: item.row_number, state: "manual", message: reason };
   }
   audits.push(outcome.value.event);
-  if (outcome.value.ban) banned.push(id);
   return {
     row_number: item.row_number,
     state: "reverted",
@@ -254,8 +250,8 @@ async function writeRollbackResults(tx: Tx, orgId: string, jobId: string, result
     WHERE i.org_id = ${orgId} AND i.job_id = ${jobId} AND i.row_number = x.row_number`);
 }
 
-/** One rollback batch (≤200 rows, newest first). Returns the rows processed and the accounts to block at the provider. */
-async function runBatch(c: AppContext, job: JobRow, token: string): Promise<{ n: number; banned: string[] }> {
+/** One rollback batch (≤200 rows, newest first). Returns the number of rows processed. */
+async function runBatch(c: AppContext, job: JobRow, token: string): Promise<number> {
   const actor = c.get("actor");
   let range: { from: number; to: number } | null = null;
   try {
@@ -265,10 +261,9 @@ async function runBatch(c: AppContext, job: JobRow, token: string): Promise<{ n:
         SELECT row_number, action, entity_id, before_data, after_data, committed_version FROM app.import_items
         WHERE org_id = ${actor.orgId} AND job_id = ${job.id} AND commit_state = 'applied' AND rollback_state IS NULL
         ORDER BY row_number DESC LIMIT ${BATCH_SIZE} FOR UPDATE`);
-      if (items.length === 0) return { n: 0, banned: [] };
+      if (items.length === 0) return 0;
       range = { from: Math.min(...items.map((i) => i.row_number)), to: Math.max(...items.map((i) => i.row_number)) };
       const audits: AuditEvent[] = [];
-      const banned: string[] = [];
       let results: RowOutcome[];
       if (job.entity === "progress") results = await revertProgress(tx, actor.orgId, job.id, items, audits);
       else {
@@ -277,13 +272,13 @@ async function runBatch(c: AppContext, job: JobRow, token: string): Promise<{ n:
           results.push(
             job.entity === "classrooms"
               ? await revertClassroom(tx, actor.orgId, job.id, item, audits)
-              : await revertPerson(c, tx, job.entity, job.id, item, audits, banned),
+              : await revertPerson(c, tx, job.entity, job.id, item, audits),
           );
         }
       }
       await writeRollbackResults(tx, actor.orgId, job.id, results);
       await insertAudits(tx, actor, audits);
-      return { n: items.length, banned };
+      return items.length;
     });
   } catch (e) {
     if (e instanceof LeaseLost) throw e;
@@ -322,10 +317,7 @@ export async function rollbackImport(c: AppContext, jobId: string): Promise<void
         await releaseLease(c, job.id, token);
         return;
       }
-      const { n, banned } = await runBatch(c, job, token);
-      // Sign-in is blocked at the provider after the deactivation committed (the DB membership is authoritative).
-      for (const userId of banned) await syncProviderBan(c, userId, true);
-      if (n > 0) continue;
+      if ((await runBatch(c, job, token)) > 0) continue;
       if (await finish(c, job, token)) return;
     }
   } catch (e) {

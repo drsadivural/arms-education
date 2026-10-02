@@ -23,8 +23,18 @@ export async function loginAs(page: Page, role: "admin" | "teacher"): Promise<vo
   await page.getByRole("button", { name: "ログイン" }).click();
   if (role === "admin") {
     await expect(page.getByRole("heading", { name: "二段階認証" })).toBeVisible();
-    await page.getByLabel("認証コード（6桁）").fill(totp(f.admin.totpSecret));
-    await page.getByRole("button", { name: "認証して続ける" }).click();
+    // A TOTP code is accepted once per 30-second step (replay protection). When another sign-in of the same
+    // administrator already used the current code, wait for the next step and enter the new code.
+    for (let attempt = 0; ; attempt++) {
+      await page.getByLabel("認証コード（6桁）").fill(totp(f.admin.totpSecret));
+      await page.getByRole("button", { name: "認証して続ける" }).click();
+      const menu = page.getByRole("navigation", { name: "メインメニュー" });
+      const rejected = page.getByText("認証コードが正しくありません。").first();
+      await expect(menu.or(rejected)).toBeVisible();
+      if (await menu.isVisible()) break;
+      if (attempt >= 2) throw new Error("TOTP code rejected three times");
+      await page.waitForTimeout(30_000 - (Date.now() % 30_000) + 500);
+    }
   }
   await expect(page.getByRole("navigation", { name: "メインメニュー" })).toBeVisible();
 }

@@ -10,6 +10,9 @@ const PATTERNS = [
   ["Resend API key", /\bre_[A-Za-z0-9]{8,}_[A-Za-z0-9]{16,}/],
   ["service_role JWT", /eyJ[A-Za-z0-9_-]{10,}\.eyJ[A-Za-z0-9_-]*cm9sZSI6InNlcnZpY2Vfcm9sZS[A-Za-z0-9_-]*\.[A-Za-z0-9_-]{20,}/],
   ["Cloudflare API token assignment", /CLOUDFLARE_API_TOKEN\s*[=:]\s*["']?[A-Za-z0-9_-]{30,}/],
+  // ARMS's own opaque tokens (services/api/src/auth/tokens.ts): access, refresh and e-mail link tokens.
+  ["ARMS token", /\barms_(?:at|rt|lt)_[A-Za-z0-9_-]{43}\b/],
+  ["scrypt password hash", /scrypt\$ln=\d+,r=\d+,p=\d+\$[A-Za-z0-9_-]{22}\$[A-Za-z0-9_-]{43}/],
 ];
 const SKIP = [/^design\//, /^assets\//, /\.(png|jpg|jpeg|otf|ttf|woff2?|pdf|ico)$/i, /pnpm-lock\.yaml$/, /^apps\/ios\/.*\.xcassets\//];
 

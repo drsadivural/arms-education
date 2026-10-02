@@ -2,7 +2,7 @@ import Foundation
 
 /// Typed client for the ARMS Workers API.
 ///
-/// - Authentication: `Authorization: Bearer <Supabase access token>` only (no cookies, no CSRF).
+/// - Authentication: `Authorization: Bearer <ARMS access token>` only (no cookies, no CSRF).
 /// - Mutations carry the endpoint's `Idempotency-Key`; every automatic retry reuses it.
 /// - PATCH carries `If-Match: "<row_version>"`.
 /// - `429` / `503` are retried with exponential backoff + jitter (honouring `Retry-After`).

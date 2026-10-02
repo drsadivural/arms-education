@@ -3,7 +3,7 @@ import Observation
 
 /// Sign-in, server role check and session lifecycle (IOS-01).
 ///
-/// The role is decided by the server: after Supabase sign-in the app calls `GET /me` with
+/// The role is decided by the server: after sign-in (POST /auth/tokens) the app calls `GET /me` with
 /// `X-ARMS-Selected-Role`. A mismatch shows 「このアカウントでは選択した利用区分にログインできません」
 /// and signs out; administrators are refused with 「管理者の操作はWeb管理画面をご利用ください。」.
 @MainActor
@@ -54,7 +54,7 @@ public final class SessionStore {
 
   // MARK: Launch
 
-  /// Restores a stored Supabase session and re-verifies the role with the server.
+  /// Restores the stored session (Keychain) and re-verifies the role with the server.
   public func restore() async {
     guard await auth.hasStoredSession() else {
       state = .signedOut

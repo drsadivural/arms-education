@@ -103,9 +103,17 @@ export const zNewPassword = z
   .max(128)
   .refine((v) => /[A-Za-z]/.test(v) && /\d/.test(v), { message: "英字と数字を両方含めてください。" });
 export const PasswordSetInput = z.strictObject({
-  access_token: z.string().min(20).max(4096),
+  /** One-time token from the e-mail link (`/auth/callback#token=…`). */
+  token: z.string().min(20).max(200),
   password: zNewPassword,
 });
+/** iOS sign-in (POST /auth/tokens). */
+export const TokenGrantInput = z.strictObject({
+  email: z.email(),
+  password: z.string().min(1).max(128),
+  device_label: z.string().max(100).optional(),
+});
+export const TokenRefreshInput = z.strictObject({ refresh_token: z.string().min(20).max(200) });
 export const MfaVerifyInput = z.strictObject({ code: z.string().regex(/^\d{6}$/, { message: "6桁の数字を入力してください。" }) });
 export const PreferenceInput = z.strictObject({
   theme: z.enum(["light", "dark", "system"]),

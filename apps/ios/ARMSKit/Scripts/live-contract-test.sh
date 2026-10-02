@@ -2,7 +2,7 @@
 # Live contract test of ARMSKit against the LOCAL stack (never staging/production).
 #
 # Prerequisites (repository root):
-#   docker stack (Postgres :55433, GoTrue :9999, SeaweedFS S3 :9100) running and migrated:
+#   docker stack (Postgres :55433, SeaweedFS S3 :9100) running and migrated:
 #     DATABASE_ADMIN_URL=postgres://postgres:arms_dev_pw@127.0.0.1:55433/arms RUNTIME_DB_ROLE=arms_app node scripts/db/migrate.mjs
 #   API running: (cd services/api && npx wrangler dev --port 8804 --inspector-port 9804 --ip 127.0.0.1)
 #

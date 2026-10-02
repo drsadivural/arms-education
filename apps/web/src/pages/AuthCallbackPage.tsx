@@ -8,15 +8,14 @@ import { InlineError } from "../components/ui/Feedback";
 import { ApiError, api } from "../lib/api";
 
 interface LinkParams {
-  accessToken: string | null;
+  token: string | null;
   type: string | null;
-  errorDescription: string | null;
 }
 
 /** Reads the one-time token from the URL fragment once and removes it from the address bar/history. */
 function takeLinkParams(): LinkParams {
   const hash = new URLSearchParams(window.location.hash.replace(/^#/, ""));
-  const params = { accessToken: hash.get("access_token"), type: hash.get("type"), errorDescription: hash.get("error_description") };
+  const params = { token: hash.get("token"), type: hash.get("type") };
   if (window.location.hash) window.history.replaceState(null, "", window.location.pathname);
   return params;
 }
@@ -45,10 +44,10 @@ export function AuthCallbackPage() {
     if (!parsed.success) errs.password = parsed.error.issues[0]?.message ?? "パスワードを確認してください。";
     if (password !== confirm) errs.confirm = "確認用のパスワードが一致しません。";
     setFieldErrors(errs);
-    if (Object.keys(errs).length || !link.accessToken) return;
+    if (Object.keys(errs).length || !link.token) return;
     setBusy(true);
     try {
-      const res = await api.post<{ data: { message_ja: string; sign_in: "web" | "ios" } }>("/auth/password", { access_token: link.accessToken, password });
+      const res = await api.post<{ data: { message_ja: string; sign_in: "web" | "ios" } }>("/auth/password", { token: link.token, password });
       setDone({ message: res.data.message_ja, signIn: res.data.sign_in });
     } catch (err) {
       if (err instanceof ApiError) setFieldErrors(err.fieldErrors);
@@ -65,14 +64,12 @@ export function AuthCallbackPage() {
           <Brand compact />
         </div>
         <h1 className="text-xl font-bold">{heading}</h1>
-        {!link.accessToken ? (
+        {!link.token ? (
           <div className="mt-4 flex flex-col gap-3">
             <InlineError
               error={new ApiError(401, {
                 code: "SESSION_EXPIRED",
-                message_ja: link.errorDescription
-                  ? "リンクが無効か、有効期限が切れています。もう一度メールを送信してください。"
-                  : "メールのリンクから開いてください。リンクの有効期限が切れている場合は再送してください。",
+                message_ja: "メールのリンクから開いてください。リンクの有効期限が切れている場合は再送してください。",
               })}
             />
             <Link to="/login" className="text-sm text-primary hover:underline">

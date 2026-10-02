@@ -1,7 +1,7 @@
 import ARMSKit
 import SwiftUI
 
-/// IOS-01 ログイン: 受講者/講師, email/password (Supabase Auth), server role check, password reset.
+/// IOS-01 ログイン: 受講者/講師, email/password (ARMS API: POST /auth/tokens), server role check, password reset.
 struct LoginView: View {
   @Environment(AppModel.self) private var app
   @State private var email = ""

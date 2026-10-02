@@ -10,13 +10,14 @@ import XCTest
 // MARK: - Opt-in live contract test
 //
 // Runs the real ARMSKit client (URLSessionTransport → APIClient → DTOs / view models / voice bridge)
-// against a LOCAL stack: wrangler dev + Postgres + GoTrue + MinIO. Skipped unless ARMS_LIVE_API=1.
+// against a LOCAL stack: wrangler dev + Postgres + S3-compatible storage. Sign-in uses the real APIAuthService
+// (POST /auth/tokens with the seeded password). Skipped unless ARMS_LIVE_API=1.
 //
 //   apps/ios/ARMSKit/Scripts/live-contract-test.sh
 //
 // which seeds a fresh organisation (Scripts/seed-live.mjs) and runs
 //   ARMS_LIVE_API=1 ARMS_LIVE_FIXTURE=<fixture.json> swift test --filter LiveAPITests
-// Env: ARMS_LIVE_API_BASE (default http://127.0.0.1:8804/api/v1), ARMS_LIVE_AUTH_URL (default http://127.0.0.1:9999).
+// Env: ARMS_LIVE_API_BASE (default http://127.0.0.1:8804/api/v1).
 // Each run needs a fresh seed (bookings are not undone).
 
 struct LiveFixture: Decodable {
@@ -48,63 +49,10 @@ struct LiveFixture: Decodable {
   let voiceSessionId: String
 }
 
-/// Supabase Auth (GoTrue) password grant — what supabase-swift does in the app.
-final class GoTrueTokens: AuthService, @unchecked Sendable {
-  let authURL: URL
-  private let lock = NSLock()
-  private var email: String
-  private var password: String
-  private var token: String?
-
-  init(authURL: URL, email: String, password: String) {
-    self.authURL = authURL
-    self.email = email
-    self.password = password
-  }
-
-  func accessToken() async throws -> String {
-    if let token = lock.withLock({ token }) { return token }
-    return try await refreshAccessToken()
-  }
-
-  func refreshAccessToken() async throws -> String {
-    let (email, password) = lock.withLock { (self.email, self.password) }
-    let token = try await Self.passwordGrant(authURL: authURL, email: email, password: password)
-    lock.withLock { self.token = token }
-    return token
-  }
-
-  func signIn(email: String, password: String) async throws {
-    lock.withLock {
-      self.email = email
-      self.password = password
-    }
-    _ = try await refreshAccessToken()
-  }
-
-  func signOut() async { lock.withLock { token = nil } }
-  func hasStoredSession() async -> Bool { lock.withLock { token != nil } }
-
-  static func passwordGrant(authURL: URL, email: String, password: String) async throws -> String {
-    var components = URLComponents(url: authURL.appendingPathComponent("token"), resolvingAgainstBaseURL: false)!
-    components.queryItems = [URLQueryItem(name: "grant_type", value: "password")]
-    let body = try JSONSerialization.data(withJSONObject: ["email": email, "password": password])
-    let response = try await URLSessionTransport().send(
-      HTTPRequest(url: components.url!, method: .post, headers: ["Content-Type": "application/json"], body: body))
-    guard response.status == 200, let json = try? JSONValue(jsonData: response.body),
-      let token = json["access_token"]?.stringValue
-    else {
-      throw ARMSError.auth(.invalidCredentials)
-    }
-    return token
-  }
-}
-
 @MainActor
 final class LiveAPITests: XCTestCase {
   var fixture: LiveFixture!
   var baseURL: URL!
-  var authURL: URL!
 
   /// Called first by every test (not `setUp`, to keep XCTest's isolation of the overridden method untouched).
   func prepare() throws {
@@ -116,18 +64,19 @@ final class LiveAPITests: XCTestCase {
     }
     fixture = try JSONDecoder().decode(LiveFixture.self, from: data)
     baseURL = URL(string: env["ARMS_LIVE_API_BASE"] ?? "http://127.0.0.1:8804/api/v1")!
-    authURL = URL(string: env["ARMS_LIVE_AUTH_URL"] ?? "http://127.0.0.1:9999")!
   }
 
-  func client(_ person: LiveFixture.Person) -> APIClient {
-    APIClient(
-      baseURL: baseURL, transport: URLSessionTransport(),
-      tokens: GoTrueTokens(authURL: authURL, email: person.email, password: fixture.password),
+  /// A client signed in like the app: APIAuthService (POST /auth/tokens) → APIClient with the Bearer token.
+  func client(_ person: LiveFixture.Person) async throws -> APIClient {
+    let auth = APIAuthService(baseURL: baseURL, transport: URLSessionTransport(), store: InMemoryTokenStore(), deviceLabel: "LiveAPITests")
+    try await auth.signIn(email: person.email, password: fixture.password)
+    return APIClient(
+      baseURL: baseURL, transport: URLSessionTransport(), tokens: auth,
       retryPolicy: RetryPolicy(maxAttempts: 3, baseDelay: 0.2, maxDelay: 1))
   }
 
   func context(_ person: LiveFixture.Person, role: Role) async throws -> AppContext {
-    let api = client(person)
+    let api = try await client(person)
     let context = AppContext(api: api, cache: InMemoryResponseCache(), keyValues: InMemoryKeyValueStore())
     context.setMe(try await api.send(API.me(selectedRole: role)).value.data)
     return context
@@ -155,8 +104,8 @@ final class LiveAPITests: XCTestCase {
 
   func testA_IdentityAndRoleCheck() async throws {
     try prepare()
-    // SessionStore drives GoTrue sign-in + GET /me with X-ARMS-Selected-Role exactly like the login screen.
-    let tokens = GoTrueTokens(authURL: authURL, email: "", password: "")
+    // SessionStore drives APIAuthService sign-in + GET /me with X-ARMS-Selected-Role exactly like the login screen.
+    let tokens = APIAuthService(baseURL: baseURL, transport: URLSessionTransport(), store: InMemoryTokenStore())
     let api = APIClient(baseURL: baseURL, transport: URLSessionTransport(), tokens: tokens)
     let context = AppContext(api: api, cache: InMemoryResponseCache(), keyValues: InMemoryKeyValueStore())
     let session = SessionStore(auth: tokens, context: context)
@@ -176,7 +125,7 @@ final class LiveAPITests: XCTestCase {
     await session.signIn(email: fixture.student.email, password: fixture.password)
     XCTAssertEqual(session.state, .signedOut)
     XCTAssertEqual(session.message, SessionStore.roleMismatchMessage)
-    await expectError("ROLE_MISMATCH", API.me(selectedRole: .teacher), on: client(fixture.student))
+    await expectError("ROLE_MISMATCH", API.me(selectedRole: .teacher), on: try await client(fixture.student))
     log("GET /me (student as teacher) → 403 ROLE_MISMATCH → signed out")
 
     let teacherMe = try await client(fixture.teacher).send(API.me(selectedRole: .teacher)).value.data
@@ -194,8 +143,8 @@ final class LiveAPITests: XCTestCase {
 
   func testB_BookingTodayAndAttendance() async throws {
     try prepare()
-    let student = client(fixture.student)
-    let teacher = client(fixture.teacher)
+    let student = try await client(fixture.student)
+    let teacher = try await client(fixture.teacher)
 
     // Lesson slots (student scope) and the single slot.
     let slots = try await student.collectAll(query: ListQuery(limit: 100), API.lessonSlots)
@@ -372,12 +321,27 @@ final class LiveAPITests: XCTestCase {
     await queue.load()
     XCTAssertEqual(queue.items.map(\.id), [submission.id])
     let review = SubmissionReviewModel(submission: queue.items[0], context: teacherContext)
-    if submission.scanState == .clean {
+    // With a live scanner the verdict can arrive at any moment (callback), so decide from what the list shows.
+    if queue.items[0].scanState == .clean {
       let file = await review.fileURL()
       XCTAssertNotNil(file, review.fileError?.messageJa ?? "")
     } else {
       XCTAssertFalse(review.canOpenFile)
-      await expectError("SCAN_PENDING", API.submissionFile(id: submission.id), on: teacher)
+      let opened: Bool
+      do {
+        _ = try await teacher.send(API.submissionFile(id: submission.id))
+        opened = true
+      } catch {
+        XCTAssertEqual(error.code, "SCAN_PENDING")
+        opened = false
+      }
+      if opened {
+        // Only acceptable if the verdict arrived between the list and this request.
+        let reloaded = ReviewQueueModel(context: teacherContext)
+        await reloaded.load()
+        let state = reloaded.items.first(where: { $0.id == submission.id })?.scanState
+        XCTAssertEqual(state, .clean, "a file must not open before its scan is clean")
+      }
     }
     review.feedback = "具体的な数値目標を追加して再提出してください。"
     let reviewed = await review.review(.revisionRequested)
@@ -439,7 +403,7 @@ final class LiveAPITests: XCTestCase {
 
   func testE_VoiceSessionQuotaAndToolBridge() async throws {
     try prepare()
-    let student = client(fixture.student)
+    let student = try await client(fixture.student)
 
     // No OpenAI key locally: the session endpoint answers 503 VOICE_UNAVAILABLE with a Japanese message.
     await expectError("VOICE_UNAVAILABLE", API.createVoiceSession(key: IdempotencyKey()), on: student)

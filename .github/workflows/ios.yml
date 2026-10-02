@@ -41,7 +41,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Select Xcode (Swift 6.1+ is required by supabase-swift 2.55.3)
+      - name: Select Xcode 16.4 (Swift 6.1, the toolchain this project is verified with)
         run: |
           if [ -d /Applications/Xcode_16.4.app ]; then
             sudo xcode-select -s /Applications/Xcode_16.4.app

@@ -3,12 +3,13 @@ import { inject } from "vitest";
 import { createApp } from "../../src/app";
 import type { Deps } from "../../src/context";
 import { poolSource } from "../../src/db/client";
-import { createJwtVerifier } from "../../src/auth/jwt";
 import { loadConfig } from "../../src/env";
 import type { Integrations } from "../../src/integrations";
 import { createWebSession } from "../../src/auth/session";
+import { issueBearerSession } from "../../src/auth/tokens";
+import { sql } from "../../src/db/sql";
 import { RequestDb } from "../../src/db/client";
-import { TEST_AUDIENCE, TEST_ISSUER, TestAuthProvider, issueToken, testKeySet } from "./auth";
+import { TestAuthKit, TestMailer } from "./auth";
 
 export const TEST_ORIGIN = "https://arms.test.invalid";
 export const TEST_SESSION_KEY = Buffer.alloc(32, 7).toString("base64");
@@ -16,7 +17,9 @@ export const TEST_SESSION_KEY = Buffer.alloc(32, 7).toString("base64");
 export interface TestContext {
   app: ReturnType<typeof createApp>;
   deps: Deps;
-  auth: TestAuthProvider;
+  /** Credentials / sent e-mails (real DB rows; the mailer captures invitation and reset e-mails). */
+  auth: TestAuthKit;
+  mailer: TestMailer;
   /** Runtime-role pool (RLS enforced) — what the API uses. */
   pool: pg.Pool;
   /** Owner/superuser pool for fixtures and assertions that must bypass RLS. */
@@ -31,11 +34,12 @@ export interface TestContext {
 export function createTestContext(overrides: Partial<Integrations> = {}): TestContext {
   const pool = new pg.Pool({ connectionString: inject("databaseUrl"), max: 20 });
   const admin = new pg.Pool({ connectionString: inject("adminDatabaseUrl"), max: 5 });
-  const auth = new TestAuthProvider();
+  const mailer = new TestMailer();
+  const auth = new TestAuthKit(admin, mailer);
   const integrations: Integrations = {
     storage: null,
     scanner: null,
-    mail: null,
+    mail: mailer,
     push: null,
     queue: null,
     realtime: null,
@@ -46,16 +50,11 @@ export function createTestContext(overrides: Partial<Integrations> = {}): TestCo
   const config = loadConfig({
     APP_ENV: "test",
     APP_ORIGIN: TEST_ORIGIN,
-    SUPABASE_URL: "https://auth.test.invalid",
-    SUPABASE_AUTH_ISSUER: TEST_ISSUER,
-    SUPABASE_AUTH_AUDIENCE: TEST_AUDIENCE,
     WEB_SESSION_ENCRYPTION_KEY: TEST_SESSION_KEY,
   });
   const deps: Deps = {
     config,
     connections: poolSource(pool),
-    jwt: createJwtVerifier({ keySet: testKeySet, issuer: TEST_ISSUER, audience: TEST_AUDIENCE }),
-    auth,
     integrations,
     now: () => clock.now ?? new Date(),
     log: (e) => logs.push(e),
@@ -65,6 +64,7 @@ export function createTestContext(overrides: Partial<Integrations> = {}): TestCo
     app,
     deps,
     auth,
+    mailer,
     pool,
     admin,
     integrations,
@@ -83,10 +83,28 @@ export interface Caller {
   headers(method: string): Record<string, string>;
 }
 
-/** Bearer caller (iOS style) for teachers/students. */
-export async function bearerCaller(userId: string, orgId: string, opts: { aal?: "aal1" | "aal2" } = {}): Promise<Caller> {
-  const token = await issueToken(userId, { aal: opts.aal });
-  return { userId, orgId, headers: () => ({ Authorization: `Bearer ${token}` }) };
+let helperPool: pg.Pool | null = null;
+/** Runtime-role pool for fixture sessions (exits with the worker when idle). */
+function fixturePool(): pg.Pool {
+  helperPool ??= new pg.Pool({ connectionString: inject("databaseUrl"), max: 4, allowExitOnIdle: true });
+  return helperPool;
+}
+
+/**
+ * Bearer caller (iOS style) for teachers/students: a real bearer session row and its opaque access token. The fixture
+ * session is valid for 400 days so tests that move deps.now() forward keep their caller; token expiry itself is
+ * tested with tokens from POST /auth/tokens.
+ */
+export async function bearerCaller(userId: string, orgId: string): Promise<Caller & { accessToken: string; refreshToken: string }> {
+  const db = new RequestDb(poolSource(fixturePool()));
+  const tokens = await db.tx({}, async (tx) => {
+    const t = await issueBearerSession(tx, userId, "test", new Date());
+    await tx.exec(sql`UPDATE app.bearer_sessions SET access_expires_at = now() + interval '400 days', expires_at = now() + interval '400 days'
+      WHERE user_id = ${userId} AND device_label = 'test' AND access_expires_at <= now() + interval '2 hours'`);
+    return t;
+  });
+  await db.close();
+  return { userId, orgId, accessToken: tokens.accessToken, refreshToken: tokens.refreshToken, headers: () => ({ Authorization: `Bearer ${tokens.accessToken}` }) };
 }
 
 /** Cookie caller (Web BFF) with a real encrypted session row; admin sessions default to aal2 (MFA done). */
@@ -97,18 +115,8 @@ export async function cookieCaller(
 ): Promise<Caller & { sessionId: string; csrfToken: string }> {
   const aal = opts.aal ?? (user.role === "admin" ? "aal2" : "aal1");
   const db = new RequestDb(ctx.deps.connections);
-  const accessToken = await issueToken(user.userId, { aal });
   const s = await db.tx({ orgId: user.orgId, userId: user.userId }, (tx) =>
-    createWebSession(tx, TEST_SESSION_KEY, {
-      userId: user.userId,
-      orgId: user.orgId,
-      role: user.role,
-      aal,
-      accessToken,
-      refreshToken: crypto.randomUUID(),
-      accessExpiresAt: Math.floor(Date.now() / 1000) + 3600,
-      now: new Date(),
-    }),
+    createWebSession(tx, TEST_SESSION_KEY, { userId: user.userId, orgId: user.orgId, role: user.role, aal, now: new Date() }),
   );
   await db.close();
   return {

@@ -1,8 +1,8 @@
 import Foundation
 
 /// Secure key/value storage for authentication material. The app implements it with the
-/// Keychain (`kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly`); Supabase Auth persists its
-/// session through an adapter onto this protocol. Tests use `InMemoryTokenStore`.
+/// Keychain (`kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly`); `APIAuthService` persists its
+/// tokens here. Tests use `InMemoryTokenStore`.
 public protocol TokenStore: Sendable {
   func data(forKey key: String) throws -> Data?
   func set(_ data: Data, forKey key: String) throws
@@ -47,7 +47,7 @@ public final class InMemoryTokenStore: TokenStore, @unchecked Sendable {
   }
 }
 
-/// Supplies the Supabase access token for `Authorization: Bearer`.
+/// Supplies the ARMS access token for `Authorization: Bearer`.
 public protocol AccessTokenProvider: Sendable {
   /// A valid (refreshed if needed) access token, or `ARMSError.notSignedIn`.
   func accessToken() async throws -> String
@@ -55,7 +55,7 @@ public protocol AccessTokenProvider: Sendable {
   func refreshAccessToken() async throws -> String
 }
 
-/// Identity provider operations used by the login flow (implemented with supabase-swift Auth in the app).
+/// Sign-in operations used by the login flow (implemented by `APIAuthService` against POST /auth/tokens).
 public protocol AuthService: AccessTokenProvider {
   /// Email/password sign-in. Throws `ARMSError.auth(...)` with a Japanese message.
   func signIn(email: String, password: String) async throws

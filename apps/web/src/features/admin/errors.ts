@@ -66,11 +66,3 @@ export function conflictDetail(error: unknown): string | null {
   }
   return null;
 }
-
-/** Message shown after stop/resume when the Auth provider could not be updated (the DB change is already effective). */
-export function providerSyncMessage(result: { data?: Record<string, unknown> } | undefined): string | null {
-  const data = result?.data;
-  if (!data) return null;
-  if (data.provider_synced === false || typeof data.message_ja === "string") return typeof data.message_ja === "string" ? data.message_ja : null;
-  return null;
-}

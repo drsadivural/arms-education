@@ -159,10 +159,9 @@ public enum ARMSError: Error, Sendable, Equatable {
   }
 }
 
-/// Identity-provider (Supabase Auth) failures, mapped to Japanese.
+/// Sign-in failures (POST /auth/tokens), mapped to Japanese.
 public enum AuthFailure: Error, Sendable, Equatable {
   case invalidCredentials
-  case emailNotConfirmed
   case rateLimited
   case accountDisabled
   case network
@@ -172,7 +171,6 @@ public enum AuthFailure: Error, Sendable, Equatable {
   public var code: String {
     switch self {
     case .invalidCredentials: return "INVALID_CREDENTIALS"
-    case .emailNotConfirmed: return "EMAIL_NOT_CONFIRMED"
     case .rateLimited: return "RATE_LIMITED"
     case .accountDisabled: return "ACCOUNT_DISABLED"
     case .network: return "OFFLINE"
@@ -184,8 +182,6 @@ public enum AuthFailure: Error, Sendable, Equatable {
   public var messageJa: String {
     switch self {
     case .invalidCredentials: return ErrorCatalog.message(for: "INVALID_CREDENTIALS")
-    case .emailNotConfirmed:
-      return "メールアドレスの確認が完了していません。招待メールのリンクから設定を完了してください。"
     case .rateLimited: return ErrorCatalog.message(for: "RATE_LIMITED")
     case .accountDisabled: return ErrorCatalog.message(for: "ACCOUNT_DISABLED")
     case .network: return "ネットワークに接続できません。通信環境を確認してから再度お試しください。"

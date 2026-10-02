@@ -139,7 +139,7 @@ export interface paths {
         put?: never;
         /**
          * 講師追加（招待）
-         * @description 許可ロール: admin。Auth providerのユーザー作成→DBプロフィール作成→招待メール送信をinvitation_jobsで追跡するsaga。同じIdempotency-Keyの再送は同じジョブを再開し、Authユーザーを二重に作成しない。招待メールの送信に失敗してもプロフィールは作成済みで、invitation.state=failed（再送可能）を返す。
+         * @description 許可ロール: admin。ユーザーID割当→DBプロフィール作成→招待メール（一回限りのリンク、24時間有効）送信をinvitation_jobsで追跡するsaga。同じIdempotency-Keyの再送は同じジョブを再開し、ユーザーを二重に作成しない。招待メールの送信に失敗してもプロフィールは作成済みで、invitation.state=failed（再送可能）を返す。
          */
         post: operations["post_teachers"];
         delete?: never;
@@ -1231,7 +1231,7 @@ export interface paths {
         put?: never;
         /**
          * 移行rollback
-         * @description 許可ロール: admin（講師・受講者は403、他組織のジョブは404）。completed / failed（一部反映）のジョブを取り消す。import_items の before/after/committed_version を比較し、移行後に編集された行（row_versionが異なる）は上書きせず rollback_state=manual（手動照合が必要）として残す。移行で作成した進捗・クラスは削除、更新した行は移行前の値に戻す。講師・新入社員のアカウントは削除しない（ログイン済みの可能性があるため）：移行で作成したアカウントは停止（membership無効化・セッション失効・認証サービスのログイン停止）し、更新した項目は移行前の値に戻す。予約や主担当クラスがあり停止できない人は manual。状態は rolled_back（manual_review_rows > 0 なら一部手動照合）。処理時間の上限に達した場合は rollback_started=true・state は元のままで返すので、再送して続行する。取り消しを開始したジョブは確定できない。
+         * @description 許可ロール: admin（講師・受講者は403、他組織のジョブは404）。completed / failed（一部反映）のジョブを取り消す。import_items の before/after/committed_version を比較し、移行後に編集された行（row_versionが異なる）は上書きせず rollback_state=manual（手動照合が必要）として残す。移行で作成した進捗・クラスは削除、更新した行は移行前の値に戻す。講師・新入社員のアカウントは削除しない（ログイン済みの可能性があるため）：移行で作成したアカウントは停止（membership無効化・Web/iOSセッション失効）し、更新した項目は移行前の値に戻す。予約や主担当クラスがあり停止できない人は manual。状態は rolled_back（manual_review_rows > 0 なら一部手動照合）。処理時間の上限に達した場合は rollback_started=true・state は元のままで返すので、再送して続行する。取り消しを開始したジョブは確定できない。
          */
         post: operations["post_imports_id_rollback"];
         delete?: never;
@@ -1519,7 +1519,7 @@ export interface paths {
         put?: never;
         /**
          * パスワード再設定メール送信
-         * @description 許可ロール: 公開。登録有無にかかわらず同じ応答を返す（アカウント列挙防止）。
+         * @description 許可ロール: 公開。登録済みで有効な利用者には1時間有効の再設定リンクをメール送信する。列挙防止のため、未登録・停止中のアドレスでも同じ応答を返す。メール送信サービス未設定は503 NOT_CONFIGURED。
          */
         post: operations["post_auth_password_reset"];
         delete?: never;
@@ -1579,9 +1579,69 @@ export interface paths {
         put?: never;
         /**
          * 招待・再設定リンクからのパスワード設定
-         * @description 許可ロール: 公開（メールリンクの短期アクセストークンをAuthの公開鍵で検証）。組織メンバーシップが必要。受講者はiOS、管理者・講師はWebでログインするよう案内する。
+         * @description 許可ロール: 公開（招待・パスワード再設定メールのリンクに含まれる一回限りのトークンで認可。有効期限: 招待24時間・再設定1時間）。組織メンバーシップが必要。設定後はトークンを無効化し、パスワード再設定の場合はほかの端末のセッションを解除する。受講者はiOS、管理者・講師はWebでログインするよう案内する。
          */
         post: operations["post_auth_password"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/tokens": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * iOSログイン（トークン発行）
+         * @description 許可ロール: 公開（メールアドレス・パスワードで認証）。iOSアプリ用。いずれかの組織に有効なメンバーシップが必要。不透明なアクセストークン（1時間）とリフレッシュトークン（ローテーション、最終利用から30日・ログインから最長90日）を返す。ロールは発行後に GET /me でサーバーが判定する。連続10回の失敗で15分ログインを制限（429）。
+         */
+        post: operations["post_auth_tokens"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/tokens/refresh": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * iOSトークン更新
+         * @description 許可ロール: 公開（リフレッシュトークンで認可）。新しいアクセストークンとリフレッシュトークンを返し、古いリフレッシュトークンは無効になる。無効化済みのリフレッシュトークンが再提示された場合は盗用とみなしてセッションを失効させる（401 SESSION_EXPIRED）。
+         */
+        post: operations["post_auth_tokens_refresh"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/tokens/revoke": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * iOSログアウト（トークン失効）
+         * @description 許可ロール: 公開（リフレッシュトークンで認可）。そのセッションを失効させる。未知・失効済みのトークンでも同じ成功応答（冪等）。
+         */
+        post: operations["post_auth_tokens_revoke"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1639,7 +1699,7 @@ export interface paths {
         put?: never;
         /**
          * アカウント再開
-         * @description 許可ロール: admin。membershipを有効に戻し、Auth providerのログイン停止を解除する。受講者の在籍状態は変更しない。
+         * @description 許可ロール: admin。membershipを有効に戻す（再びログインできる）。受講者の在籍状態は変更しない。
          */
         post: operations["post_settings_users_enable"];
         delete?: never;
@@ -1679,7 +1739,7 @@ export interface paths {
         put?: never;
         /**
          * 本人削除申請の対応完了
-         * @description 許可ロール: admin。アカウントを停止（membership無効・Webセッション失効・Auth providerでログイン停止）し、申請をcompletedにする。研修記録は保持する。
+         * @description 許可ロール: admin。アカウントを停止（membership無効・Web/iOSセッション失効）し、申請をcompletedにする。研修記録は保持する。
          */
         post: operations["post_account_deletion_request_complete"];
         delete?: never;
@@ -1702,6 +1762,26 @@ export interface paths {
         get: operations["get_events_export_csv"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/settings/users/{id}/mfa-reset": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * 管理者の二段階認証リセット
+         * @description 許可ロール: admin（二段階認証済みのWebセッション）。同じ組織の管理者が認証アプリを紛失した場合に、その管理者のTOTP登録を削除し、ログイン中のセッションをすべて解除する。対象者は次回ログイン時に認証アプリを登録し直す。自分自身は対象にできない（422）。対象が管理者でない場合は422。監査ログ auth.mfa_reset を記録する。
+         */
+        post: operations["post_settings_users_id_mfa_reset"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1942,7 +2022,7 @@ export interface components {
             kana?: string;
             /**
              * Format: email
-             * @description 登録後は変更できない（Auth providerのログインIDのため）。
+             * @description 登録後は変更できない（ログインIDのため）。
              */
             email: string;
             teacher_number: string;
@@ -3194,9 +3274,41 @@ export interface components {
             checked_at: string;
         };
         PasswordSetInput: {
-            access_token: string;
+            /** @description メールリンクの #token= の値（一回限り）。 */
+            token: string;
             /** @description 英字と数字を両方含む10文字以上。 */
             password: string;
+        };
+        TokenGrantInput: {
+            /** Format: email */
+            email: string;
+            password: string;
+            /** @description 端末の表示名（任意、セッション管理用）。 */
+            device_label?: string;
+        };
+        TokenRefreshInput: {
+            refresh_token: string;
+        };
+        TokenPair: {
+            /** @description Authorization: Bearer に使う不透明トークン。 */
+            access_token: string;
+            refresh_token: string;
+            /** @enum {string} */
+            token_type: "Bearer";
+            /** @description アクセストークンの残り秒数。 */
+            expires_in: number;
+            /**
+             * Format: date-time
+             * @description セッションの最長期限（再ログインが必要になる時刻）。
+             */
+            refresh_expires_at: string;
+            /** Format: uuid */
+            user_id: string;
+        };
+        TokenResponse: {
+            data: components["schemas"]["TokenPair"];
+            /** Format: date-time */
+            checked_at: string;
         };
         TeacherCreateResponse: {
             data: components["schemas"]["Teacher"];
@@ -7044,6 +7156,90 @@ export interface operations {
             503: components["responses"]["Error"];
         };
     };
+    post_auth_tokens: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TokenGrantInput"];
+            };
+        };
+        responses: {
+            /** @description 成功 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TokenResponse"];
+                };
+            };
+            401: components["responses"]["Error"];
+            403: components["responses"]["Error"];
+            422: components["responses"]["Error"];
+            429: components["responses"]["Error"];
+            503: components["responses"]["Error"];
+        };
+    };
+    post_auth_tokens_refresh: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TokenRefreshInput"];
+            };
+        };
+        responses: {
+            /** @description 成功 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TokenResponse"];
+                };
+            };
+            401: components["responses"]["Error"];
+            422: components["responses"]["Error"];
+            429: components["responses"]["Error"];
+            503: components["responses"]["Error"];
+        };
+    };
+    post_auth_tokens_revoke: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TokenRefreshInput"];
+            };
+        };
+        responses: {
+            /** @description 成功 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ActionResult"];
+                };
+            };
+            422: components["responses"]["Error"];
+            429: components["responses"]["Error"];
+            503: components["responses"]["Error"];
+        };
+    };
     get_event_deliveries: {
         parameters: {
             query?: {
@@ -7237,6 +7433,39 @@ export interface operations {
             401: components["responses"]["Error"];
             403: components["responses"]["Error"];
             422: components["responses"]["Error"];
+        };
+    };
+    post_settings_users_id_mfa_reset: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description cookie認証の場合必須。Bearer専用iOSには不要。 */
+                "X-CSRF-Token"?: string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 成功 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ActionResult"];
+                };
+            };
+            400: components["responses"]["Error"];
+            401: components["responses"]["Error"];
+            403: components["responses"]["Error"];
+            404: components["responses"]["Error"];
+            409: components["responses"]["Error"];
+            422: components["responses"]["Error"];
+            429: components["responses"]["Error"];
+            503: components["responses"]["Error"];
         };
     };
     get_submissions: {

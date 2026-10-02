@@ -57,10 +57,6 @@
 	</array>
 	<key>ARMSAPIBaseURL</key>
 	<string>$(API_BASE_URL)</string>
-	<key>ARMSSupabaseURL</key>
-	<string>$(SUPABASE_URL)</string>
-	<key>ARMSSupabasePublishableKey</key>
-	<string>$(SUPABASE_PUBLISHABLE_KEY)</string>
 	<key>ARMSTermsURL</key>
 	<string>$(TERMS_URL)</string>
 	<key>ARMSPrivacyPolicyURL</key>

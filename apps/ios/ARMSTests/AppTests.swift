@@ -8,15 +8,12 @@ final class AppConfigurationTests: XCTestCase {
   func testLoadsValidConfigurationAndAppendsAPIPath() throws {
     let info: [String: Any] = [
       "ARMSAPIBaseURL": "https://arms-api.example.com",
-      "ARMSSupabaseURL": "https://project.supabase.co",
-      "ARMSSupabasePublishableKey": "sb_publishable_test",
       "ARMSTermsURL": "https://example.com/terms",
       "ARMSPrivacyPolicyURL": "$(PRIVACY_POLICY_URL)",
       "ARMSAPNsEnvironment": "production",
     ]
     let config = try AppConfiguration.load(from: info).get()
     XCTAssertEqual(config.apiBaseURL.absoluteString, "https://arms-api.example.com/api/v1")
-    XCTAssertEqual(config.supabaseURL.host, "project.supabase.co")
     XCTAssertEqual(config.termsURL?.absoluteString, "https://example.com/terms")
     XCTAssertNil(config.privacyPolicyURL, "unresolved build settings are treated as missing")
     XCTAssertEqual(config.apnsEnvironment, .production)
@@ -24,13 +21,10 @@ final class AppConfigurationTests: XCTestCase {
 
   func testMissingAndInvalidValues() {
     XCTAssertEqual(
-      AppConfiguration.load(from: ["ARMSAPIBaseURL": "", "ARMSSupabaseURL": "$(SUPABASE_URL)"]),
-      .failure(.missing(["API_BASE_URL", "SUPABASE_URL", "SUPABASE_PUBLISHABLE_KEY"])))
+      AppConfiguration.load(from: ["ARMSAPIBaseURL": "$(API_BASE_URL)"]),
+      .failure(.missing(["API_BASE_URL"])))
     XCTAssertEqual(
-      AppConfiguration.load(from: [
-        "ARMSAPIBaseURL": "http://arms.example.com", "ARMSSupabaseURL": "https://p.supabase.co",
-        "ARMSSupabasePublishableKey": "k",
-      ]),
+      AppConfiguration.load(from: ["ARMSAPIBaseURL": "http://arms.example.com"]),
       .failure(.invalid(["API_BASE_URL"])), "plain HTTP is only allowed for localhost")
     XCTAssertNotNil(AppConfiguration.validatedURL("http://localhost:8787"))
     XCTAssertEqual(
@@ -38,13 +32,6 @@ final class AppConfigurationTests: XCTestCase {
       "https://x.example.com/custom/v1")
   }
 
-  func testSupabaseAuthURL() {
-    XCTAssertEqual(
-      SupabaseAuthService.authURL(URL(string: "https://p.supabase.co")!).absoluteString, "https://p.supabase.co/auth/v1")
-    XCTAssertEqual(
-      SupabaseAuthService.authURL(URL(string: "http://localhost:54321/auth/v1")!).absoluteString,
-      "http://localhost:54321/auth/v1")
-  }
 }
 
 @MainActor

@@ -31,9 +31,6 @@ settings:
 packages:
   ARMSKit:
     path: ARMSKit
-  Supabase:
-    url: https://github.com/supabase/supabase-swift
-    exactVersion: 2.55.3
   WebRTC:
     url: https://github.com/stasel/WebRTC
     exactVersion: 154.0.0
@@ -65,8 +62,6 @@ targets:
         SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD: NO
     dependencies:
       - package: ARMSKit
-      - package: Supabase
-        product: Auth
       - package: WebRTC
 
   ARMSTests:

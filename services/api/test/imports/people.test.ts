@@ -6,7 +6,6 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { call } from "../helpers/app";
 import { expectContract } from "../helpers/contract";
 import { SAMPLE_COLUMNS, commitJob, createJob, csv, importAll, importWorld, items, uniq, validateJob, withBom, type ImportWorld } from "../helpers/imports-fixtures";
-import { ApiError } from "../../src/http/errors";
 
 let w: ImportWorld;
 beforeAll(async () => {
@@ -41,30 +40,21 @@ describe("teachers", () => {
     expect(rows.map((r: any) => r.active).sort()).toEqual([false, true]);
   });
 
-  it("resumes an interrupted commit after an Auth provider outage without creating accounts twice", async () => {
+  it("resumes an interrupted commit after a database outage without creating accounts twice", async () => {
     const ns = [uniq(), uniq(), uniq()];
     const jobId = await createJob(w, teacherFile(ns.map((n) => teacherRow(n))), { entity: "teachers", columns: SAMPLE_COLUMNS.teachers });
     await validateJob(w, jobId);
-    const original = w.ctx.auth.adminCreateUser.bind(w.ctx.auth);
-    let calls = 0;
-    w.ctx.auth.adminCreateUser = async (email: string) => {
-      calls++;
-      if (calls === 2) throw new ApiError("AUTH_PROVIDER_UNAVAILABLE");
-      return original(email);
-    };
-    try {
-      const failed = await commitJob(w, jobId);
-      expect(failed.status).toBe(200);
-      expectContract(failed, "post", "/imports/{id}/commit");
-      expect(failed.body.data).toMatchObject({ state: "failed", committed_rows: 1, failure: { code: "AUTH_PROVIDER_UNAVAILABLE", from_row: 3, to_row: 3, row: 3 } });
-      expect(failed.body.data.failure.message_ja).toContain("認証サービス");
-    } finally {
-      w.ctx.auth.adminCreateUser = original;
-    }
-    const usersBefore = w.ctx.auth.users.size;
+    // The second data row (row 3) fails once while its profile is written.
+    await w.ctx.admin.query("SELECT public.arms_test_arm_fault($1)", [`t-${ns[1]}@example.invalid`]);
+    const failed = await commitJob(w, jobId);
+    expect(failed.status).toBe(200);
+    expectContract(failed, "post", "/imports/{id}/commit");
+    expect(failed.body.data).toMatchObject({ state: "failed", committed_rows: 1, failure: { code: "DB_UNAVAILABLE", from_row: 3, to_row: 3, row: 3 } });
+    expect(failed.body.data.failure.message_ja).toContain("データベース");
     const resumed = await commitJob(w, jobId);
     expect(resumed.body.data).toMatchObject({ state: "completed", committed_rows: 3, failure: null });
-    expect(w.ctx.auth.users.size).toBe(usersBefore + 2);
+    const users = await q("SELECT count(*)::int AS n FROM app.users WHERE lower(email) = ANY($1)", [ns.map((n) => `t-${n}@example.invalid`)]);
+    expect(users[0].n).toBe(3);
     const count = await q("SELECT count(*)::int AS n FROM app.teacher_profiles WHERE teacher_number = ANY($1)", [ns.map((n) => `T-${n}`)]);
     expect(count[0].n).toBe(3);
     const audit = await q("SELECT event_type FROM app.audit_events WHERE entity_id = $1 AND event_type LIKE 'import.commit%' ORDER BY created_at", [jobId]);

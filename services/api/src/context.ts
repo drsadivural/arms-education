@@ -1,8 +1,6 @@
 import type { Context } from "hono";
 import type { Bindings, Config } from "./env";
 import type { ConnectionSource, RequestDb, Tx } from "./db/client";
-import type { JwtVerifier } from "./auth/jwt";
-import type { AuthProvider } from "./integrations/supabase-auth";
 import type { Integrations } from "./integrations";
 
 export type Role = "admin" | "teacher" | "student";
@@ -25,8 +23,6 @@ export interface Actor {
 export interface Deps {
   config: Config;
   connections: ConnectionSource;
-  jwt: JwtVerifier;
-  auth: AuthProvider;
   integrations: Integrations;
   now(): Date;
   log(event: Record<string, unknown>): void;

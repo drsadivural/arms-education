@@ -114,7 +114,7 @@ describe("admin-area access matrix", () => {
   }
 
   it("admin accounts must use the Web (bearer admin → ADMIN_USE_WEB)", async () => {
-    const bearerAdmin = await bearerCaller(org.admin.userId, org.orgId, { aal: "aal2" });
+    const bearerAdmin = await bearerCaller(org.admin.userId, org.orgId);
     const res = await call(ctx, bearerAdmin, "GET", "/teachers");
     expect(res.status).toBe(403);
     expect(res.body.code).toBe("ADMIN_USE_WEB");

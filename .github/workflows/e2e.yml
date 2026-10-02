@@ -26,12 +26,14 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - name: Browsers (with OS dependencies)
         run: pnpm --filter @arms/web exec playwright install --with-deps ${{ matrix.browser }}
-      - name: Local stack (PostgreSQL, PgBouncer, Supabase Auth, SeaweedFS S3, ClamAV scanner, Mailpit) with generated local-only keys
+      - name: Local stack (PostgreSQL, PgBouncer, SeaweedFS S3, ClamAV scanner, Mailpit + mail relay) with generated local-only keys
         run: |
           node infra/local/setup.mjs
           docker compose -f infra/local/compose.yaml up -d
           wait_for() { for i in $(seq 1 "$2"); do curl -sf "$1" > /dev/null && return 0; sleep 2; done; echo "::error::$1 not ready"; docker compose -f infra/local/compose.yaml logs --tail 50; return 1; }
-          wait_for http://localhost:9999/health 60
+          for i in $(seq 1 60); do docker compose -f infra/local/compose.yaml exec -T postgres pg_isready -U postgres -d arms > /dev/null && break; sleep 2; done
+          # Invitation / password-reset e-mails go Worker → relay → Mailpit (the E2E tests read the links from Mailpit).
+          wait_for http://localhost:9025/health 60
           # Bucket created by s3-init; the scanner answers 200 only once clamd has loaded its signatures (first freshclam download).
           for i in $(seq 1 90); do [ "$(docker compose -f infra/local/compose.yaml ps -a --format '{{.State}} {{.ExitCode}}' s3-init)" = "exited 0" ] && break; sleep 2; done
           docker compose -f infra/local/compose.yaml logs s3-init | grep -q "bucket arms-materials ready" || { echo "::error::S3 bucket not created"; exit 1; }

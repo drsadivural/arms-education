@@ -1,5 +1,4 @@
 import ARMSKit
-import Auth
 import Foundation
 import Security
 
@@ -74,15 +73,6 @@ final class KeychainTokenStore: TokenStore, @unchecked Sendable {
 struct KeychainError: Error, CustomStringConvertible {
   let status: OSStatus
   var description: String { "Keychain error \(status)" }
-}
-
-/// Bridges supabase-swift's session persistence onto ARMSKit's `TokenStore` (Keychain).
-struct KeychainAuthStorage: AuthLocalStorage {
-  let tokens: any TokenStore
-
-  func store(key: String, value: Data) throws { try tokens.set(value, forKey: key) }
-  func retrieve(key: String) throws -> Data? { try tokens.data(forKey: key) }
-  func remove(key: String) throws { try tokens.removeValue(forKey: key) }
 }
 
 /// Non-secret preferences in `UserDefaults` (Required Reason API CA92.1: same-app access only).

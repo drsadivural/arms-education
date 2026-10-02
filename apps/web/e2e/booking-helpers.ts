@@ -1,26 +1,15 @@
 /**
  * E2E helpers for the booking screens. Students use only the iOS app (Bearer tokens), so their reservations are
  * created through the real API: the student is registered with the admin Web session (POST /students with the
- * CSRF token), receives a password through the GoTrue admin API, signs in with the password grant and books
+ * CSRF token), sets a password from the invitation e-mail link, signs in like the app (POST /auth/tokens) and books
  * with `Authorization: Bearer` + Idempotency-Key — exactly what the app does.
  */
 import { randomUUID } from "node:crypto";
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
-import { expect, request as playwrightRequest, type APIRequestContext, type Page } from "@playwright/test";
+import { expect, type APIRequestContext, type Page } from "@playwright/test";
+import { WEB_ORIGIN, acceptInvitation, iosApi } from "./accounts";
 import AxeBuilder from "@axe-core/playwright";
 
-const root = join(import.meta.dirname, "..", "..", "..");
-const vars = Object.fromEntries(
-  readFileSync(join(root, "services/api/.dev.vars"), "utf8")
-    .split("\n")
-    .filter((l) => l.includes("="))
-    .map((l) => [l.slice(0, l.indexOf("=")), l.slice(l.indexOf("=") + 1)]),
-) as Record<string, string>;
-const AUTH = vars.SUPABASE_AUTH_URL ?? "http://localhost:9999";
-const ADMIN_SECRET = vars.SUPABASE_ADMIN_SECRET ?? "";
-
-export const WEB_ORIGIN = `http://localhost:${process.env.ARMS_WEB_PORT ?? 5188}`;
+export { WEB_ORIGIN };
 
 /** A unique suffix per call so parallel/re-run data never collides. */
 export const uniq = () => `${Date.now().toString(36)}${Math.floor(Math.random() * 1e4).toString(36)}`;
@@ -93,7 +82,7 @@ export interface StudentActor {
 }
 
 /**
- * Registers a student in the classroom with the admin Web session, sets a password with the GoTrue admin API and
+ * Registers a student in the classroom with the admin Web session, sets the password from the invitation e-mail and
  * returns an API context authenticated like the iOS app (Bearer access token).
  */
 export async function createStudent(adminPage: Page, input: { classroomId: string; teacherId: string; name: string }): Promise<StudentActor> {
@@ -119,18 +108,8 @@ export async function createStudent(adminPage: Page, input: { classroomId: strin
   expect(created.status, JSON.stringify(created.body)).toBe(200);
   const userId = created.body.data.id;
 
-  const admin = { "Content-Type": "application/json", Authorization: `Bearer ${ADMIN_SECRET}`, apikey: ADMIN_SECRET };
-  const pw = await fetch(`${AUTH}/admin/users/${userId}`, { method: "PUT", headers: admin, body: JSON.stringify({ password, email_confirm: true }) });
-  expect(pw.status, "GoTrue admin password").toBe(200);
-  const tokenRes = await fetch(`${AUTH}/token?grant_type=password`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email, password }) });
-  expect(tokenRes.status, "GoTrue password grant").toBe(200);
-  const { access_token } = (await tokenRes.json()) as { access_token: string };
-  // No cookies: the API rejects requests carrying both a session cookie and a Bearer token (AMBIGUOUS_AUTH).
-  const api = await playwrightRequest.newContext({
-    baseURL: WEB_ORIGIN,
-    storageState: { cookies: [], origins: [] },
-    extraHTTPHeaders: { Authorization: `Bearer ${access_token}`, Accept: "application/json" },
-  });
+  await acceptInvitation(email, password);
+  const api = await iosApi(email, password);
   return { id: userId, name: input.name, email, api };
 }
 

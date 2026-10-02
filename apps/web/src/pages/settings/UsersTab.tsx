@@ -20,7 +20,7 @@ import { useCurrentUser } from "../../lib/session";
 import { adminKeys } from "../../features/admin/keys";
 import { statusQuery, useCursorList, useUrlFilters } from "../../features/admin/hooks";
 import { InvitationResultCard, InvitationStateBadge, ListCount, SaveErrorBanner, SearchField, useResendInvite } from "../../features/admin/components";
-import { applyApiErrors, conflictDetail, providerSyncMessage } from "../../features/admin/errors";
+import { applyApiErrors, conflictDetail } from "../../features/admin/errors";
 import { InviteForm, type InviteFormValues } from "../../features/admin/forms";
 import { smallLinkClass } from "../../features/admin/styles";
 import type { AccountDeletionRequest, ActionResult, DataResponse, InviteResult, User } from "../../features/admin/types";
@@ -28,7 +28,7 @@ import type { AccountDeletionRequest, ActionResult, DataResponse, InviteResult, 
 const FILTER_KEYS = ["q", "role", "status"] as const;
 const roleTone: Record<User["role"], Tone> = { admin: "info", teacher: "success", student: "neutral" };
 
-/** WEB-18 ユーザー管理: アカウント一覧・管理者招待・停止/再開・招待再送・本人削除申請の対応。 */
+/** WEB-18 ユーザー管理: アカウント一覧・管理者招待・停止/再開・招待再送・管理者の二段階認証リセット・本人削除申請の対応。 */
 export function UsersTab({ inviteOpen, onInviteOpenChange }: { inviteOpen: boolean; onInviteOpenChange(open: boolean): void }) {
   const me = useCurrentUser();
   const online = useOnline();
@@ -41,14 +41,23 @@ export function UsersTab({ inviteOpen, onInviteOpenChange }: { inviteOpen: boole
 
   const toggle = useMutation({
     mutationFn: ({ user, action }: { user: User; action: "disable" | "enable" }) => api.post<ActionResult>(`/settings/users/${user.id}/${action}`),
-    onSuccess: (res, { user, action }) => {
+    onSuccess: (_res, { user, action }) => {
       setTarget(null);
       void qc.invalidateQueries({ queryKey: adminKeys.users });
       void qc.invalidateQueries({ queryKey: adminKeys.teachers });
       void qc.invalidateQueries({ queryKey: adminKeys.students });
-      const msg = providerSyncMessage(res);
-      if (action === "disable") toast.success(`${user.display_name}さんのアカウントを停止しました`, msg ?? "ログイン中のセッションも無効になりました。");
-      else toast.success(`${user.display_name}さんのアカウントを再開しました`, msg ?? undefined);
+      if (action === "disable") toast.success(`${user.display_name}さんのアカウントを停止しました`, "ログイン中のセッション（Web・iOS）も無効になりました。");
+      else toast.success(`${user.display_name}さんのアカウントを再開しました`);
+    },
+  });
+  // 管理者が認証アプリを紛失した場合: 別の管理者がTOTP登録を削除し、次回ログイン時に登録し直してもらう。
+  const [mfaTarget, setMfaTarget] = useState<User | null>(null);
+  const mfaReset = useMutation({
+    mutationFn: (user: User) => api.post<ActionResult>(`/settings/users/${user.id}/mfa-reset`),
+    onSuccess: (res, user) => {
+      setMfaTarget(null);
+      const msg = typeof res.data?.message_ja === "string" ? res.data.message_ja : undefined;
+      toast.success(`${user.display_name}さんの二段階認証をリセットしました`, msg);
     },
   });
   const resend = useResendInvite(() => void qc.invalidateQueries({ queryKey: adminKeys.users }));
@@ -88,6 +97,11 @@ export function UsersTab({ inviteOpen, onInviteOpenChange }: { inviteOpen: boole
                   招待を再送
                 </Button>
               ) : null}
+              {u.role === "admin" && u.active && u.id !== me.id ? (
+                <Button size="sm" variant="ghost" disabled={!online} onClick={() => (mfaReset.reset(), setMfaTarget(u))} aria-label={`${u.display_name}さんの二段階認証をリセット`}>
+                  二段階認証をリセット
+                </Button>
+              ) : null}
               {u.id === me.id ? (
                 <span className="text-[11px] text-muted">（自分）</span>
               ) : u.active ? (
@@ -104,7 +118,7 @@ export function UsersTab({ inviteOpen, onInviteOpenChange }: { inviteOpen: boole
         },
       },
     ],
-    [me.id, online, resend, toggle],
+    [me.id, online, resend, toggle, mfaReset],
   );
 
   return (
@@ -207,6 +221,29 @@ export function UsersTab({ inviteOpen, onInviteOpenChange }: { inviteOpen: boole
           </div>
         ) : null}
       </ConfirmDialog>
+      <ConfirmDialog
+        open={!!mfaTarget}
+        onOpenChange={(open) => !open && !mfaReset.isPending && setMfaTarget(null)}
+        title="二段階認証をリセットしますか？"
+        description={
+          mfaTarget ? (
+            <p>
+              <b>
+                {mfaTarget.display_name}（{mfaTarget.email}）
+              </b>
+              の認証アプリの登録を削除し、ログイン中のセッションをすべて解除します。本人確認のうえ実行してください。次回ログイン時に認証アプリを登録し直す必要があります。
+            </p>
+          ) : (
+            ""
+          )
+        }
+        confirmLabel="リセットする"
+        tone="danger"
+        loading={mfaReset.isPending}
+        onConfirm={() => mfaTarget && !mfaReset.isPending && mfaReset.mutate(mfaTarget)}
+      >
+        {mfaReset.error ? <InlineError error={mfaReset.error} /> : null}
+      </ConfirmDialog>
     </div>
   );
 }
@@ -295,7 +332,7 @@ function DeletionRequests() {
     onSuccess: (res, r) => {
       setTarget(null);
       void qc.invalidateQueries({ queryKey: adminKeys.users });
-      toast.success(`${r.display_name}さんの削除申請を対応完了にしました`, providerSyncMessage(res) ?? "アカウントは停止され、研修記録は保持されます。");
+      toast.success(`${r.display_name}さんの削除申請を対応完了にしました`, "アカウントは停止され、研修記録は保持されます。");
     },
   });
   const columns = useMemo<ColumnDef<AccountDeletionRequest, unknown>[]>(

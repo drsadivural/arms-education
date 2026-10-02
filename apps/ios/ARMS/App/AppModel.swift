@@ -34,9 +34,9 @@ final class AppModel {
     let bundleId = Bundle.main.bundleIdentifier ?? "arms"
     let keyValues = UserDefaultsKeyValueStore()
     let tokenStore = KeychainTokenStore(service: "\(bundleId).auth")
-    let auth = SupabaseAuthService(
-      supabaseURL: configuration.supabaseURL, publishableKey: configuration.supabasePublishableKey,
-      storage: KeychainAuthStorage(tokens: tokenStore))
+    let auth = APIAuthService(
+      baseURL: configuration.apiBaseURL, transport: URLSessionTransport(), store: tokenStore,
+      deviceLabel: UIDevice.current.model)
     let relay = SessionExpiryRelay()
     let api = APIClient(
       baseURL: configuration.apiBaseURL, transport: URLSessionTransport(), tokens: auth,

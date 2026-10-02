@@ -16,7 +16,7 @@ import { decodeCursor, paginate, parseLimit } from "../../http/pagination";
 import { action, ok, page } from "../../http/respond";
 import { ListQuery, TextIdCursor, audit, diff, enqueue } from "../../domain/admin/common";
 import { runInvitation } from "../../domain/admin/invitations";
-import { lockMembership, setMembershipActive, syncProviderBan } from "../../domain/admin/accounts";
+import { lockMembership, setMembershipActive } from "../../domain/admin/accounts";
 import { activeReservationCount, findStudent, listStudents } from "../../repositories/admin/students";
 
 export const studentRoutes = new Hono<AppEnv>();
@@ -64,9 +64,9 @@ async function assertClassroomTeacher(tx: Tx, orgId: string, classroomId: string
 }
 
 /**
- * Early seat check before the Auth provider user is created: locks the classroom row (the same lock the capacity
+ * Early seat check before the invitation allocates a user: locks the classroom row (the same lock the capacity
  * trigger takes) and counts active students plus other in-flight student invitations for this classroom, so
- * concurrent requests for the last seat do not create provider accounts that can never get a profile.
+ * concurrent requests for the last seat do not allocate accounts that can never get a profile.
  * The DB trigger remains the authoritative guarantee.
  */
 async function assertSeatAvailable(tx: Tx, orgId: string, classroomId: string, exceptJobId: string | null): Promise<void> {
@@ -207,7 +207,6 @@ studentRoutes.patch("/students/:id", requireRole("admin"), async (c) => {
     await audit(tx, actor, activeChanged && !input.active ? "student.archived" : "student.updated", id, { changes });
     return { membershipChanged, student: await findStudent(tx, actor, id) };
   });
-  if (result.membershipChanged) await syncProviderBan(c, id, !input.active);
   if (!result.student) fail("NOT_FOUND");
   return ok(c, result.student, { version: result.student.row_version });
 });
@@ -231,9 +230,8 @@ studentRoutes.delete("/students/:id", requireRole("admin"), async (c) => {
     await audit(tx, actor, "student.archived", id, { employee_number: before.employee_number, classroom_id: before.classroom_id });
     return { changed: before.membership_active, row_version: updated.row_version };
   });
-  const sync = result.changed ? await syncProviderBan(c, id, true) : { provider_synced: true };
   c.header("ETag", `"${result.row_version}"`);
-  return action(c, { id, active: false, row_version: result.row_version, ...sync });
+  return action(c, { id, active: false, row_version: result.row_version });
 });
 
 /** Classroom/teacher change through app.transfer_student (admin only, locks both classrooms in UUID order). */

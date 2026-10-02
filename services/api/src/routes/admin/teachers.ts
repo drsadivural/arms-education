@@ -13,7 +13,7 @@ import { decodeCursor, paginate, parseLimit } from "../../http/pagination";
 import { action, ok, page } from "../../http/respond";
 import { ListQuery, TextIdCursor, audit, diff } from "../../domain/admin/common";
 import { runInvitation } from "../../domain/admin/invitations";
-import { assertCanDeactivate, lockMembership, setMembershipActive, syncProviderBan } from "../../domain/admin/accounts";
+import { assertCanDeactivate, lockMembership, setMembershipActive } from "../../domain/admin/accounts";
 import { findTeacher, listTeachers } from "../../repositories/admin/teachers";
 
 export const teacherRoutes = new Hono<AppEnv>();
@@ -160,7 +160,6 @@ teacherRoutes.patch("/teachers/:id", requireRole("admin"), async (c) => {
     await audit(tx, actor, input.active || !activeChanged ? "teacher.updated" : "teacher.archived", id, { changes });
     return { activeChanged, teacher: await findTeacher(tx, actor.orgId, id) };
   });
-  if (result.activeChanged) await syncProviderBan(c, id, !input.active);
   if (!result.teacher) fail("NOT_FOUND");
   return ok(c, result.teacher, { version: result.teacher.row_version });
 });
@@ -182,7 +181,6 @@ teacherRoutes.delete("/teachers/:id", requireRole("admin"), async (c) => {
     await audit(tx, actor, "teacher.archived", id, { teacher_number: before.teacher_number });
     return { changed: true, row_version: updated.row_version };
   });
-  const sync = result.changed ? await syncProviderBan(c, id, true) : { provider_synced: true };
   c.header("ETag", `"${result.row_version}"`);
-  return action(c, { id, active: false, row_version: result.row_version, ...sync });
+  return action(c, { id, active: false, row_version: result.row_version });
 });

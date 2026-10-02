@@ -114,19 +114,19 @@ describe("POST /teachers (invitation saga)", () => {
     expect(audit.rows.map((r) => r.event_type)).toEqual(["teacher.created", "invitation.sent"]);
   });
 
-  it("replays the same Idempotency-Key without creating a second auth user", async () => {
+  it("replays the same Idempotency-Key without creating a second account or e-mail", async () => {
     const body = teacherBody("b");
     const key = crypto.randomUUID();
     const first = await call(ctx, admin, "POST", "/teachers", { body, idempotencyKey: key });
     expect(first.status).toBe(200);
-    const usersBefore = ctx.auth.users.size;
     const invitesBefore = ctx.auth.invitesSent.length;
     const replay = await call(ctx, admin, "POST", "/teachers", { body, idempotencyKey: key });
     expect(replay.status).toBe(200);
     expectContract(replay, "post", "/teachers");
     expect(replay.body.data.id).toBe(first.body.data.id);
     expect(replay.body.invitation.id).toBe(first.body.invitation.id);
-    expect(ctx.auth.users.size).toBe(usersBefore);
+    const users = await ctx.admin.query("SELECT count(*)::int AS n FROM app.users WHERE lower(email) = lower($1)", [body.email]);
+    expect(users.rows[0].n).toBe(1);
     expect(ctx.auth.invitesSent.length).toBe(invitesBefore);
     const changed = await call(ctx, admin, "POST", "/teachers", { body: { ...body, department_name: "営業部" }, idempotencyKey: key });
     expect(changed.status).toBe(409);
@@ -143,7 +143,7 @@ describe("POST /teachers (invitation saga)", () => {
     expect(res.body.invitation.message_ja).toContain("再送");
     expect(res.body.data.invitation_state).toBe("failed");
     const { rows } = await ctx.admin.query("SELECT state, error_code FROM app.invitation_jobs WHERE id = $1", [res.body.invitation.id]);
-    expect(rows[0]).toEqual({ state: "failed", error_code: "AUTH_PROVIDER_UNAVAILABLE" });
+    expect(rows[0]).toEqual({ state: "failed", error_code: "MAIL_PROVIDER_UNAVAILABLE" });
 
     const resend = await call(ctx, admin, "POST", `/settings/users/${res.body.data.id}/resend-invite`);
     expect(resend.status).toBe(200);
@@ -151,41 +151,45 @@ describe("POST /teachers (invitation saga)", () => {
     expect(resend.body.data.invitation.state).toBe("sent");
   });
 
-  it("resumes after an auth-provider outage with the same key (no duplicate provider user)", async () => {
+  it("resumes after a database outage at the profile step with the same key (no second account)", async () => {
     const body = teacherBody("d");
     const key = crypto.randomUUID();
-    const original = ctx.auth.adminCreateUser.bind(ctx.auth);
-    ctx.auth.adminCreateUser = async () => {
-      const { ApiError } = await import("../../src/http/errors");
-      throw new ApiError("AUTH_PROVIDER_UNAVAILABLE");
-    };
+    await ctx.admin.query("SELECT public.arms_test_arm_fault($1)", [body.email]);
     const down = await call(ctx, admin, "POST", "/teachers", { body, idempotencyKey: key });
-    ctx.auth.adminCreateUser = original;
     expect(down.status).toBe(503);
-    expect(down.body.message_ja).toContain("認証サービス");
+    expect(down.body.message_ja).toContain("保存されていません");
     expectContract(down, "post", "/teachers");
-    const { rows } = await ctx.admin.query("SELECT state, error_code, locked_until FROM app.invitation_jobs WHERE org_id = $1 AND lower(email) = lower($2)", [org.orgId, body.email]);
-    expect(rows[0]).toMatchObject({ state: "pending", error_code: "AUTH_PROVIDER_UNAVAILABLE", locked_until: null });
+    const { rows } = await ctx.admin.query("SELECT state, error_code, locked_until, auth_user_id FROM app.invitation_jobs WHERE org_id = $1 AND lower(email) = lower($2)", [org.orgId, body.email]);
+    expect(rows[0]).toMatchObject({ state: "auth_created", error_code: "DB_UNAVAILABLE", locked_until: null });
     const retry = await call(ctx, admin, "POST", "/teachers", { body, idempotencyKey: key });
     expect(retry.status).toBe(200);
+    expect(retry.body.data.id).toBe(rows[0].auth_user_id);
     expect(retry.body.invitation.state).toBe("sent");
   });
 
-  it("adopts an interrupted job for the same e-mail instead of creating a second provider user", async () => {
+  it("refuses an e-mail that is already registered (case-insensitive) before allocating an account", async () => {
+    const existing = await createTeacher(ctx.admin, org.orgId);
+    const res = await call(ctx, admin, "POST", "/teachers", { body: { ...teacherBody("x"), email: existing.email.toUpperCase() } });
+    expect(res.status).toBe(409);
+    expect(res.body.code).toBe("EMAIL_TAKEN");
+    expectContract(res, "post", "/teachers");
+  });
+
+  it("adopts an interrupted job for the same e-mail instead of allocating a second account", async () => {
     const body = teacherBody("e");
-    // An earlier attempt created the provider user but stopped before the profile (e.g. a conflict at step 2).
-    const userId = (await ctx.auth.adminCreateUser(body.email)).userId;
+    // An earlier attempt allocated the user id but stopped before the profile (e.g. a conflict at step 2).
+    const userId = crypto.randomUUID();
     await ctx.admin.query(
       `INSERT INTO app.invitation_jobs(org_id, email, role, profile_payload, state, auth_user_id, created_by, idempotency_key, request_hash, error_code)
        VALUES ($1, $2, 'teacher', $3::jsonb, 'auth_created', $4, $5, gen_random_uuid(), 'earlier', 'TEACHER_NUMBER_TAKEN')`,
       [org.orgId, body.email, JSON.stringify({ ...body, teacher_number: "OLD" }), userId, org.admin.userId],
     );
-    const usersBefore = ctx.auth.users.size;
     const res = await call(ctx, admin, "POST", "/teachers", { body });
     expect(res.status).toBe(200);
     expect(res.body.data.id).toBe(userId);
     expect(res.body.data.teacher_number).toBe(body.teacher_number);
-    expect(ctx.auth.users.size).toBe(usersBefore);
+    const users = await ctx.admin.query("SELECT id FROM app.users WHERE lower(email) = lower($1)", [body.email]);
+    expect(users.rows).toEqual([{ id: userId }]);
     const jobs = await ctx.admin.query("SELECT state FROM app.invitation_jobs WHERE org_id = $1 AND lower(email) = lower($2)", [org.orgId, body.email]);
     expect(jobs.rows).toEqual([{ state: "sent" }]);
   });
@@ -303,10 +307,11 @@ describe("DELETE /teachers/{id} (archive)", () => {
     expect(res.body.code).toBe("TEACHER_HAS_FUTURE_SLOTS");
   });
 
-  it("archives: membership inactive, web sessions revoked, provider sign-in blocked, audited", async () => {
+  it("archives: membership inactive, Web and iOS sessions revoked, audited", async () => {
     const t = await createTeacher(ctx.admin, org.orgId);
-    ctx.auth.register(t.email, "pw", t.userId);
+    await ctx.auth.register(t.email, "pw", t.userId);
     const web = await cookieCaller(ctx, { userId: t.userId, orgId: org.orgId, role: "teacher" });
+    const ios = await bearerCaller(t.userId, org.orgId);
     expect((await call(ctx, web, "GET", "/teachers")).status).toBe(200);
     const v = (await call(ctx, admin, "GET", `/teachers/${t.userId}`)).body.data.row_version;
     const stale = await call(ctx, admin, "DELETE", `/teachers/${t.userId}`, { ifMatch: v + 5 });
@@ -314,12 +319,13 @@ describe("DELETE /teachers/{id} (archive)", () => {
     const res = await call(ctx, admin, "DELETE", `/teachers/${t.userId}`, { ifMatch: v });
     expect(res.status).toBe(200);
     expectContract(res, "delete", "/teachers/{id}");
-    expect(res.body.data).toMatchObject({ active: false, provider_synced: true });
+    expect(res.body.data).toMatchObject({ active: false });
     const after = await call(ctx, web, "GET", "/teachers");
     expect(after.status).toBe(401);
     const sessions = await ctx.admin.query("SELECT count(*)::int AS n FROM app.web_sessions WHERE user_id = $1 AND revoked_at IS NULL", [t.userId]);
     expect(sessions.rows[0].n).toBe(0);
-    expect(ctx.auth.users.get(t.email.toLowerCase())?.banned).toBe(true);
+    expect((await call(ctx, ios, "GET", "/me")).status).toBe(401);
+    expect(await ctx.auth.openBearerSessions(t.userId)).toBe(0);
     const read = await call(ctx, admin, "GET", `/teachers/${t.userId}`);
     expect(read.body.data.active).toBe(false);
     const audit = await ctx.admin.query("SELECT count(*)::int AS n FROM app.audit_events WHERE entity_id = $1 AND event_type = 'teacher.archived'", [t.userId]);

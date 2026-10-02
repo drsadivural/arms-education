@@ -8,9 +8,10 @@
 ## 00-core.json（認証・共通DTO）
 | 対象 | 種別 | 理由 |
 |---|---|---|
-| POST /auth/password-reset | 追加 | WEB-01/IOS-01「ログイン失敗・reset」。Auth providerの再設定メールを送信。列挙防止のため常に同じ応答。 |
-| POST /auth/password, PasswordSetInput | 追加 | 招待メール・パスワード再設定メールのリンク（`/auth/callback`）でパスワードを設定する手段が原本になかったため。リンクの短期トークンをサーバーで検証し、Authへ設定する。 |
-| POST /auth/mfa/enroll, /auth/mfa/verify | 追加 | WEB-01/WEB-18「管理者MFA」。BFF方式のためサーバー経由でTOTP登録・検証する。 |
+| POST /auth/password-reset | 追加 | WEB-01/IOS-01「ログイン失敗・reset」。1時間有効の再設定リンクをメール送信。列挙防止のため常に同じ応答（メール送信サービス未設定のみ503）。 |
+| POST /auth/password, PasswordSetInput | 追加・修正 | 招待メール・パスワード再設定メールのリンク（`/auth/callback`）でパスワードを設定する手段が原本になかったため。2026-10-03 Supabase廃止（`docs/dev/SPEC_DEVIATIONS_JA.md`）に伴い、入力を `access_token`（SupabaseのJWT）から `token`（APIが発行した一回限りのリンクトークン）に変更。パスワード再設定の場合は他の端末のセッションを解除する。 |
+| POST /auth/mfa/enroll, /auth/mfa/verify | 追加 | WEB-01/WEB-18「管理者MFA」。BFF方式のためサーバー経由でTOTP登録・検証する。2026-10-03 以降はAPI自身がRFC 6238で検証（コードの再利用不可）し、QRコードをSVGで返す。 |
+| POST /auth/tokens, /auth/tokens/refresh, /auth/tokens/revoke, TokenGrantInput, TokenRefreshInput, TokenPair, TokenResponse | 追加 | 2026-10-03 Supabase廃止に伴うiOSのログイン手段。不透明なアクセストークン（1時間）とローテーションするリフレッシュトークンを発行・更新・失効する。ロールは発行後に GET /me でサーバーが判定する（原本のIOS-01の流れのまま）。 |
 | POST /auth/login, LoginInput | 修正 | securityを空に（公開）。応答SessionInfoにmfa_required等を追加。複数組織所属者向けに任意の organization_id を追加。 |
 | GET /me | 修正 | 応答をUserからMe（組織・個人設定・受講者所属・MFA状態）へ拡張。iOSの利用区分照合用ヘッダー X-ARMS-Selected-Role、複数組織用 X-ARMS-Org を追加。 |
 | User | 修正 | invitation_state, created_at（任意）を追加。ユーザー管理画面の招待状態表示に使用。 |
@@ -22,9 +23,11 @@
 ## 10-admin.json（講師・新入社員・クラス・設定・ユーザー・ログ・ダッシュボード）
 | 対象 | 種別 | 理由 |
 |---|---|---|
-| POST /teachers, POST /students | 修正 | 原本の応答は一覧（TeacherPage/StudentPage）で誤り。作成した1件と招待結果を返す `{data, invitation: InviteResult, checked_at}`（TeacherCreateResponse / StudentCreateResponse）に変更。招待はAuth provider作成→DBプロフィール→招待メールのsaga（invitation_jobs）。同じIdempotency-Keyの再送は同じジョブを再開し、Authユーザーを二重作成しない。メール送信失敗時もプロフィールは作成済みで invitation.state=failed（送信失敗・再送可能）。 |
+| POST /settings/users/{id}/mfa-reset | 追加 | 2026-10-03 Supabase廃止に伴い、管理者が認証アプリを紛失した際の回復手段（以前はSupabaseの管理画面で係数を削除）。別の管理者が対象管理者のTOTP登録を削除し、全セッションを失効させる。自分自身・管理者以外は422。 |
+| POST /settings/users/{id}/disable 等の応答 | 修正 | 2026-10-03 Supabase廃止に伴い、外部認証サービスへの反映結果 `provider_synced` / `message_ja` を返さない（停止はDBのみで完結し、Web・iOSのセッションを同じトランザクションで失効させる）。 |
+| POST /teachers, POST /students | 修正 | 原本の応答は一覧（TeacherPage/StudentPage）で誤り。作成した1件と招待結果を返す `{data, invitation: InviteResult, checked_at}`（TeacherCreateResponse / StudentCreateResponse）に変更。招待はユーザーID割当→DBプロフィール→招待メール（一回限りのリンク）のsaga（invitation_jobs。2026-10-03以前はSupabase Authのユーザー作成）。同じIdempotency-Keyの再送は同じジョブを再開し、ユーザーを二重作成しない。メール送信失敗時もプロフィールは作成済みで invitation.state=failed（送信失敗・再送可能）。 |
 | Teacher | 修正 | 編集画面の初期値に必要な kana・availability、担当クラス名表示用の classrooms（id/name/is_primary）、招待状態 invitation_state を追加。classroom_ids は未アーカイブの担当クラス。student_count は担当講師として割り当てられた在籍中受講者数（SQL集計）。 |
-| TeacherInput | 修正 | availability を任意のオブジェクトから「稼働曜日 weekdays（0=日〜6=土）・start_time・end_time（HH:MM）」に限定（WEB-04 稼働時間）。各文字列に最大長を明記。email は登録後変更不可（Auth providerのログインIDのため。変更要求は422）。 |
+| TeacherInput | 修正 | availability を任意のオブジェクトから「稼働曜日 weekdays（0=日〜6=土）・start_time・end_time（HH:MM）」に限定（WEB-04 稼働時間）。各文字列に最大長を明記。email は登録後変更不可（ログインIDのため。変更要求は422）。 |
 | Student | 修正 | 一覧表示用の classroom_name・teacher_name、招待状態 invitation_state を追加。progress_percent は app.enrollment_progress の受講者内平均（四捨五入、enrollmentなしはnull）。active は在籍状態（定員集計対象）。 |
 | Classroom | 修正 | 一覧・詳細表示用の primary_teacher_name、programs（版のid/program_id/name/version_number）、average_progress_percent を追加。student_count は毎回DB集計。 |
 | SettingsInput | 修正 | require_admin_mfa・default_theme・departments（部署リスト）・business_hours（営業時間: weekdays/start_time/end_time）を追加し、各数値の上限を明記。省略項目は変更しない。予約設定の変更は新規の授業枠・申請にのみ適用し既存予約は変更しない。 |
@@ -35,7 +38,7 @@
 | GET /settings/users | 修正 | クエリを q（氏名・メール）・role・status（active/inactive/invite_failed）に整理。 |
 | GET /teachers, GET /students, GET /classrooms, GET /classrooms/{id}/students, GET /classrooms/{id}/teachers | 修正 | 原本は全一覧に共通の汎用クエリ（month/from/to/student_id等）を列挙していたため、実装する絞込みのみに整理（講師: q/department/status/classroom_id、新入社員: q/classroom_id/teacher_id/department/status、クラス: q/teacher_id/status=active\|archived）。/classrooms/{id}/teachers は1クラス最大51名のため全件返却（next_cursor=null）。講師scopeを説明に明記。 |
 | POST /settings/users/invite | 修正 | 管理者アカウントのみ招待する。講師・受講者はプロフィール（講師番号／社員番号・クラス・担当講師）が必須のため講師管理・新入社員管理から登録（role=teacher/studentは422で案内）。 |
-| POST /settings/users/{id}/enable | 追加 | WEB-18 停止の取り消し（membership有効化＋Auth providerのログイン停止解除）。停止と対称のため追加。 |
+| POST /settings/users/{id}/enable | 追加 | WEB-18 停止の取り消し（membership有効化）。停止と対称のため追加。 |
 | GET /settings/account-deletion-requests, POST /settings/account-deletion-requests/{id}/complete, AccountDeletionRequest(Page) | 追加 | WEB-18「本人削除申請」。POST /me/account-deletion の申請一覧と対応完了（アカウント停止・監査記録。研修記録は保持）。 |
 | GET /events/export.csv | 追加 | docs/01「設定: …監査ログ・エクスポート」。監査ログを絞り込み条件のままCSV出力（マスキング・数式対策・出力自体を監査）。 |
 

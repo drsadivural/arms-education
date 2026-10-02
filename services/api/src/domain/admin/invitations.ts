@@ -1,12 +1,13 @@
 /**
- * Invitation saga (contracts/API_NOTES_JA.md: 管理者inviteはAuth provider作成とDB profileのsagaをinvitation_jobsで追跡).
+ * Invitation saga (contracts/API_NOTES_JA.md: 管理者inviteはユーザー作成とDB profileのsagaをinvitation_jobsで追跡).
+ * Authentication is ARMS's own (PostgreSQL), so the "Auth user" of step 1 is the allocation of the user id.
  *
- *   1. adminCreateUser at the Auth provider            pending → auth_created (auth_user_id stored)
+ *   1. allocate the user id (e-mail must be unused)      pending → auth_created (auth_user_id stored)
  *   2. app.users + app.memberships + profile in one tx  auth_created → profile_created
- *   3. adminSendInvite                                   profile_created → sent | failed (resend possible)
+ *   3. one-time invitation link + e-mail                 profile_created → sent | failed (resend possible)
  *
- * External calls run outside DB transactions. Each step is guarded by the job state, so a retry resumes where the
- * previous attempt stopped and never creates a second provider user:
+ * The e-mail is sent outside DB transactions. Each step is guarded by the job state, so a retry resumes where the
+ * previous attempt stopped and never allocates a second user:
  *   - the same admin + Idempotency-Key + identical request finds the same job (different request → IDEMPOTENCY_CONFLICT);
  *   - an unfinished (pre-profile) job for the same e-mail is adopted by a later request, reusing its provider user;
  *   - a short lease (locked_until) serialises concurrent work on one job (→ IDEMPOTENCY_IN_PROGRESS / INVITATION_IN_PROGRESS).
@@ -21,10 +22,14 @@ import { sql } from "../../db/sql";
 import { ApiError, fail } from "../../http/errors";
 import { requireIdempotencyKey } from "../../http/idempotency";
 import { sha256Hex } from "../../auth/crypto";
+import { hasPassword } from "../../auth/credentials";
+import { sendLinkEmail } from "../../auth/emails";
+import { createLinkToken } from "../../auth/tokens";
+import { MailDeliveryError } from "../../integrations/mail";
 import type { InvitationState } from "../../repositories/admin/teachers";
 import { audit, stableStringify } from "./common";
 
-/** Lease held while one request works on a job (two provider calls with a 10 s timeout each + DB work). */
+/** Lease held while one request works on a job (one mail-provider call with a 10 s timeout + DB work). */
 const LEASE_SECONDS = 60;
 
 export interface InvitationJob {
@@ -84,7 +89,8 @@ export interface InvitationOutcome {
 }
 
 function codeOf(e: unknown): string {
-  return e instanceof ApiError ? e.code : "INTERNAL";
+  if (e instanceof ApiError) return typeof e.details?.mail_error === "string" ? e.details.mail_error : e.code;
+  return e instanceof MailDeliveryError ? e.code : "INTERNAL";
 }
 
 /** Japanese status message for the UI (「送信失敗（再送可能）」 etc.). */
@@ -124,16 +130,30 @@ async function membershipActive(tx: Tx, orgId: string, userId: string): Promise<
 }
 
 /**
- * Step 3: sends the invitation e-mail for a job whose profile exists and whose lease the caller holds.
- * Provider failures are recorded on the job (`failed`, error_code) instead of being thrown, except
- * "already registered" (INVALID_STATE), which leaves the job unchanged and is re-thrown.
+ * Step 3: issues a one-time invitation link (24 h; earlier links of the user stop working) and e-mails it, for a job
+ * whose profile exists and whose lease the caller holds. Delivery failures (including a missing mail service) are
+ * recorded on the job (`failed`, error_code) instead of being thrown, except "already registered" (INVALID_STATE:
+ * the user has set a password), which leaves the job unchanged and is re-thrown.
  */
 export async function sendInvitation(c: AppContext, job: InvitationJob, metadata: Record<string, unknown>): Promise<InvitationJob> {
   const deps = c.get("deps");
   const actor = c.get("actor");
+  const userId = job.auth_user_id as string;
   let errorCode: string | null = null;
   try {
-    await deps.auth.adminSendInvite(job.email, metadata);
+    const link = await actorTx(c, async (tx) => {
+      if (await hasPassword(tx, userId)) fail("INVALID_STATE", { message_ja: "このユーザーは既に登録を完了しています。" });
+      return createLinkToken(tx, userId, "invite", deps.now());
+    });
+    await sendLinkEmail(deps, {
+      to: job.email,
+      displayName: String(metadata.display_name ?? ""),
+      orgName: actor.orgName,
+      token: link.token,
+      tokenId: link.id,
+      purpose: "invite",
+      expiresAt: link.expiresAt,
+    });
   } catch (e) {
     errorCode = codeOf(e);
     if (errorCode === "INVALID_STATE") {
@@ -162,7 +182,6 @@ export async function sendInvitation(c: AppContext, job: InvitationJob, metadata
 /** Runs (or resumes) the saga for one create request. Throws business errors (409/422/503) from steps 1–2. */
 export async function runInvitation(c: AppContext, spec: InvitationSpec, opts: InvitationOptions = {}): Promise<InvitationOutcome> {
   const actor = c.get("actor");
-  const deps = c.get("deps");
   const key = opts.idempotencyKey ?? requireIdempotencyKey(c);
   const send = opts.send ?? true;
   const route = opts.route ?? `${c.req.method} ${c.req.path}`;
@@ -210,25 +229,26 @@ export async function runInvitation(c: AppContext, spec: InvitationSpec, opts: I
   });
 
   if (job.leased) {
-    // Step 1: Auth provider user.
+    // Step 1: allocate the user id. The e-mail is the sign-in id and must not belong to any existing user.
     if (job.state === "pending") {
-      let providerUserId: string;
+      const newUserId = crypto.randomUUID();
+      const pendingJob = job;
       try {
-        providerUserId = (await deps.auth.adminCreateUser(job.email, metadata)).userId;
+        job = await actorTx(c, async (tx) => {
+          const taken = await tx.maybeOne<{ id: string }>(sql`SELECT id FROM app.users WHERE lower(email) = lower(${pendingJob.email})`);
+          if (taken) fail("EMAIL_TAKEN");
+          const advanced = await tx.maybeOne<InvitationJob>(sql`
+            UPDATE app.invitation_jobs SET state = 'auth_created', auth_user_id = ${newUserId}, error_code = NULL,
+              attempts = attempts + 1, updated_at = now(), row_version = row_version + 1
+            WHERE id = ${pendingJob.id} AND state = 'pending' RETURNING ${JOB_COLUMNS}`);
+          // Only possible when this request outlived its lease and another request advanced the job.
+          if (!advanced) fail("IDEMPOTENCY_IN_PROGRESS");
+          return { ...advanced, leased: true };
+        });
       } catch (e) {
-        await recordFailure(c, job.id, codeOf(e));
+        await recordFailure(c, pendingJob.id, codeOf(e));
         throw e;
       }
-      const pendingJob = job;
-      job = await actorTx(c, async (tx) => {
-        const advanced = await tx.maybeOne<InvitationJob>(sql`
-          UPDATE app.invitation_jobs SET state = 'auth_created', auth_user_id = ${providerUserId}, error_code = NULL,
-            attempts = attempts + 1, updated_at = now(), row_version = row_version + 1
-          WHERE id = ${pendingJob.id} AND state = 'pending' RETURNING ${JOB_COLUMNS}`);
-        // Only possible when this request outlived its lease and another request advanced the job.
-        if (!advanced) fail("IDEMPOTENCY_IN_PROGRESS");
-        return { ...advanced, leased: true };
-      });
     }
     // Step 2: DB user + membership + profile (one transaction).
     if (job.state === "auth_created") {

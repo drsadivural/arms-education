@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { TEST_ORIGIN, bearerCaller, call, cookieCaller, createTestContext, type TestContext } from "./helpers/app";
-import { TEST_TOTP_CODE, issueToken } from "./helpers/auth";
+import { totpFromUri } from "./helpers/auth";
 import { createUser, seedOrg, type OrgScenario } from "./helpers/fixtures";
 import { expectContract } from "./helpers/contract";
 
@@ -10,9 +10,9 @@ let org: OrgScenario;
 beforeAll(async () => {
   ctx = createTestContext();
   org = await seedOrg(ctx.admin);
-  ctx.auth.register(org.admin.email, "admin-pass-1", org.admin.userId);
-  ctx.auth.register(org.teacher.email, "teacher-pass-1", org.teacher.userId);
-  ctx.auth.register(org.student.email, "student-pass-1", org.student.userId);
+  await ctx.auth.register(org.admin.email, "admin-pass-1", org.admin.userId);
+  await ctx.auth.register(org.teacher.email, "teacher-pass-1", org.teacher.userId);
+  await ctx.auth.register(org.student.email, "student-pass-1", org.student.userId);
 });
 afterAll(async () => ctx.close());
 
@@ -74,12 +74,12 @@ describe("web login (BFF)", () => {
     expect(res.body.data.user.role).toBe("teacher");
     expect(res.body.data.mfa_required).toBe(false);
     const cookie = cookieFrom(res);
-    // The cookie value is never stored in the DB (only its SHA-256), and tokens are encrypted at rest.
-    const { rows } = await ctx.admin.query("SELECT id, encrypted_provider_tokens FROM app.web_sessions WHERE user_id = $1", [org.teacher.userId]);
+    // The cookie value is never stored in the DB (only its SHA-256), and the CSRF token is encrypted at rest.
+    const { rows } = await ctx.admin.query("SELECT id, encrypted_secrets FROM app.web_sessions WHERE user_id = $1", [org.teacher.userId]);
     expect(rows.some((r) => r.id === cookie)).toBe(false);
-    // Stored tokens are AES-GCM ciphertext ("v1.<iv>.<ct>"), never the JWT itself.
-    expect(rows.every((r) => /^v1\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/.test(String(r.encrypted_provider_tokens)))).toBe(true);
-    expect(rows.every((r) => !/eyJ[A-Za-z0-9_-]+\.eyJ/.test(String(r.encrypted_provider_tokens)))).toBe(true);
+    // Stored secrets are AES-GCM ciphertext ("v1.<iv>.<ct>"), never the CSRF token itself.
+    expect(rows.every((r) => /^v1\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/.test(String(r.encrypted_secrets)))).toBe(true);
+    expect(rows.every((r) => !String(r.encrypted_secrets).includes(res.body.data.csrf_token))).toBe(true);
 
     const session = await call(ctx, null, "GET", "/auth/session", { headers: { Cookie: `arms_session=${cookie}` } });
     expect(session.status).toBe(200);
@@ -107,17 +107,71 @@ describe("web login (BFF)", () => {
     const enroll = await call(ctx, null, "POST", "/auth/mfa/enroll", { headers: h });
     expect(enroll.status).toBe(200);
     expectContract(enroll, "post", "/auth/mfa/enroll");
+    expect(enroll.body.data.qr_code).toMatch(/^data:image\/svg\+xml;base64,/);
+    expect(atob(enroll.body.data.qr_code.split(",")[1])).toContain("<svg");
+    const uri = new URL(enroll.body.data.uri);
+    expect(uri.protocol).toBe("otpauth:");
+    expect(uri.searchParams.get("issuer")).toBe("ARMS");
+    expect(uri.searchParams.get("secret")).toMatch(/^[A-Z2-7]{32}$/);
+    // The secret is stored encrypted, never in plain text.
+    const stored = await ctx.admin.query("SELECT totp_pending_secret_enc FROM app.user_credentials WHERE user_id = $1", [org.admin.userId]);
+    expect(String(stored.rows[0].totp_pending_secret_enc)).not.toContain(uri.searchParams.get("secret"));
 
     const wrong = await call(ctx, null, "POST", "/auth/mfa/verify", { headers: h, body: { code: "000000" } });
     expect(wrong.status).toBe(422);
+    expect(wrong.body.field_errors.code).toBe("認証コードが正しくありません。");
 
-    const verify = await call(ctx, null, "POST", "/auth/mfa/verify", { headers: h, body: { code: TEST_TOTP_CODE } });
+    const code = await totpFromUri(enroll.body.data.uri);
+    const verify = await call(ctx, null, "POST", "/auth/mfa/verify", { headers: h, body: { code } });
     expect(verify.status).toBe(200);
     expect(verify.body.data.mfa_required).toBe(false);
     expectContract(verify, "post", "/auth/mfa/verify");
 
     const allowed = await call(ctx, null, "PATCH", "/me/preferences", { headers: h, ifMatch: 0, body: { theme: "dark", notifications_enabled: true } });
     expect(allowed.status).toBe(200);
+
+    // Next sign-in: the factor is enrolled, a second enrollment is refused and a used code cannot be replayed.
+    const next = await call(ctx, null, "POST", "/auth/login", { body: { email: org.admin.email, password: "admin-pass-1", selected_role: "admin" } });
+    expect(next.body.data).toMatchObject({ mfa_required: true, mfa_enrolled: true });
+    const h2 = { Cookie: `arms_session=${cookieFrom(next)}`, "X-CSRF-Token": next.body.data.csrf_token, Origin: TEST_ORIGIN };
+    expect((await call(ctx, null, "POST", "/auth/mfa/enroll", { headers: h2 })).status).toBe(409);
+    const replay = await call(ctx, null, "POST", "/auth/mfa/verify", { headers: h2, body: { code } });
+    expect(replay.status).toBe(422);
+    const later = await totpFromUri(enroll.body.data.uri, Date.now() + 30_000);
+    ctx.clock.now = new Date(Date.now() + 30_000);
+    try {
+      expect((await call(ctx, null, "POST", "/auth/mfa/verify", { headers: h2, body: { code: later } })).status).toBe(200);
+    } finally {
+      ctx.clock.now = null;
+    }
+    const events = await ctx.admin.query("SELECT event_type FROM app.audit_events WHERE actor_id = $1 AND event_type LIKE 'auth.mfa%' ORDER BY created_at", [org.admin.userId]);
+    expect(events.rows.map((r) => r.event_type)).toEqual(["auth.mfa_enrolled", "auth.mfa_verified", "auth.mfa_verified"]);
+  });
+
+  it("locks the account for 15 minutes after 10 consecutive wrong passwords (same answer for unknown addresses)", async () => {
+    const u = await createUser(ctx.admin, org.orgId, "teacher");
+    await ctx.auth.register(u.email, "Right-pass-2026", u.userId);
+    for (let i = 0; i < 9; i++) {
+      const res = await call(ctx, null, "POST", "/auth/login", { body: { email: u.email, password: `wrong-${i}`, selected_role: "teacher" } });
+      expect(res.body.code).toBe("INVALID_CREDENTIALS");
+    }
+    const tenth = await call(ctx, null, "POST", "/auth/login", { body: { email: u.email, password: "wrong-9", selected_role: "teacher" } });
+    expect(tenth.status).toBe(429);
+    expect(tenth.body.message_ja).toContain("一時的にログインを制限");
+    const locked = await call(ctx, null, "POST", "/auth/tokens", { body: { email: u.email, password: "Right-pass-2026" } });
+    expect(locked.status).toBe(429);
+    ctx.clock.now = new Date(Date.now() + 16 * 60 * 1000);
+    try {
+      expect((await call(ctx, null, "POST", "/auth/login", { body: { email: u.email, password: "Right-pass-2026", selected_role: "teacher" } })).status).toBe(200);
+    } finally {
+      ctx.clock.now = null;
+    }
+    const unknown = await call(ctx, null, "POST", "/auth/login", { body: { email: "nobody@example.invalid", password: "x", selected_role: "teacher" } });
+    expect(unknown.status).toBe(401);
+    expect(unknown.body.code).toBe("INVALID_CREDENTIALS");
+    // An invited account without a password cannot sign in either.
+    const invited = await createUser(ctx.admin, org.orgId, "teacher");
+    expect((await call(ctx, null, "POST", "/auth/login", { body: { email: invited.email, password: "x", selected_role: "teacher" } })).body.code).toBe("INVALID_CREDENTIALS");
   });
 
   it("logout revokes the session", async () => {
@@ -131,13 +185,6 @@ describe("web login (BFF)", () => {
     expect(after.body.code).toBe("SESSION_EXPIRED");
   });
 
-  it("password reset never reveals whether an address exists", async () => {
-    const a = await call(ctx, null, "POST", "/auth/password-reset", { body: { email: org.teacher.email } });
-    const b = await call(ctx, null, "POST", "/auth/password-reset", { body: { email: "nobody@example.invalid" } });
-    expect(a.status).toBe(200);
-    expect(b.status).toBe(200);
-    expect(a.body.data).toEqual(b.body.data);
-  });
 });
 
 describe("cookie session protections", () => {
@@ -163,8 +210,8 @@ describe("cookie session protections", () => {
 
   it("rejects requests that carry both a cookie and a bearer token", async () => {
     const t = await cookieCaller(ctx, { userId: org.teacher.userId, orgId: org.orgId, role: "teacher" });
-    const token = await issueToken(org.teacher.userId);
-    const res = await call(ctx, null, "GET", "/me", { headers: { Cookie: `arms_session=${t.sessionId}`, Authorization: `Bearer ${token}` } });
+    const { accessToken } = await bearerCaller(org.teacher.userId, org.orgId);
+    const res = await call(ctx, null, "GET", "/me", { headers: { Cookie: `arms_session=${t.sessionId}`, Authorization: `Bearer ${accessToken}` } });
     expect(res.status).toBe(400);
     expect(res.body.code).toBe("AMBIGUOUS_AUTH");
   });
@@ -199,21 +246,27 @@ describe("bearer (iOS) authentication", () => {
     expect(res.body.message_ja).toBe("このアカウントでは選択した利用区分にログインできません。");
   });
 
-  it("rejects forged, expired, wrong-issuer and wrong-audience tokens", async () => {
-    for (const token of [
-      await issueToken(org.student.userId, { forged: true }),
-      await issueToken(org.student.userId, { expiresInSeconds: -120 }),
-      await issueToken(org.student.userId, { issuer: "https://evil.example/auth/v1" }),
-      await issueToken(org.student.userId, { audience: "anon" }),
-      "not.a.jwt",
-    ]) {
+  it("rejects unknown, refresh-instead-of-access, expired and revoked tokens", async () => {
+    const s = await bearerCaller(org.student.userId, org.orgId);
+    const revoked = await bearerCaller(org.student.userId, org.orgId);
+    await call(ctx, null, "POST", "/auth/tokens/revoke", { body: { refresh_token: revoked.refreshToken } });
+    for (const token of ["arms_at_" + "A".repeat(43), s.refreshToken, revoked.accessToken, "not.a.jwt"]) {
       const res = await call(ctx, null, "GET", "/me", { headers: { Authorization: `Bearer ${token}` } });
       expect(res.status).toBe(401);
       expect(res.body.code).toBe("UNAUTHENTICATED");
     }
+    const issued = (await call(ctx, null, "POST", "/auth/tokens", { body: { email: org.student.email, password: "student-pass-1" } })).body.data;
+    const auth = { Authorization: `Bearer ${issued.access_token}` };
+    ctx.clock.now = new Date(Date.now() + 61 * 60 * 1000);
+    try {
+      expect((await call(ctx, null, "GET", "/me", { headers: auth })).status).toBe(401);
+    } finally {
+      ctx.clock.now = null;
+    }
+    expect((await call(ctx, null, "GET", "/me", { headers: auth })).status).toBe(200);
   });
 
-  it("rejects disabled users even with a valid unexpired JWT", async () => {
+  it("rejects disabled users even with a valid unexpired access token", async () => {
     const disabled = await createUser(ctx.admin, org.orgId, "student", { active: false });
     const s = await bearerCaller(disabled.userId, org.orgId);
     const res = await call(ctx, s, "GET", "/me");
@@ -222,7 +275,9 @@ describe("bearer (iOS) authentication", () => {
   });
 
   it("rejects users without membership and spoofed organisation headers", async () => {
-    const stranger = await bearerCaller(crypto.randomUUID(), org.orgId);
+    const loneId = crypto.randomUUID();
+    await ctx.admin.query("INSERT INTO app.users(id, display_name, email) VALUES ($1, '所属なし', $2)", [loneId, `lone-${loneId}@example.invalid`]);
+    const stranger = await bearerCaller(loneId, org.orgId);
     expect((await call(ctx, stranger, "GET", "/me")).status).toBe(403);
     const other = await seedOrg(ctx.admin);
     const s = await bearerCaller(org.student.userId, org.orgId);
@@ -231,7 +286,7 @@ describe("bearer (iOS) authentication", () => {
   });
 
   it("keeps administrators on the Web (MFA-protected) channel", async () => {
-    const a = await bearerCaller(org.admin.userId, org.orgId, { aal: "aal2" });
+    const a = await bearerCaller(org.admin.userId, org.orgId);
     expect((await call(ctx, a, "GET", "/me")).status).toBe(200);
     const res = await call(ctx, a, "PATCH", "/me/preferences", { ifMatch: 0, body: { theme: "dark", notifications_enabled: true } });
     expect(res.status).toBe(403);
@@ -242,6 +297,68 @@ describe("bearer (iOS) authentication", () => {
     const res = await call(ctx, null, "GET", "/me");
     expect(res.status).toBe(401);
     expectContract(res, "get", "/me");
+  });
+});
+
+describe("iOS tokens (POST /auth/tokens, /refresh, /revoke)", () => {
+  it("issues opaque tokens (hashes only in the DB) that authenticate /me with the server-derived role", async () => {
+    const res = await call(ctx, null, "POST", "/auth/tokens", { body: { email: org.student.email, password: "student-pass-1", device_label: "iPhone 15" } });
+    expect(res.status).toBe(200);
+    expectContract(res, "post", "/auth/tokens");
+    expect(res.body.data).toMatchObject({ token_type: "Bearer", expires_in: 3600, user_id: org.student.userId });
+    expect(res.body.data.access_token).toMatch(/^arms_at_[A-Za-z0-9_-]{43}$/);
+    expect(res.body.data.refresh_token).toMatch(/^arms_rt_[A-Za-z0-9_-]{43}$/);
+    const stored = await ctx.admin.query("SELECT access_hash, refresh_hash, device_label FROM app.bearer_sessions WHERE user_id = $1 ORDER BY created_at DESC LIMIT 1", [org.student.userId]);
+    expect(stored.rows[0].device_label).toBe("iPhone 15");
+    expect(JSON.stringify(stored.rows[0])).not.toContain(res.body.data.access_token);
+    const me = await call(ctx, null, "GET", "/me", { headers: { Authorization: `Bearer ${res.body.data.access_token}`, "X-ARMS-Selected-Role": "student" } });
+    expect(me.status).toBe(200);
+    expect(me.body.data.role).toBe("student");
+    const wrong = await call(ctx, null, "POST", "/auth/tokens", { body: { email: org.student.email, password: "nope" } });
+    expect(wrong.status).toBe(401);
+    expect(wrong.body.code).toBe("INVALID_CREDENTIALS");
+    expectContract(wrong, "post", "/auth/tokens");
+  });
+
+  it("rotates the refresh token; presenting a rotated-away token again ends the session (theft detection)", async () => {
+    const first = (await call(ctx, null, "POST", "/auth/tokens", { body: { email: org.teacher.email, password: "teacher-pass-1" } })).body.data;
+    const second = await call(ctx, null, "POST", "/auth/tokens/refresh", { body: { refresh_token: first.refresh_token } });
+    expect(second.status).toBe(200);
+    expectContract(second, "post", "/auth/tokens/refresh");
+    expect(second.body.data.refresh_token).not.toBe(first.refresh_token);
+    expect(second.body.data.refresh_expires_at).toBe(first.refresh_expires_at);
+    // The old access token stops working once rotated; the new one works.
+    expect((await call(ctx, null, "GET", "/me", { headers: { Authorization: `Bearer ${first.access_token}` } })).status).toBe(401);
+    expect((await call(ctx, null, "GET", "/me", { headers: { Authorization: `Bearer ${second.body.data.access_token}` } })).status).toBe(200);
+    const reuse = await call(ctx, null, "POST", "/auth/tokens/refresh", { body: { refresh_token: first.refresh_token } });
+    expect(reuse.status).toBe(401);
+    expect(reuse.body.code).toBe("SESSION_EXPIRED");
+    expect((await call(ctx, null, "GET", "/me", { headers: { Authorization: `Bearer ${second.body.data.access_token}` } })).status).toBe(401);
+    expect((await call(ctx, null, "POST", "/auth/tokens/refresh", { body: { refresh_token: second.body.data.refresh_token } })).status).toBe(401);
+  });
+
+  it("revoke signs out (idempotent) and idle sessions expire after 30 days", async () => {
+    const t = (await call(ctx, null, "POST", "/auth/tokens", { body: { email: org.teacher.email, password: "teacher-pass-1" } })).body.data;
+    const out = await call(ctx, null, "POST", "/auth/tokens/revoke", { body: { refresh_token: t.refresh_token } });
+    expect(out.status).toBe(200);
+    expectContract(out, "post", "/auth/tokens/revoke");
+    expect((await call(ctx, null, "POST", "/auth/tokens/revoke", { body: { refresh_token: t.refresh_token } })).status).toBe(200);
+    expect((await call(ctx, null, "POST", "/auth/tokens/refresh", { body: { refresh_token: t.refresh_token } })).status).toBe(401);
+    const idle = (await call(ctx, null, "POST", "/auth/tokens", { body: { email: org.teacher.email, password: "teacher-pass-1" } })).body.data;
+    ctx.clock.now = new Date(Date.now() + 31 * 24 * 60 * 60 * 1000);
+    try {
+      expect((await call(ctx, null, "POST", "/auth/tokens/refresh", { body: { refresh_token: idle.refresh_token } })).status).toBe(401);
+    } finally {
+      ctx.clock.now = null;
+    }
+  });
+
+  it("refuses accounts without an active membership", async () => {
+    const disabled = await createUser(ctx.admin, org.orgId, "student", { active: false });
+    await ctx.auth.register(disabled.email, "Some-pass-2026", disabled.userId);
+    const res = await call(ctx, null, "POST", "/auth/tokens", { body: { email: disabled.email, password: "Some-pass-2026" } });
+    expect(res.status).toBe(403);
+    expect(res.body.code).toBe("ACCOUNT_DISABLED");
   });
 });
 

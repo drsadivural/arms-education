@@ -18,7 +18,7 @@ import { useCurrentUser } from "../../lib/session";
 import { adminKeys } from "../../features/admin/keys";
 import { statusQuery, useClassroomOptions, useCursorList, useDepartments, useUrlFilters } from "../../features/admin/hooks";
 import { DepartmentFilter, InvitationStateBadge, ListCount, PersonCell, SearchField, useResendInvite } from "../../features/admin/components";
-import { conflictDetail, isVersionConflict, providerSyncMessage } from "../../features/admin/errors";
+import { conflictDetail, isVersionConflict } from "../../features/admin/errors";
 import { primaryLinkClass, smallLinkClass } from "../../features/admin/styles";
 import type { ActionResult, Teacher } from "../../features/admin/types";
 
@@ -42,7 +42,7 @@ export function TeachersPage() {
   const stop = useMutation({
     mutationFn: (t: Teacher) => api.delete<ActionResult>(`/teachers/${t.id}`, { ifMatch: t.row_version }),
     onSuccess: (res, t) => {
-      toast.success(`${t.display_name}さんを停止しました`, providerSyncMessage(res) ?? "ログインできなくなり、新しい担当には選べなくなります。");
+      toast.success(`${t.display_name}さんを停止しました`, "ログインできなくなり、新しい担当には選べなくなります。");
       setStopId(null);
       void qc.invalidateQueries({ queryKey: adminKeys.teachers });
       void qc.invalidateQueries({ queryKey: adminKeys.users });

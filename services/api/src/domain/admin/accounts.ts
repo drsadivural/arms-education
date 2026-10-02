@@ -1,14 +1,14 @@
 /**
  * Account (membership) activation rules shared by teacher/student archive, user management and account-deletion
- * completion. The DB membership is authoritative (the API rejects inactive memberships on every request);
- * the Auth provider ban is synchronised after the transaction commits.
+ * completion. The DB membership is authoritative: the API rejects inactive memberships on every request, and
+ * stopping an account ends its Web sessions in the organisation and its iOS sessions in the same transaction.
  */
-import type { Actor, AppContext, Role } from "../../context";
+import type { Actor, Role } from "../../context";
 import type { Tx } from "../../db/client";
 import { sql } from "../../db/sql";
-import { ApiError, fail } from "../../http/errors";
+import { fail } from "../../http/errors";
 import { revokeUserSessions } from "../../auth/session";
-import { membershipsOf } from "../../auth/middleware";
+import { revokeUserBearerSessions } from "../../auth/tokens";
 import { primaryClassroomsOf, upcomingSlotCount } from "../../repositories/admin/teachers";
 
 export interface MembershipTarget {
@@ -52,46 +52,17 @@ export async function assertCanDeactivate(tx: Tx, actor: Actor, target: Membersh
   if (target.role === "teacher") await assertTeacherReleasable(tx, actor.orgId, target.id);
 }
 
-/** Sets membership.active, revoking web sessions on deactivation. Caller has run the guards. */
+/**
+ * Sets membership.active. Deactivation revokes the user's Web sessions in this organisation and all of the user's
+ * iOS sessions (bearer tokens are not organisation-bound; a user active elsewhere simply signs in again).
+ * Caller has run the guards.
+ */
 export async function setMembershipActive(tx: Tx, orgId: string, userId: string, active: boolean): Promise<void> {
   await tx.exec(sql`
     UPDATE app.memberships SET active = ${active}, disabled_at = CASE WHEN ${active}::boolean THEN NULL ELSE now() END, row_version = row_version + 1
     WHERE org_id = ${orgId} AND id = ${userId}`);
-  if (!active) await revokeUserSessions(tx, orgId, userId);
-}
-
-export interface ProviderSync {
-  provider_synced: boolean;
-  message_ja?: string;
-}
-
-/**
- * Blocks/unblocks sign-in at the Auth provider after the DB change committed. A ban is skipped when the account
- * still has an active membership in another organisation (the provider account is shared across organisations).
- * Failures do not undo the DB change (access is already denied by the membership check); they are reported.
- */
-export async function syncProviderBan(c: AppContext, userId: string, banned: boolean): Promise<ProviderSync> {
-  const deps = c.get("deps");
-  const actor = c.get("actor");
-  if (banned) {
-    // Authentication-bootstrap visibility of the target's own memberships (app.auth_user_id), used only to decide
-    // whether the shared provider account may be banned; nothing from other organisations is returned to clients.
-    const memberships = await c.get("db").tx({ authUserId: userId }, (tx) => membershipsOf(tx, userId));
-    if (memberships.some((m) => m.org_id !== actor.orgId && m.active)) {
-      return { provider_synced: true, message_ja: "他の組織で有効なため、認証サービスのログイン停止は行っていません（この組織では利用できません）。" };
-    }
-  }
-  try {
-    await deps.auth.adminSetBanned(userId, banned);
-    return { provider_synced: true };
-  } catch (e) {
-    const code = e instanceof ApiError ? e.code : "INTERNAL";
-    deps.log({ level: "warn", msg: "provider_ban_sync_failed", request_id: c.get("requestId"), user_id: userId, banned, code });
-    return {
-      provider_synced: false,
-      message_ja: banned
-        ? "アカウントは停止しましたが、認証サービスへの反映に失敗しました（この組織のAPIは利用できません）。時間をおいて再度操作してください。"
-        : "アカウントは再開しましたが、認証サービスへの反映に失敗しました。時間をおいて再度操作してください。",
-    };
+  if (!active) {
+    await revokeUserSessions(tx, orgId, userId);
+    await revokeUserBearerSessions(tx, userId, "account_disabled", new Date());
   }
 }

@@ -56,7 +56,7 @@ test.describe("設定（WEB-16/18/19）", () => {
     await expect(page.getByLabel("1回の最大利用時間")).toHaveAttribute("aria-invalid", "true");
   });
 
-  test("管理者を招待し、停止・再開でき、重複メールは入力欄に表示される", async ({ page }) => {
+  test("管理者を招待し、二段階認証のリセット・停止・再開ができ、重複メールは入力欄に表示される", async ({ page }) => {
     await page.goto("/settings/users");
     await expect(page.getByRole("heading", { name: "ユーザー管理", level: 1 })).toBeVisible();
     await expect(page.getByRole("row", { name: /山田 太郎/ })).toContainText("（自分）");
@@ -83,6 +83,13 @@ test.describe("設定（WEB-16/18/19）", () => {
     await page.getByRole("searchbox", { name: "検索" }).press("Enter");
     const row = page.getByRole("row", { name: new RegExp(`副管理者 ${n}`) });
     await expect(row).toContainText("管理者");
+    // 認証アプリを紛失した管理者の二段階認証リセット（自分の行には表示されない）。
+    await expect(page.getByRole("button", { name: "山田 太郎さんの二段階認証をリセット" })).toHaveCount(0);
+    await row.getByRole("button", { name: `副管理者 ${n}さんの二段階認証をリセット` }).click();
+    const reset = page.getByRole("alertdialog", { name: "二段階認証をリセットしますか？" });
+    await expect(reset).toContainText(email);
+    await reset.getByRole("button", { name: "リセットする" }).click();
+    await expect(toast(page, `副管理者 ${n}さんの二段階認証をリセットしました`)).toBeVisible();
     await row.getByRole("button", { name: `副管理者 ${n}さんを停止` }).click();
     const confirm = page.getByRole("alertdialog", { name: "アカウントを停止しますか？" });
     await expect(confirm).toContainText(email);

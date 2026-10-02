@@ -188,7 +188,7 @@ describe("rolling back imported people", () => {
       [w.org.orgId],
     );
     expect(s).toMatchObject({ active: false, membership_active: false, email: "wada@example.invalid" });
-    expect([...w.ctx.auth.users.values()].find((u) => u.userId === s.id)?.banned).toBe(true);
+    expect(await w.ctx.auth.openBearerSessions(s.id)).toBe(0);
     const [row] = await items(w, jobs.students as string);
     expect(row.rollback_message_ja).toContain("削除せず停止");
 

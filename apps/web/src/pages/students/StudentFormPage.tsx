@@ -23,7 +23,7 @@ import { useCurrentUser } from "../../lib/session";
 import { adminKeys } from "../../features/admin/keys";
 import { useClassroomOptions, useDepartments, useNavigateAfterSave } from "../../features/admin/hooks";
 import { DepartmentInput, FormSection, InvitationResultCard, InvitationStateBadge, SaveErrorBanner, VersionConflictNotice } from "../../features/admin/components";
-import { applyApiErrors, isVersionConflict, providerSyncMessage } from "../../features/admin/errors";
+import { applyApiErrors, isVersionConflict } from "../../features/admin/errors";
 import { StudentForm, TransferForm, studentDefaults, type StudentFormValues } from "../../features/admin/forms";
 import { secondaryLinkClass } from "../../features/admin/styles";
 import type { ActionResult, Classroom, CreatedState, DataResponse, Page, Student, StudentCreateResponse, Teacher } from "../../features/admin/types";
@@ -117,10 +117,10 @@ function StudentFormView({ student, checkedAt, reload }: { student?: Student; ch
   });
   const archive = useMutation({
     mutationFn: () => api.delete<ActionResult>(`/students/${student?.id}`, { ifMatch: baseVersion }),
-    onSuccess: async (res) => {
+    onSuccess: async () => {
       setArchiveOpen(false);
       invalidate();
-      toast.success(`${student?.display_name}さんを在籍終了にしました`, providerSyncMessage(res) ?? "アカウントは停止され、研修記録は保持されます。");
+      toast.success(`${student?.display_name}さんを在籍終了にしました`, "アカウントは停止され、研修記録は保持されます。");
       const fresh = await reload();
       if (fresh) adopt(fresh);
     },

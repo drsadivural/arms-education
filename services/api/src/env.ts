@@ -11,15 +11,7 @@ export interface Bindings {
   /** Local development / tests only: direct runtime-role connection string when no Hyperdrive binding exists. */
   DATABASE_URL?: string;
 
-  SUPABASE_URL?: string;
-  /** Override for self-hosted/local GoTrue (default `${SUPABASE_URL}/auth/v1`). */
-  SUPABASE_AUTH_URL?: string;
-  SUPABASE_PUBLISHABLE_KEY?: string;
-  SUPABASE_AUTH_ISSUER?: string;
-  SUPABASE_AUTH_AUDIENCE?: string;
-  SUPABASE_ADMIN_SECRET?: string;
-  AUTH_REDIRECT_URL?: string;
-
+  /** AES-256-GCM key (32 bytes, base64): web-session CSRF tokens and administrator TOTP secrets at rest. */
   WEB_SESSION_ENCRYPTION_KEY?: string;
 
   OPENAI_API_KEY?: string;
@@ -64,14 +56,6 @@ export interface Config {
   /** Session cookies carry `Secure` whenever the app origin is HTTPS (always in staging/production). */
   cookieSecure: boolean;
   timezone: string;
-  supabase: {
-    authUrl: string;
-    publishableKey: string;
-    issuer: string;
-    audience: string;
-    adminSecret: string | null;
-    redirectUrl: string;
-  };
   sessionKey: string;
   voice: { model: string; voice: string; maxSessionSeconds: number; dailyQuotaSeconds: number };
   booking: { pendingTtlSeconds: number; cancelBeforeSeconds: number };
@@ -85,16 +69,7 @@ const intOr = (v: string | undefined, d: number) => {
   return n;
 };
 
-const REQUIRED_IN_DEPLOYED: (keyof Bindings)[] = [
-  "APP_ORIGIN",
-  "SUPABASE_URL",
-  "SUPABASE_PUBLISHABLE_KEY",
-  "SUPABASE_AUTH_ISSUER",
-  "SUPABASE_AUTH_AUDIENCE",
-  "SUPABASE_ADMIN_SECRET",
-  "WEB_SESSION_ENCRYPTION_KEY",
-  "HYPERDRIVE",
-];
+const REQUIRED_IN_DEPLOYED: (keyof Bindings)[] = ["APP_ORIGIN", "WEB_SESSION_ENCRYPTION_KEY", "HYPERDRIVE"];
 
 export function loadConfig(env: Bindings): Config {
   const appEnv = (env.APP_ENV ?? "development") as Config["env"];
@@ -103,8 +78,6 @@ export function loadConfig(env: Bindings): Config {
     const missing = REQUIRED_IN_DEPLOYED.filter((k) => !env[k]);
     if (missing.length) throw new ConfigError(`Missing required configuration: ${missing.join(", ")}`);
   }
-  const supabaseUrl = (env.SUPABASE_URL ?? "").replace(/\/$/, "");
-  const authUrl = (env.SUPABASE_AUTH_URL ?? (supabaseUrl ? `${supabaseUrl}/auth/v1` : "")).replace(/\/$/, "");
   const sessionKey = env.WEB_SESSION_ENCRYPTION_KEY ?? "";
   if (sessionKey && base64Length(sessionKey) !== 32) throw new ConfigError("WEB_SESSION_ENCRYPTION_KEY must be 32 bytes (base64)");
   const appOrigin = (env.APP_ORIGIN ?? "http://localhost:5188").replace(/\/$/, "");
@@ -116,14 +89,6 @@ export function loadConfig(env: Bindings): Config {
     appOrigin,
     cookieSecure: appOrigin.startsWith("https://"),
     timezone: env.DEFAULT_TIMEZONE ?? "Asia/Tokyo",
-    supabase: {
-      authUrl,
-      publishableKey: env.SUPABASE_PUBLISHABLE_KEY ?? "",
-      issuer: env.SUPABASE_AUTH_ISSUER ?? authUrl,
-      audience: env.SUPABASE_AUTH_AUDIENCE ?? "authenticated",
-      adminSecret: env.SUPABASE_ADMIN_SECRET ?? null,
-      redirectUrl: env.AUTH_REDIRECT_URL ?? `${appOrigin}/auth/callback`,
-    },
     sessionKey,
     voice: {
       model: env.OPENAI_REALTIME_MODEL ?? "gpt-realtime-2.1",

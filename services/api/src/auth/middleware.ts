@@ -5,9 +5,9 @@ import type { Tx } from "../db/client";
 import { sql } from "../db/sql";
 import { ApiError, fail } from "../http/errors";
 import { isUuid } from "../http/validation";
-import { InvalidTokenError } from "./jwt";
 import { sha256Hex, timingSafeEqual } from "./crypto";
-import { SESSION_COOKIE, SESSION_IDLE_SECONDS, decryptSecrets, findWebSession, revokeWebSession, storeRefreshedTokens, type WebSessionRow } from "./session";
+import { SESSION_COOKIE, SESSION_IDLE_SECONDS, findWebSession, revokeWebSession, type WebSessionRow } from "./session";
+import { userForAccessToken } from "./tokens";
 
 export interface MembershipRow {
   org_id: string;
@@ -56,15 +56,11 @@ async function enforceCsrf(c: AppContext, session: WebSessionRow): Promise<void>
   if (!token || !timingSafeEqual(await sha256Hex(token), session.csrf_hash)) fail("CSRF_FAILED");
 }
 
+/** iOS: opaque access token issued by POST /auth/tokens (hash lookup in app.bearer_sessions). */
 async function authenticateBearer(c: AppContext, token: string): Promise<Actor> {
-  const deps = c.get("deps");
-  let verified;
-  try {
-    verified = await deps.jwt.verify(token);
-  } catch (e) {
-    if (e instanceof InvalidTokenError) fail("UNAUTHENTICATED");
-    throw e;
-  }
+  const userId = await c.get("db").tx({}, (tx) => userForAccessToken(tx, token, c.get("deps").now()));
+  if (!userId) fail("UNAUTHENTICATED");
+  const verified = { userId, aal: "aal1" as const };
   const memberships = await c.get("db").tx({ authUserId: verified.userId }, (tx) => membershipsOf(tx, verified.userId));
   const requestedOrg = c.req.header("X-ARMS-Org");
   let m: MembershipRow | undefined;
@@ -106,7 +102,7 @@ async function authenticateCookie(c: AppContext, cookie: string): Promise<{ acto
     fail("SESSION_EXPIRED");
   };
 
-  let session = await db.tx({}, (tx) => findWebSession(tx, sessionHash));
+  const session = await db.tx({}, (tx) => findWebSession(tx, sessionHash));
   if (!session) return expire();
   if (new Date(session.expires_at) <= now || now.getTime() - new Date(session.last_seen_at).getTime() > SESSION_IDLE_SECONDS * 1000) {
     await db.tx({}, (tx) => revokeWebSession(tx, sessionHash));
@@ -114,43 +110,7 @@ async function authenticateCookie(c: AppContext, cookie: string): Promise<{ acto
   }
   await enforceCsrf(c, session);
 
-  let secrets = await decryptSecrets(key, sessionHash, session.encrypted_provider_tokens);
-  const nowSec = Math.floor(now.getTime() / 1000);
-  if (secrets.accessExpiresAt - nowSec < 60) {
-    // Serialise refreshes of the same session with a row lock; re-read in case another request refreshed.
-    const refreshed = await db.tx({}, async (tx) => {
-      const locked = await findWebSession(tx, sessionHash, true);
-      if (!locked) return null;
-      const current = await decryptSecrets(key, sessionHash, locked.encrypted_provider_tokens);
-      if (current.accessExpiresAt - nowSec >= 60) return { row: locked, secrets: current };
-      let fresh;
-      try {
-        fresh = await deps.auth.refresh(current.refreshToken);
-      } catch (e) {
-        if (e instanceof ApiError && (e.code === "SESSION_EXPIRED" || e.code === "ACCOUNT_DISABLED")) {
-          await revokeWebSession(tx, sessionHash);
-          return null;
-        }
-        throw e;
-      }
-      const next = { accessToken: fresh.accessToken, refreshToken: fresh.refreshToken, accessExpiresAt: fresh.expiresAt, csrfToken: current.csrfToken };
-      await storeRefreshedTokens(tx, deps.config.sessionKey, locked, next, locked.aal);
-      return { row: locked, secrets: next };
-    });
-    if (!refreshed) return expire();
-    session = refreshed.row;
-    secrets = refreshed.secrets;
-  }
-
-  let verified;
-  try {
-    verified = await deps.jwt.verify(secrets.accessToken);
-  } catch (e) {
-    if (e instanceof InvalidTokenError) return expire();
-    throw e;
-  }
-  if (verified.userId !== session.user_id) return expire();
-
+  const verified = { userId: session.user_id };
   const memberships = await db.tx({ authUserId: verified.userId }, (tx) => membershipsOf(tx, verified.userId));
   const m = memberships.find((x) => x.org_id === session.org_id);
   if (!m || !m.active) {
@@ -173,7 +133,7 @@ async function authenticateCookie(c: AppContext, cookie: string): Promise<{ acto
       displayName: m.display_name,
       method: "cookie",
       sessionHash,
-      aal: session.aal === "aal2" || verified.aal === "aal2" ? "aal2" : "aal1",
+      aal: session.aal === "aal2" ? "aal2" : "aal1",
     },
     requireAdminMfa: m.require_admin_mfa,
   };

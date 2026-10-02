@@ -55,7 +55,7 @@
       "post": {
         "operationId": "post_auth_password_reset",
         "summary": "パスワード再設定メール送信",
-        "description": "許可ロール: 公開。登録有無にかかわらず同じ応答を返す（アカウント列挙防止）。",
+        "description": "許可ロール: 公開。登録済みで有効な利用者には1時間有効の再設定リンクをメール送信する。列挙防止のため、未登録・停止中のアドレスでも同じ応答を返す。メール送信サービス未設定は503 NOT_CONFIGURED。",
         "tags": [
           "auth"
         ],
@@ -270,7 +270,7 @@
       "post": {
         "operationId": "post_auth_password",
         "summary": "招待・再設定リンクからのパスワード設定",
-        "description": "許可ロール: 公開（メールリンクの短期アクセストークンをAuthの公開鍵で検証）。組織メンバーシップが必要。受講者はiOS、管理者・講師はWebでログインするよう案内する。",
+        "description": "許可ロール: 公開（招待・パスワード再設定メールのリンクに含まれる一回限りのトークンで認可。有効期限: 招待24時間・再設定1時間）。組織メンバーシップが必要。設定後はトークンを無効化し、パスワード再設定の場合はほかの端末のセッションを解除する。受講者はiOS、管理者・講師はWebでログインするよう案内する。",
         "tags": [
           "auth"
         ],
@@ -301,6 +301,141 @@
           },
           "403": {
             "$ref": "#/components/responses/Error"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/auth/tokens": {
+      "post": {
+        "operationId": "post_auth_tokens",
+        "summary": "iOSログイン（トークン発行）",
+        "description": "許可ロール: 公開（メールアドレス・パスワードで認証）。iOSアプリ用。いずれかの組織に有効なメンバーシップが必要。不透明なアクセストークン（1時間）とリフレッシュトークン（ローテーション、最終利用から30日・ログインから最長90日）を返す。ロールは発行後に GET /me でサーバーが判定する。連続10回の失敗で15分ログインを制限（429）。",
+        "tags": [
+          "auth"
+        ],
+        "security": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TokenGrantInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TokenResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/auth/tokens/refresh": {
+      "post": {
+        "operationId": "post_auth_tokens_refresh",
+        "summary": "iOSトークン更新",
+        "description": "許可ロール: 公開（リフレッシュトークンで認可）。新しいアクセストークンとリフレッシュトークンを返し、古いリフレッシュトークンは無効になる。無効化済みのリフレッシュトークンが再提示された場合は盗用とみなしてセッションを失効させる（401 SESSION_EXPIRED）。",
+        "tags": [
+          "auth"
+        ],
+        "security": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TokenRefreshInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TokenResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/auth/tokens/revoke": {
+      "post": {
+        "operationId": "post_auth_tokens_revoke",
+        "summary": "iOSログアウト（トークン失効）",
+        "description": "許可ロール: 公開（リフレッシュトークンで認可）。そのセッションを失効させる。未知・失効済みのトークンでも同じ成功応答（冪等）。",
+        "tags": [
+          "auth"
+        ],
+        "security": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TokenRefreshInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ActionResult"
+                }
+              }
+            }
           },
           "422": {
             "$ref": "#/components/responses/Error"
@@ -962,10 +1097,11 @@
       "PasswordSetInput": {
         "type": "object",
         "properties": {
-          "access_token": {
+          "token": {
             "type": "string",
             "minLength": 20,
-            "maxLength": 4096
+            "maxLength": 200,
+            "description": "メールリンクの #token= の値（一回限り）。"
           },
           "password": {
             "type": "string",
@@ -975,8 +1111,103 @@
           }
         },
         "required": [
-          "access_token",
+          "token",
           "password"
+        ],
+        "additionalProperties": false
+      },
+      "TokenGrantInput": {
+        "type": "object",
+        "properties": {
+          "email": {
+            "type": "string",
+            "format": "email"
+          },
+          "password": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "device_label": {
+            "type": "string",
+            "maxLength": 100,
+            "description": "端末の表示名（任意、セッション管理用）。"
+          }
+        },
+        "required": [
+          "email",
+          "password"
+        ],
+        "additionalProperties": false
+      },
+      "TokenRefreshInput": {
+        "type": "object",
+        "properties": {
+          "refresh_token": {
+            "type": "string",
+            "minLength": 20,
+            "maxLength": 200
+          }
+        },
+        "required": [
+          "refresh_token"
+        ],
+        "additionalProperties": false
+      },
+      "TokenPair": {
+        "type": "object",
+        "properties": {
+          "access_token": {
+            "type": "string",
+            "description": "Authorization: Bearer に使う不透明トークン。"
+          },
+          "refresh_token": {
+            "type": "string"
+          },
+          "token_type": {
+            "type": "string",
+            "enum": [
+              "Bearer"
+            ]
+          },
+          "expires_in": {
+            "type": "integer",
+            "description": "アクセストークンの残り秒数。"
+          },
+          "refresh_expires_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "セッションの最長期限（再ログインが必要になる時刻）。"
+          },
+          "user_id": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        "required": [
+          "access_token",
+          "refresh_token",
+          "token_type",
+          "expires_in",
+          "refresh_expires_at",
+          "user_id"
+        ],
+        "additionalProperties": false
+      },
+      "TokenResponse": {
+        "type": "object",
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/TokenPair"
+          },
+          "checked_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "data",
+          "checked_at"
         ],
         "additionalProperties": false
       }

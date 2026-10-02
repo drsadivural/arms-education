@@ -3,41 +3,25 @@
 //
 //   node apps/ios/ARMSKit/Scripts/seed-live.mjs <fixture.json>
 //
-// Creates, with a unique stamp: a teacher and a student in Supabase Auth (GoTrue admin API, password sign-in),
+// Creates, with a unique stamp: a teacher and a student with passwords (ARMS's own sign-in, PostgreSQL),
 // their ARMS profiles, a classroom, a published program version (1 unit: link + quiz + assignment) with the
 // student's enrollment, three lesson slots (two bookable in the next days, one starting in 10 minutes for
 // attendance), two unread notifications and an open voice session row for the student (the local stack has no
 // OpenAI key, so /voice/tool-calls is driven with this session). Writes the ids/credentials to <fixture.json>.
 //
-// Env (defaults from services/api/.dev.vars): DATABASE_ADMIN_URL, AUTH_URL, AUTH_ADMIN_SECRET.
-import { readFileSync, writeFileSync } from "node:fs";
-import { join, dirname } from "node:path";
-import { fileURLToPath } from "node:url";
+// Env: DATABASE_ADMIN_URL (default: the local compose PostgreSQL).
+import { writeFileSync } from "node:fs";
 import { randomUUID } from "node:crypto";
 import pg from "pg";
+import { setPassword } from "../../../../scripts/auth/credentials.mjs";
 
-const root = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "..");
-const devVars = (() => {
-  try {
-    return Object.fromEntries(
-      readFileSync(join(root, "services/api/.dev.vars"), "utf8")
-        .split("\n")
-        .filter((l) => l.includes("="))
-        .map((l) => [l.slice(0, l.indexOf("=")), l.slice(l.indexOf("=") + 1)]),
-    );
-  } catch {
-    return {};
-  }
-})();
-const AUTH = process.env.AUTH_URL ?? devVars.SUPABASE_AUTH_URL ?? "http://localhost:9999";
-const ADMIN_SECRET = process.env.AUTH_ADMIN_SECRET ?? devVars.SUPABASE_ADMIN_SECRET ?? "";
 const DB = process.env.DATABASE_ADMIN_URL ?? "postgres://postgres:arms_dev_pw@127.0.0.1:55433/arms";
 const out = process.argv[2];
 if (!out) {
   console.error("usage: node seed-live.mjs <fixture.json>");
   process.exit(2);
 }
-if (!/^(postgres(ql)?:\/\/[^@]+@(127\.0\.0\.1|localhost)[:/])/.test(DB) || !/^https?:\/\/(127\.0\.0\.1|localhost)[:/]/.test(AUTH)) {
+if (!/^(postgres(ql)?:\/\/[^@]+@(127\.0\.0\.1|localhost)[:/])/.test(DB)) {
   console.error("refusing to seed a non-local stack");
   process.exit(2);
 }
@@ -45,21 +29,10 @@ if (!/^(postgres(ql)?:\/\/[^@]+@(127\.0\.0\.1|localhost)[:/])/.test(DB) || !/^ht
 const stamp = Date.now().toString(36);
 const password = `Ios-${stamp}-Pass1`;
 
-async function authUser(email) {
-  const res = await fetch(`${AUTH}/admin/users`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", Authorization: `Bearer ${ADMIN_SECRET}`, apikey: ADMIN_SECRET },
-    body: JSON.stringify({ email, password, email_confirm: true }),
-  });
-  const body = await res.json();
-  if (!res.ok || !body.id) throw new Error(`GoTrue admin/users failed: ${res.status}`);
-  return body.id;
-}
-
 const teacherEmail = `ios-teacher-${stamp}@arms.local`;
 const studentEmail = `ios-student-${stamp}@arms.local`;
-const teacherId = await authUser(teacherEmail);
-const studentId = await authUser(studentEmail);
+const teacherId = randomUUID();
+const studentId = randomUUID();
 
 const db = new pg.Client({ connectionString: DB });
 await db.connect();
@@ -69,6 +42,8 @@ try {
   const [{ id: orgId }] = await q("INSERT INTO app.organizations(name) VALUES ($1) RETURNING id", [`iOS契約テスト ${stamp}`]);
   await q("INSERT INTO app.users(id, display_name, email) VALUES ($1, '田中 祥司', $2), ($3, '和田 一夫', $4)", [teacherId, teacherEmail, studentId, studentEmail]);
   await q("INSERT INTO app.memberships(org_id, id, role) VALUES ($1, $2, 'teacher'), ($1, $3, 'student')", [orgId, teacherId, studentId]);
+  await setPassword(db, teacherId, password);
+  await setPassword(db, studentId, password);
   await q("INSERT INTO app.teacher_profiles(org_id, id, teacher_number, kana, department_name) VALUES ($1, $2, $3, 'たなか しょうじ', '開発部')", [orgId, teacherId, `T-${stamp}`]);
   const [{ id: classroomId }] = await q(
     "INSERT INTO app.classrooms(org_id, name, capacity, starts_on, ends_on) VALUES ($1, $2, 30, current_date - 30, current_date + 120) RETURNING id",

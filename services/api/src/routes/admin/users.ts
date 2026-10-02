@@ -1,6 +1,6 @@
 /**
- * WEB-18 ユーザー管理: accounts, administrator invitations, stop/resume, invitation resend and
- * account-deletion requests (POST /me/account-deletion).
+ * WEB-18 ユーザー管理: accounts, administrator invitations, stop/resume, invitation resend, administrator TOTP reset
+ * and account-deletion requests (POST /me/account-deletion).
  *
  * Decision: POST /settings/users/invite creates administrator accounts only. Teachers and students need a
  * profile (講師番号 / 社員番号・クラス・担当講師…) and are invited from 講師管理 / 新入社員管理 (POST /teachers, POST /students),
@@ -20,7 +20,10 @@ import { decodeCursor, paginate, parseLimit } from "../../http/pagination";
 import { action, ok, page } from "../../http/respond";
 import { TimeIdCursor, audit, containsPattern, optionalQuery, zQueryText } from "../../domain/admin/common";
 import { resendInvitation, runInvitation } from "../../domain/admin/invitations";
-import { assertCanDeactivate, lockMembership, setMembershipActive, syncProviderBan } from "../../domain/admin/accounts";
+import { assertCanDeactivate, lockMembership, setMembershipActive } from "../../domain/admin/accounts";
+import { resetTotp } from "../../auth/credentials";
+import { revokeAllUserWebSessions } from "../../auth/session";
+import { revokeUserBearerSessions } from "../../auth/tokens";
 
 export const userRoutes = new Hono<AppEnv>();
 
@@ -118,7 +121,7 @@ async function disableAccount(tx: Tx, c: AppContext, userId: string): Promise<{ 
   return { changed: true, role: target.role };
 }
 
-/** Stop: membership inactive + web sessions revoked (same transaction) + provider sign-in blocked (after commit). */
+/** Stop: membership inactive + the user's Web (this organisation) and iOS sessions revoked in the same transaction. */
 userRoutes.post("/settings/users/:id/disable", requireRole("admin"), async (c) => {
   const actor = c.get("actor");
   const id = pathId(c);
@@ -127,8 +130,7 @@ userRoutes.post("/settings/users/:id/disable", requireRole("admin"), async (c) =
     if (r.changed) await audit(tx, actor, "user.disabled", id, { role: r.role });
     return r;
   });
-  const sync = result.changed ? await syncProviderBan(c, id, true) : { provider_synced: true };
-  return action(c, { id, active: false, changed: result.changed, ...sync });
+  return action(c, { id, active: false, changed: result.changed });
 });
 
 userRoutes.post("/settings/users/:id/enable", requireRole("admin"), async (c) => {
@@ -141,8 +143,33 @@ userRoutes.post("/settings/users/:id/enable", requireRole("admin"), async (c) =>
     await audit(tx, actor, "user.enabled", id, { role: target.role });
     return { changed: true };
   });
-  const sync = result.changed ? await syncProviderBan(c, id, false) : { provider_synced: true };
-  return action(c, { id, active: true, changed: result.changed, ...sync });
+  return action(c, { id, active: true, changed: result.changed });
+});
+
+/**
+ * Administrator TOTP reset for a lost authenticator: removes the factor (the person registers a new one at the next
+ * sign-in) and ends all of their sessions. Another administrator of the organisation must do it.
+ */
+userRoutes.post("/settings/users/:id/mfa-reset", requireRole("admin"), async (c) => {
+  const actor = c.get("actor");
+  const id = pathId(c);
+  if (id === actor.userId) fail("VALIDATION_FAILED", { message_ja: "自分自身の二段階認証はリセットできません。別の管理者に依頼してください。" });
+  const now = c.get("deps").now();
+  const had = await actorTx(c, async (tx) => {
+    const target = await tx.maybeOne<{ role: Role }>(sql`SELECT role FROM app.memberships WHERE org_id = ${actor.orgId} AND id = ${id}`);
+    if (!target) fail("NOT_FOUND");
+    if (target.role !== "admin") fail("VALIDATION_FAILED", { message_ja: "二段階認証のリセットは管理者アカウントのみが対象です。" });
+    const enrolled = await resetTotp(tx, id, now);
+    await revokeAllUserWebSessions(tx, id);
+    await revokeUserBearerSessions(tx, id, "mfa_reset", now);
+    await audit(tx, actor, "auth.mfa_reset", id, { had_factor: enrolled });
+    return enrolled;
+  });
+  return action(c, {
+    id,
+    had_factor: had,
+    message_ja: had ? "二段階認証をリセットしました。次回ログイン時に認証アプリを登録し直してください。" : "二段階認証は登録されていませんでした（ログイン中のセッションは解除しました）。",
+  });
 });
 
 const DeletionListQuery = z.object({
@@ -191,7 +218,6 @@ userRoutes.post("/settings/account-deletion-requests/:id/complete", requireRole(
     await audit(tx, actor, "account.deletion_completed", id, { user_id: request.user_id, role: disabled.role, account_disabled: disabled.changed });
     return { userId: request.user_id, changed: disabled.changed, alreadyCompleted: false };
   });
-  const sync = result.changed ? await syncProviderBan(c, result.userId, true) : { provider_synced: true };
-  return action(c, { id, user_id: result.userId, state: "completed", already_completed: result.alreadyCompleted, ...sync });
+  return action(c, { id, user_id: result.userId, state: "completed", already_completed: result.alreadyCompleted });
 });
 

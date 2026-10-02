@@ -2,8 +2,6 @@ import type { Bindings } from "./env";
 import { ConfigError, loadConfig } from "./env";
 import type { Deps } from "./context";
 import { hyperdriveSource } from "./db/client";
-import { createJwtVerifier, remoteKeySet } from "./auth/jwt";
-import { createSupabaseAuth } from "./integrations/supabase-auth";
 import { createIntegrations } from "./integrations";
 
 let cached: { env: Bindings; deps: Deps } | null = null;
@@ -17,13 +15,6 @@ export function workerDeps(env: Bindings): Deps {
   const deps: Deps = {
     config,
     connections: hyperdriveSource(connectionString),
-    jwt: createJwtVerifier({ keySet: remoteKeySet(config.supabase.authUrl), issuer: config.supabase.issuer, audience: config.supabase.audience }),
-    auth: createSupabaseAuth({
-      authUrl: config.supabase.authUrl,
-      publishableKey: config.supabase.publishableKey,
-      adminSecret: config.supabase.adminSecret,
-      redirectUrl: config.supabase.redirectUrl,
-    }),
     integrations: createIntegrations(env, config),
     now: () => new Date(),
     log: (event) => console.info(JSON.stringify({ ts: new Date().toISOString(), ...event })),

@@ -1,7 +1,7 @@
 # ARMS iOS アプリ（受講者・講師）
 
-ARMS 新入社員研修システムのネイティブ iOS アプリです。SwiftUI（iOS 17 以上）、Supabase Auth（メール／パスワード）、
-ARMS Workers API（Bearer 認証）、OpenAI Realtime（ネイティブ WebRTC）で構成します。管理者は Web 管理画面を使用し、
+ARMS 新入社員研修システムのネイティブ iOS アプリです。SwiftUI（iOS 17 以上）、ARMS Workers API（メール／パスワードで
+`POST /auth/tokens` → Bearer 認証。外部の認証サービスは使わない）、OpenAI Realtime（ネイティブ WebRTC）で構成します。管理者は Web 管理画面を使用し、
 iOS では「管理者の操作はWeb管理画面をご利用ください。」と表示してログインを拒否します。
 
 ## 構成
@@ -26,7 +26,7 @@ apps/ios/
 ├── ARMS/                    SwiftUI アプリ
 │   ├── App/                 エントリ、AppDelegate（APNs）、構成ルート、タブ・ルーター、シーン遷移
 │   ├── Features/            IOS-01〜IOS-18 の各画面
-│   ├── Networking/          supabase-swift Auth ブリッジ、Keychain、UserDefaults
+│   ├── Networking/          Keychain（トークン保存）、UserDefaults
 │   ├── Voice/               WebRTC トランスポート、AVAudioSession、音声画面・確認カード
 │   ├── DesignSystem/        色（docs/10）・カード・ボタン・状態表示（読み込み／空／エラー／オフライン）
 │   ├── Resources/           Info.plist、Assets（H&A ロゴ原本）、PrivacyInfo.xcprivacy、entitlements、文字列カタログ
@@ -61,10 +61,9 @@ apps/ios/
 
 | パッケージ | バージョン | 用途 |
 |---|---|---|
-| [supabase-swift](https://github.com/supabase/supabase-swift) | 2.55.3（exact） | `Auth` プロダクトのみ使用（メール/パスワード、更新、セッション保存は Keychain） |
 | [stasel/WebRTC](https://github.com/stasel/WebRTC) | 154.0.0（exact、M154 xcframework、BSD-3） | OpenAI Realtime へのネイティブ WebRTC |
 
-ARMSKit は外部依存なしです。supabase-swift 2.55.3 は swift-tools-version 6.1 のため Xcode 16.3 以上が必要です。
+ARMSKit は外部依存なしです（ログイン・トークン更新も ARMSKit の `APIAuthService` が URLSession で行う）。CI は Xcode 16.4 で検証しています。
 
 ## Xcode でのビルド
 
@@ -85,12 +84,10 @@ open ARMS.xcodeproj
 | xcconfig キー | 内容 |
 |---|---|
 | `API_BASE_URL` | ARMS Workers API の origin（https。パス無しなら `/api/v1` を付加） |
-| `SUPABASE_URL` | Supabase プロジェクト URL（Auth は `<URL>/auth/v1`） |
-| `SUPABASE_PUBLISHABLE_KEY` | Supabase の公開キー（秘密キー・service_role は絶対に入れない） |
 | `TERMS_URL` / `PRIVACY_POLICY_URL` | 設定画面の利用規約・プライバシーポリシー |
 | `BUNDLE_ID` / `DEVELOPMENT_TEAM` | 顧客所有の Bundle ID と Apple Team |
 
-xcconfig では `//` がコメントになるため、URL は `https:/$()/example.com` と書きます。OpenAI キー・APNs 秘密鍵・Supabase 管理キーはアプリに含めません（Workers 側の Secret）。
+xcconfig では `//` がコメントになるため、URL は `https:/$()/example.com` と書きます。OpenAI キー・APNs 秘密鍵などの秘密はアプリに含めません（Workers 側の Secret）。
 
 ## テスト
 
@@ -110,7 +107,7 @@ CI は `.github/workflows/ios.yml`（Ubuntu の `swift:6.1-noble` で ARMSKit、
 API（wrangler dev）に対して実行します。`ARMS_LIVE_API=1` が無い場合はスキップされます（CI でもスキップ）。
 
 ```bash
-# リポジトリ直下。Docker のローカル基盤（Postgres :55433 / GoTrue :9999 / S3互換ストレージ SeaweedFS :9100）を起動し、マイグレーション適用済みであること
+# リポジトリ直下。Docker のローカル基盤（Postgres :55433 / S3互換ストレージ SeaweedFS :9100）を起動し、マイグレーション適用済みであること
 (cd services/api && npx wrangler dev --port 8804 --inspector-port 9804 --ip 127.0.0.1)   # 別ターミナル
 apps/ios/ARMSKit/Scripts/live-contract-test.sh
 ```
@@ -121,7 +118,9 @@ apps/ios/ARMSKit/Scripts/live-contract-test.sh
 
 ## 実装上の要点
 
-- **認証**: Supabase Auth のアクセストークンを `Authorization: Bearer` で送信（Cookie・CSRF は使用しない）。トークンは Keychain
+- **認証**: `APIAuthService` が `POST /auth/tokens`（メール・パスワード）で不透明なアクセストークン（1時間）とリフレッシュトークンを取得し、
+  `Authorization: Bearer` で送信（Cookie・CSRF は使用しない）。更新（`/auth/tokens/refresh`）は同時に1回だけ実行（リフレッシュトークンは毎回
+  ローテーションされ、再利用はサーバーがセッション失効とみなす）。ログアウトは `/auth/tokens/revoke`。トークンは Keychain
   （`AfterFirstUnlockThisDeviceOnly`）。ロールは選択値をサーバーへ送り、`ROLE_MISMATCH` なら「このアカウントでは選択した利用区分にログインできません」
   を表示してサインアウト。管理者は Web へ案内。複数組織の場合は `X-ARMS-Org` で選択。
 - **書き込み**: 操作ごとに Idempotency-Key（UUID）を 1 つ生成し、自動再試行・二重タップ・「もう一度申請する」で再利用。
@@ -158,10 +157,10 @@ apps/ios/ARMSKit/Scripts/live-contract-test.sh
 | 項目 | 状況 |
 |---|---|
 | ARMSKit のビルドと XCTest（DTO・API クライアント・日付・予約/進捗ルール・音声ブリッジ・ビューモデル） | Linux で実行済み（`swift test`） |
-| 実 API との契約（ローカル wrangler dev + GoTrue + S3互換ストレージ（SeaweedFS、2026-10-03以前はMinIO）に対する `LiveAPITests`：/me・予約・出欠・進捗・教材・テスト・課題アップロード・評価・通知・端末・音声ツール） | Linux で実行済み（`Scripts/live-contract-test.sh`） |
+| 実 API との契約（ローカル wrangler dev + PostgreSQL + S3互換ストレージ（SeaweedFS）に対する `LiveAPITests`。ログインは実際の `APIAuthService`：/me・予約・出欠・進捗・教材・テスト・課題アップロード・評価・通知・端末・音声ツール） | Linux で実行済み（`Scripts/live-contract-test.sh`） |
 | SwiftUI アプリ本体の構文（`swiftc -parse`） | Linux で確認済み（型検査は macOS CI） |
-| `SupabaseAuthService` の supabase-swift 2.55.3 `Auth` に対するコンパイル、誤パスワード時のローカル GoTrue 応答の日本語化 | Linux で確認済み |
-| SwiftUI アプリ本体・WebRTC・AVAudioSession・Keychain・APNs のコンパイル | **未実施**（Linux に iOS SDK が無いため。macOS CI で確認） |
+| `APIAuthService`（ログイン・トークン更新の一本化・失効・オフライン時の保持・日本語エラー）の単体テスト | Linux で実行済み（`swift test`） |
+| SwiftUI アプリ本体・WebRTC・AVAudioSession・Keychain・APNs のコンパイルとアプリ単体テスト | macOS CI（`.github/workflows/ios.yml`、Xcode 16.4・iOS Simulator）で実行 |
 | マイク・WebRTC 音声・AirPods/Bluetooth 経路・電話割り込み・音声割り込み時の再生停止 | 実機での確認が必要 |
 | APNs の受信・通知タップからのディープリンク | 実機 + APNs キー（Workers 側）が必要 |
 | 署名・アーカイブ・TestFlight / App Store 提出 | 顧客の Apple Developer アカウントが必要 |

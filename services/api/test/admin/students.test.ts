@@ -167,8 +167,8 @@ describe("POST /students", () => {
   it("enforces classroom capacity and never exceeds it under 10 concurrent creations", async () => {
     const t = await createTeacher(ctx.admin, org.orgId);
     const classroomId = await createClassroom(ctx.admin, org.orgId, { primaryTeacherId: t.userId, capacity: 1 });
-    const usersBefore = ctx.auth.users.size;
-    const results = await Promise.all(Array.from({ length: 10 }, () => call(ctx, admin, "POST", "/students", { body: studentBody(classroomId, t.userId) })));
+    const bodies = Array.from({ length: 10 }, () => studentBody(classroomId, t.userId));
+    const results = await Promise.all(bodies.map((body) => call(ctx, admin, "POST", "/students", { body })));
     const statuses = results.map((r) => r.status).sort();
     expect(statuses.filter((s) => s === 200)).toHaveLength(1);
     expect(results.filter((r) => r.status === 409).every((r) => r.body.code === "CLASSROOM_FULL")).toBe(true);
@@ -176,8 +176,9 @@ describe("POST /students", () => {
     for (const r of results) expectContract(r, "post", "/students");
     const { rows } = await ctx.admin.query("SELECT count(*)::int AS n FROM app.student_profiles WHERE classroom_id = $1 AND active", [classroomId]);
     expect(rows[0].n).toBe(1);
-    // The early seat check keeps the losers from creating provider accounts.
-    expect(ctx.auth.users.size - usersBefore).toBe(1);
+    // The early seat check keeps the losers from allocating accounts.
+    const allocated = await ctx.admin.query("SELECT count(*)::int AS n FROM app.users WHERE lower(email) = ANY($1)", [bodies.map((b) => b.email.toLowerCase())]);
+    expect(allocated.rows[0].n).toBe(1);
     const full = await call(ctx, admin, "POST", "/students", { body: studentBody(classroomId, t.userId) });
     expect(full.status).toBe(409);
     expect(full.body.message_ja).toBe("クラスの定員に達しています。");
@@ -187,30 +188,24 @@ describe("POST /students", () => {
     expect(inactive.body.invitation.state).toBe("pending");
   });
 
-  it("the DB trigger is the final capacity guarantee; the saga resumes at the profile step with the same key", async () => {
+  it("a database outage at the profile step is resumed with the same key (same user id, no second account)", async () => {
     const t = await createTeacher(ctx.admin, org.orgId);
     const classroomId = await createClassroom(ctx.admin, org.orgId, { primaryTeacherId: t.userId, capacity: 1 });
     const body = studentBody(classroomId, t.userId);
     const key = crypto.randomUUID();
-    const original = ctx.auth.adminCreateUser.bind(ctx.auth);
-    let filler: string | null = null;
-    // The last seat is taken by someone else between the early seat check and the profile insert.
-    ctx.auth.adminCreateUser = async (email: string) => {
-      filler = (await createStudent(ctx.admin, org.orgId, { classroomId, teacherId: t.userId })).userId;
-      return original(email);
-    };
-    const full = await call(ctx, admin, "POST", "/students", { body, idempotencyKey: key });
-    ctx.auth.adminCreateUser = original;
-    expect(full.status).toBe(409);
-    expect(full.body.code).toBe("CLASSROOM_FULL");
-    const job = await ctx.admin.query("SELECT state, error_code, auth_user_id FROM app.invitation_jobs WHERE org_id = $1 AND lower(email) = lower($2)", [org.orgId, body.email]);
-    expect(job.rows[0]).toMatchObject({ state: "auth_created", error_code: "CLASSROOM_FULL" });
-    await ctx.admin.query("UPDATE app.student_profiles SET active = false WHERE id = $1", [filler]);
-    const usersBefore = ctx.auth.users.size;
+    await ctx.admin.query("SELECT public.arms_test_arm_fault($1)", [body.email]);
+    const failed = await call(ctx, admin, "POST", "/students", { body, idempotencyKey: key });
+    expect(failed.status).toBe(503);
+    expect(failed.body.code).toBe("DB_UNAVAILABLE");
+    expectContract(failed, "post", "/students");
+    const job = await ctx.admin.query("SELECT state, error_code, auth_user_id, locked_until FROM app.invitation_jobs WHERE org_id = $1 AND lower(email) = lower($2)", [org.orgId, body.email]);
+    expect(job.rows[0]).toMatchObject({ state: "auth_created", error_code: "DB_UNAVAILABLE", locked_until: null });
     const retry = await call(ctx, admin, "POST", "/students", { body, idempotencyKey: key });
     expect(retry.status).toBe(200);
     expect(retry.body.data.id).toBe(job.rows[0].auth_user_id);
-    expect(ctx.auth.users.size).toBe(usersBefore);
+    expect(retry.body.invitation.state).toBe("sent");
+    const users = await ctx.admin.query("SELECT count(*)::int AS n FROM app.users WHERE lower(email) = lower($1)", [body.email]);
+    expect(users.rows[0].n).toBe(1);
   });
 
   it("requires admin", async () => {
@@ -287,7 +282,8 @@ describe("PATCH /students/{id}", () => {
 describe("DELETE /students/{id} (archive)", () => {
   it("refuses while the student holds a reservation, then archives and frees the seat", async () => {
     const s = await createStudent(ctx.admin, org.orgId, { classroomId: org.classroomId, teacherId: org.teacher.userId });
-    ctx.auth.register(s.email, "pw", s.userId);
+    await ctx.auth.register(s.email, "pw", s.userId);
+    const signedIn = await bearerCaller(s.userId, org.orgId);
     const slot = await createSlot(ctx.admin, org.orgId, { classroomId: org.classroomId, teacherId: org.teacher.userId, startsAt: futureDate(10) });
     const reservation = await createReservation(ctx.admin, org.orgId, { slotId: slot, studentId: s.userId, status: "approved" });
     const before = (await call(ctx, admin, "GET", `/classrooms/${org.classroomId}`)).body.data.student_count;
@@ -304,7 +300,9 @@ describe("DELETE /students/{id} (archive)", () => {
     expect(after).toBe(before - 1);
     const member = await ctx.admin.query("SELECT active FROM app.memberships WHERE id = $1", [s.userId]);
     expect(member.rows[0].active).toBe(false);
-    expect(ctx.auth.users.get(s.email.toLowerCase())?.banned).toBe(true);
+    // The archive ends the student's iOS sessions in the same transaction; a new token is refused by membership.
+    expect(await ctx.auth.openBearerSessions(s.userId)).toBe(0);
+    expect((await call(ctx, signedIn, "GET", "/me")).status).toBe(401);
     const bearer = await bearerCaller(s.userId, org.orgId);
     expect((await call(ctx, bearer, "GET", "/me")).status).toBe(403);
     expect((await call(ctx, teacher, "DELETE", `/students/${s.userId}`, { ifMatch: 1 })).status).toBe(403);

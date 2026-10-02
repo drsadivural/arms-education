@@ -398,7 +398,7 @@
       "post": {
         "operationId": "post_teachers",
         "summary": "講師追加（招待）",
-        "description": "許可ロール: admin。Auth providerのユーザー作成→DBプロフィール作成→招待メール送信をinvitation_jobsで追跡するsaga。同じIdempotency-Keyの再送は同じジョブを再開し、Authユーザーを二重に作成しない。招待メールの送信に失敗してもプロフィールは作成済みで、invitation.state=failed（再送可能）を返す。",
+        "description": "許可ロール: admin。ユーザーID割当→DBプロフィール作成→招待メール（一回限りのリンク、24時間有効）送信をinvitation_jobsで追跡するsaga。同じIdempotency-Keyの再送は同じジョブを再開し、ユーザーを二重に作成しない。招待メールの送信に失敗してもプロフィールは作成済みで、invitation.state=failed（再送可能）を返す。",
         "tags": [
           "teachers"
         ],
@@ -1226,7 +1226,7 @@
       "post": {
         "operationId": "post_settings_users_enable",
         "summary": "アカウント再開",
-        "description": "許可ロール: admin。membershipを有効に戻し、Auth providerのログイン停止を解除する。受講者の在籍状態は変更しない。",
+        "description": "許可ロール: admin。membershipを有効に戻す（再びログインできる）。受講者の在籍状態は変更しない。",
         "tags": [
           "settings"
         ],
@@ -1384,7 +1384,7 @@
       "post": {
         "operationId": "post_account_deletion_request_complete",
         "summary": "本人削除申請の対応完了",
-        "description": "許可ロール: admin。アカウントを停止（membership無効・Webセッション失効・Auth providerでログイン停止）し、申請をcompletedにする。研修記録は保持する。",
+        "description": "許可ロール: admin。アカウントを停止（membership無効・Web/iOSセッション失効）し、申請をcompletedにする。研修記録は保持する。",
         "tags": [
           "settings"
         ],
@@ -1540,6 +1540,79 @@
           }
         }
       }
+    },
+    "/settings/users/{id}/mfa-reset": {
+      "post": {
+        "operationId": "post_settings_users_id_mfa_reset",
+        "summary": "管理者の二段階認証リセット",
+        "description": "許可ロール: admin（二段階認証済みのWebセッション）。同じ組織の管理者が認証アプリを紛失した場合に、その管理者のTOTP登録を削除し、ログイン中のセッションをすべて解除する。対象者は次回ログイン時に認証アプリを登録し直す。自分自身は対象にできない（422）。対象が管理者でない場合は422。監査ログ auth.mfa_reset を記録する。",
+        "tags": [
+          "settings"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ActionResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "schema": {
+              "type": "string"
+            },
+            "description": "cookie認証の場合必須。Bearer専用iOSには不要。"
+          }
+        ]
+      }
     }
   },
   "components": {
@@ -1560,7 +1633,7 @@
             "type": "string",
             "format": "email",
             "maxLength": 254,
-            "description": "登録後は変更できない（Auth providerのログインIDのため）。"
+            "description": "登録後は変更できない（ログインIDのため）。"
           },
           "teacher_number": {
             "type": "string",
