@@ -1,0 +1,138 @@
+{
+  "inputs": [
+    {
+      "name": "APP_ORIGIN",
+      "required": true,
+      "secret": false,
+      "storage": "Workers vars",
+      "description_ja": "所有Web origin"
+    },
+    {
+      "name": "SUPABASE_URL",
+      "required": true,
+      "secret": false,
+      "storage": "Workers vars / iOS config",
+      "description_ja": "Auth project URL"
+    },
+    {
+      "name": "SUPABASE_PUBLISHABLE_KEY",
+      "required": true,
+      "secret": false,
+      "storage": "Workers vars / iOS config",
+      "description_ja": "公開Auth key"
+    },
+    {
+      "name": "SUPABASE_AUTH_ISSUER",
+      "required": true,
+      "secret": false,
+      "storage": "Workers vars",
+      "description_ja": "JWT issuer"
+    },
+    {
+      "name": "SUPABASE_AUTH_AUDIENCE",
+      "required": true,
+      "secret": false,
+      "storage": "Workers vars",
+      "description_ja": "JWT audience authenticated"
+    },
+    {
+      "name": "SUPABASE_ADMIN_SECRET",
+      "required": true,
+      "secret": true,
+      "storage": "Workers Secret",
+      "description_ja": "招待専用Auth admin key"
+    },
+    {
+      "name": "HYPERDRIVE",
+      "required": true,
+      "secret": true,
+      "storage": "Workers binding",
+      "description_ja": "制限DB role接続、cache disabled"
+    },
+    {
+      "name": "WEB_SESSION_ENCRYPTION_KEY",
+      "required": true,
+      "secret": true,
+      "storage": "Workers Secret",
+      "description_ja": "refresh token保存の暗号鍵"
+    },
+    {
+      "name": "OPENAI_API_KEY",
+      "required": true,
+      "secret": true,
+      "storage": "Workers Secret",
+      "description_ja": "OpenAI project key"
+    },
+    {
+      "name": "R2_MATERIALS",
+      "required": true,
+      "secret": false,
+      "storage": "Workers binding",
+      "description_ja": "private R2"
+    },
+    {
+      "name": "NOTIFICATION_QUEUE",
+      "required": true,
+      "secret": false,
+      "storage": "Workers binding",
+      "description_ja": "outbox notification queue"
+    },
+    {
+      "name": "MAIL_PROVIDER_API_KEY",
+      "required": true,
+      "secret": true,
+      "storage": "Workers Secret",
+      "description_ja": "実メール送信provider key"
+    },
+    {
+      "name": "MAIL_FROM",
+      "required": true,
+      "secret": false,
+      "storage": "Workers vars",
+      "description_ja": "認証済み送信アドレス"
+    },
+    {
+      "name": "MALWARE_SCAN_URL",
+      "required": true,
+      "secret": false,
+      "storage": "Workers vars",
+      "description_ja": "実ファイル検査endpoint"
+    },
+    {
+      "name": "MALWARE_SCAN_API_KEY",
+      "required": true,
+      "secret": true,
+      "storage": "Workers Secret",
+      "description_ja": "ファイル検査API認証"
+    },
+    {
+      "name": "APNS_TEAM_ID",
+      "required": true,
+      "secret": false,
+      "storage": "Workers vars",
+      "description_ja": "Apple team"
+    },
+    {
+      "name": "APNS_KEY_ID",
+      "required": true,
+      "secret": false,
+      "storage": "Workers vars",
+      "description_ja": "APNs key identifier"
+    },
+    {
+      "name": "APNS_PRIVATE_KEY",
+      "required": true,
+      "secret": true,
+      "storage": "Workers Secret",
+      "description_ja": "APNs p8"
+    },
+    {
+      "name": "IOS_BUNDLE_ID",
+      "required": true,
+      "secret": false,
+      "storage": "iOS xcconfig / Workers vars",
+      "description_ja": "顧客所有Bundle ID"
+    }
+  ],
+  "policy_ja": "実値はこの仕様ファイルへ書かず指定保管先へ。全秘密の空欄/漏洩を起動とCIで検査する。"
+}
