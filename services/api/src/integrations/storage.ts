@@ -3,9 +3,9 @@
  *
  * - Presigned URLs (client upload PUT, download GET) are AWS SigV4 query-signed URLs against the S3-compatible
  *   endpoint (`R2_S3_ENDPOINT`, e.g. https://<account>.r2.cloudflarestorage.com, path-style `/<bucket>/<key>`).
- *   The same code works against MinIO for local development and tests.
+ *   The same code works against the local S3 service (SeaweedFS) for development and tests.
  * - Server-side reads/writes use the `R2_MATERIALS` binding when the endpoint is Cloudflare R2 itself (the binding
- *   and `R2_BUCKET_NAME` must name the same bucket); for any other S3-compatible endpoint (MinIO) every operation
+ *   and `R2_BUCKET_NAME` must name the same bucket); for any other S3-compatible endpoint (SeaweedFS locally) every operation
  *   uses the S3 API so presigned uploads and server reads always hit the same store. Copies always use S3
  *   CopyObject (server-side, no data transfer through the Worker).
  * Not configured (any of endpoint/bucket/key id/secret missing) → null; callers respond NOT_CONFIGURED.

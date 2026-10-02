@@ -110,7 +110,7 @@ CI は `.github/workflows/ios.yml`（Ubuntu の `swift:6.1-noble` で ARMSKit、
 API（wrangler dev）に対して実行します。`ARMS_LIVE_API=1` が無い場合はスキップされます（CI でもスキップ）。
 
 ```bash
-# リポジトリ直下。Docker のローカル基盤（Postgres :55433 / GoTrue :9999 / MinIO :9100）を起動し、マイグレーション適用済みであること
+# リポジトリ直下。Docker のローカル基盤（Postgres :55433 / GoTrue :9999 / S3互換ストレージ SeaweedFS :9100）を起動し、マイグレーション適用済みであること
 (cd services/api && npx wrangler dev --port 8804 --inspector-port 9804 --ip 127.0.0.1)   # 別ターミナル
 apps/ios/ARMSKit/Scripts/live-contract-test.sh
 ```
@@ -158,7 +158,7 @@ apps/ios/ARMSKit/Scripts/live-contract-test.sh
 | 項目 | 状況 |
 |---|---|
 | ARMSKit のビルドと XCTest（DTO・API クライアント・日付・予約/進捗ルール・音声ブリッジ・ビューモデル） | Linux で実行済み（`swift test`） |
-| 実 API との契約（ローカル wrangler dev + GoTrue + MinIO に対する `LiveAPITests`：/me・予約・出欠・進捗・教材・テスト・課題アップロード・評価・通知・端末・音声ツール） | Linux で実行済み（`Scripts/live-contract-test.sh`） |
+| 実 API との契約（ローカル wrangler dev + GoTrue + S3互換ストレージ（SeaweedFS、2026-10-03以前はMinIO）に対する `LiveAPITests`：/me・予約・出欠・進捗・教材・テスト・課題アップロード・評価・通知・端末・音声ツール） | Linux で実行済み（`Scripts/live-contract-test.sh`） |
 | SwiftUI アプリ本体の構文（`swiftc -parse`） | Linux で確認済み（型検査は macOS CI） |
 | `SupabaseAuthService` の supabase-swift 2.55.3 `Auth` に対するコンパイル、誤パスワード時のローカル GoTrue 応答の日本語化 | Linux で確認済み |
 | SwiftUI アプリ本体・WebRTC・AVAudioSession・Keychain・APNs のコンパイル | **未実施**（Linux に iOS SDK が無いため。macOS CI で確認） |

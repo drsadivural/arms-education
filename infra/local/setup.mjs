@@ -51,8 +51,8 @@ writeFileSync(
     `DEVICE_TOKEN_ENCRYPTION_KEY=${randomBytes(32).toString("base64")}`,
     "R2_S3_ENDPOINT=http://127.0.0.1:9100",
     "R2_BUCKET_NAME=arms-materials",
-    "R2_ACCESS_KEY_ID=arms-minio",
-    "R2_SECRET_ACCESS_KEY=arms-minio-dev-pw",
+    "R2_ACCESS_KEY_ID=arms-s3", // infra/local/seaweedfs/s3.json
+    "R2_SECRET_ACCESS_KEY=arms-s3-local-only",
     "MALWARE_SCAN_URL=http://127.0.0.1:9200",
     `MALWARE_SCAN_API_KEY=${scannerKey}`,
     "",

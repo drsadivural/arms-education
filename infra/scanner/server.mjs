@@ -3,6 +3,7 @@
 //
 //   POST /scans      {upload_id, download_url, callback_url?, sha256?}  → 202 {scan_id, status: "scanning"}
 //   GET  /scans/:id  → {scan_id, status: "scanning" | "clean" | "infected" | "error"}
+//   GET  /health     → 200 when clamd answers PING (503 while signatures are still loading)
 //   Callback (when callback_url is given): POST callback_url {scan_id, upload_id, status, signature_name?}
 //     X-ARMS-Scan-Timestamp: <unix seconds>
 //     X-ARMS-Scan-Signature: v1=<hex HMAC-SHA256(SCANNER_API_KEY, timestamp + "." + body)>
@@ -52,6 +53,19 @@ async function readJson(req) {
     chunks.push(c);
   }
   return JSON.parse(Buffer.concat(chunks).toString("utf8") || "{}");
+}
+
+/** clamd liveness (zPING → PONG). Signatures are loaded before clamd starts listening, so PONG means ready to scan. */
+function clamdPing() {
+  return new Promise((resolve) => {
+    const sock = connect({ host: CLAMD_HOST, port: CLAMD_PORT });
+    let reply = "";
+    sock.setTimeout(2000, () => sock.destroy());
+    sock.on("connect", () => sock.write("zPING\0"));
+    sock.on("data", (d) => (reply += d.toString("utf8")));
+    sock.on("close", () => resolve(reply.replace(/\0/g, "").trim() === "PONG"));
+    sock.on("error", () => resolve(false));
+  });
 }
 
 /** Streams bytes to clamd with the INSTREAM command; resolves {status, signatureName}. */
@@ -125,7 +139,10 @@ async function runScan(id, req) {
 
 createServer(async (req, res) => {
   try {
-    if (req.method === "GET" && req.url === "/health") return json(res, 200, { ok: true });
+    if (req.method === "GET" && req.url === "/health") {
+      const clamd = await clamdPing();
+      return json(res, clamd ? 200 : 503, { ok: clamd, clamd: clamd ? "ready" : "unavailable" });
+    }
     if (!authorised(req)) return json(res, 401, { error: "unauthorized" });
     if (req.method === "POST" && req.url === "/scans") {
       const body = await readJson(req);

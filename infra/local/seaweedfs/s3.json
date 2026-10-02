@@ -1,0 +1,9 @@
+{
+  "identities": [
+    {
+      "name": "arms-local",
+      "credentials": [{ "accessKey": "arms-s3", "secretKey": "arms-s3-local-only" }],
+      "actions": ["Admin", "Read", "Write", "List", "Tagging"]
+    }
+  ]
+}

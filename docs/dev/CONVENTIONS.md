@@ -15,7 +15,7 @@ or the relevant doc.
 | `services/api` | Cloudflare Worker (Hono). `src/routes/<area>.ts`, `src/domain/`, `src/repositories/`, `src/integrations/`, `src/jobs/`. |
 | `apps/web` | React + Vite + Tailwind admin/teacher Web app (served as Worker static assets). |
 | `apps/ios` | SwiftUI app (XcodeGen project) + `ARMSKit` Swift package (Linux-testable core). |
-| `infra/local` | Docker compose: PostgreSQL 17, Supabase Auth (GoTrue, ES256), MinIO, Mailpit. |
+| `infra/local` | Docker compose: PostgreSQL 17, PgBouncer, Supabase Auth (GoTrue, ES256), SeaweedFS (S3 API standing in for R2), ClamAV + scanner adapter, Mailpit. |
 
 Migration number ranges (to avoid collisions between parallel work): `004` core, `010–019` admin,
 `020–029` learning, `030–039` booking/notifications, `040–049` voice, `050–059` imports/exports.

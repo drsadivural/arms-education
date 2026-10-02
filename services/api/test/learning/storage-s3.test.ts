@@ -1,6 +1,6 @@
 /**
- * Real S3 SigV4 presign path against the local MinIO from infra/local/compose.yaml (stands in for R2).
- * Skipped only when MinIO is unreachable (the skip reason is printed). Override with TEST_S3_ENDPOINT etc.
+ * Real S3 SigV4 presign path against the local S3 service (SeaweedFS) from infra/local/compose.yaml (stands in for R2).
+ * Skipped only when it is unreachable (the skip reason is printed). Override with TEST_S3_ENDPOINT etc.
  */
 import { beforeAll, describe, expect, it } from "vitest";
 import { createObjectStorage, createS3Storage, isR2Endpoint, type ObjectStorage } from "../../src/integrations/storage";
@@ -9,22 +9,23 @@ import { SAMPLE } from "../helpers/learning-fakes";
 
 const ENDPOINT = process.env.TEST_S3_ENDPOINT ?? "http://127.0.0.1:9100";
 const BUCKET = process.env.TEST_S3_BUCKET ?? "arms-materials";
-const KEY_ID = process.env.TEST_S3_ACCESS_KEY_ID ?? "arms-minio";
-const SECRET = process.env.TEST_S3_SECRET_ACCESS_KEY ?? "arms-minio-dev-pw";
+const KEY_ID = process.env.TEST_S3_ACCESS_KEY_ID ?? "arms-s3";
+const SECRET = process.env.TEST_S3_SECRET_ACCESS_KEY ?? "arms-s3-local-only";
 
 async function reachable(): Promise<boolean> {
   try {
-    const res = await fetch(`${ENDPOINT}/minio/health/live`, { signal: AbortSignal.timeout(1500) });
-    return res.ok;
+    // Any HTTP answer (an unsigned request is refused with 403) means the S3 endpoint is up.
+    await fetch(`${ENDPOINT}/`, { signal: AbortSignal.timeout(1500) });
+    return true;
   } catch {
     return false;
   }
 }
 
 const available = await reachable();
-if (!available) console.warn(`[storage-minio] MinIO not reachable at ${ENDPOINT} — real presign tests skipped`);
+if (!available) console.warn(`[storage-s3] S3 service not reachable at ${ENDPOINT} — real presign tests skipped`);
 
-describe.skipIf(!available)("S3 presigned URLs against MinIO", () => {
+describe.skipIf(!available)("S3 presigned URLs against the local S3 service", () => {
   let storage: ObjectStorage;
   const org = crypto.randomUUID();
 

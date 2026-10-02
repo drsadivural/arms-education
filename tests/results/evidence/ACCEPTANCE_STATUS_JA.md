@@ -2,7 +2,8 @@
 
 凡例: **検証済み**＝自動テストまたは実行記録で確認（ローカル環境）／**一部**＝API・Web等で確認、残りは実機・外部サービスが必要／**未検証**＝外部値・実機がないため未実施。
 ローカル環境: PostgreSQL 17（実行ロール NOSUPERUSER/NOBYPASSRLS）、PgBouncer（Hyperdrive相当）、Supabase Auth（GoTrue v2.180, ES256）、
-MinIO（R2のS3互換）、ClamAV（実マルウェアスキャン）、Mailpit、wrangler dev（workerd）。本番・ステージングでの実施ではない。
+S3互換ストレージ（R2の代替）、ClamAV（実マルウェアスキャン）、Mailpit、wrangler dev（workerd）。本番・ステージングでの実施ではない。
+S3互換ストレージは2026-10-02の検証時はMinIO。MinIOの公開イメージ配布終了に伴い2026-10-03にSeaweedFS 4.48へ置換し、署名URLのストレージ試験（3件）、Web E2E 53件（Chromium）、iOSライブ契約試験5件を再実行して合格。
 
 ## E2E必須シナリオ
 | # | シナリオ | 状況 | 証拠 |

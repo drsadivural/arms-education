@@ -56,7 +56,7 @@ pnpm dev:web
 ```
 
 - Web: http://localhost:5188 （Viteが `/api` を wrangler dev :8787 へプロキシ）
-- ローカルスタック: PostgreSQL :55433、PgBouncer :55434（Hyperdrive相当）、Supabase Auth（GoTrue）:9999、MinIO（R2のS3互換）:9100/:9101、
+- ローカルスタック: PostgreSQL :55433、PgBouncer :55434（Hyperdrive相当）、Supabase Auth（GoTrue）:9999、SeaweedFS（R2のS3互換API）:9100、
   ClamAV＋スキャンアダプター :9200（実マルウェア検査）、Mailpit :8025（送信メールの確認）
 - `setup.mjs` はローカル専用の鍵（GoTrue ES256署名鍵、セッション暗号鍵、スキャナー鍵など）を `infra/local/.env.local` と `services/api/.dev.vars` に生成します（Git管理外）。
 - 初回ログイン時、管理者は認証アプリ（TOTP）の登録を求められます。

@@ -1,6 +1,6 @@
 # 外部値・外部検証のブロッカー
 
-実装はローカル環境（PostgreSQL 17、PgBouncer、Supabase Auth＝GoTrue v2.180、MinIO、ClamAV、Mailpit、wrangler dev／workerd）で
+実装はローカル環境（PostgreSQL 17、PgBouncer、Supabase Auth＝GoTrue v2.180、S3互換ストレージ（SeaweedFS。MinIOの公開イメージ配布終了により2026-10-03に置換）、ClamAV、Mailpit、wrangler dev／workerd）で
 動作確認している（検証状況は `tests/results/evidence/ACCEPTANCE_STATUS_JA.md`）。以下は顧客・運用側の値や契約、実機が必要なため **未接続・未検証** の項目。
 不足値を架空値で埋めて「接続成功」とはしていない（該当機能は `NOT_CONFIGURED` 応答または公開停止になる）。
 
@@ -9,7 +9,7 @@
 |---|---|---|---|
 | Cloudflareアカウント・APIトークン（最小権限） | GitHub Environment Secrets | staging/本番デプロイ | アカウント「Ayonix official account」（ayonix.comゾーン）を使用。CI用の最小権限トークンは未提供。staging は Hyperdrive ID が `REPLACE_WITH_*` のため意図的にデプロイ不可。 |
 | Hyperdrive（キャッシュ無効） `wrangler hyperdrive create … --caching-disabled` | wrangler.jsonc | API全体 | 未作成（接続先のPostgreSQLが未提供）。production は作成後に `hyperdrive` バインディングを追加する（`wrangler.jsonc` のコメント参照）。それまでAPIは503 `NOT_CONFIGURED`、定期処理はスキップ |
-| R2バケット（private）・S3互換アクセスキー（`R2_S3_ENDPOINT` `R2_ACCESS_KEY_ID` `R2_SECRET_ACCESS_KEY`）・バケットCORS（APP_ORIGINからのPUT/GET） | Workers vars / Secrets | 教材・課題・移行ファイルのアップロード、出力ファイルのダウンロード（署名URL） | 未作成。ローカルはMinIOで検証。PDF出力用フォントの配置が必要（`docs/dev/DEPLOY_STEPS.md`） |
+| R2バケット（private）・S3互換アクセスキー（`R2_S3_ENDPOINT` `R2_ACCESS_KEY_ID` `R2_SECRET_ACCESS_KEY`）・バケットCORS（APP_ORIGINからのPUT/GET） | Workers vars / Secrets | 教材・課題・移行ファイルのアップロード、出力ファイルのダウンロード（署名URL） | 未作成。ローカルはS3互換ストレージ（SeaweedFS、置換前はMinIO）で検証。PDF出力用フォントの配置が必要（`docs/dev/DEPLOY_STEPS.md`） |
 | Queue `arms-notifications-*` と DLQ | wrangler.jsonc | 通知の即時配送（未設定でも1分ごとのcronで配送） | 未作成 |
 | 本番ドメイン・`APP_ORIGIN` | wrangler.jsonc（production） | CSRF/Origin検証・招待メールのリンク | `https://arms.ayonix.com`（Workers Custom Domain、ユーザー指定 2026-10-03）。設定済み・**初回デプロイはユーザー実行待ち**（`docs/dev/DEPLOY_STEPS.md` の「arms.ayonix.com の初回公開」） |
 

@@ -1,4 +1,4 @@
-# Local development stack: PostgreSQL 17, Supabase Auth (GoTrue, ES256 asymmetric JWT), MinIO (S3-compatible
+# Local development stack: PostgreSQL 17, Supabase Auth (GoTrue, ES256 asymmetric JWT), SeaweedFS (S3-compatible
 # stand-in for private R2 presigned URLs) and Mailpit (captures Auth invitation/reset e-mail).
 # Run `node infra/local/setup.mjs` once to generate infra/local/.env.local and services/api/.dev.vars.
 name: arms
@@ -81,21 +81,21 @@ services:
     image: nginx:1.27-alpine
     volumes: ["../supabase/templates:/usr/share/nginx/html:ro"]
 
-  minio:
-    image: quay.io/minio/minio:RELEASE.2025-04-22T22-12-26Z
-    command: server /data --console-address :9001
-    environment:
-      MINIO_ROOT_USER: arms-minio
-      MINIO_ROOT_PASSWORD: arms-minio-dev-pw
-    ports: ["127.0.0.1:9100:9000", "127.0.0.1:9101:9001"]
-    volumes: ["arms-minio:/data"]
+  # S3 API on :9100 (path-style, SigV4, presigned URLs with signed Content-Length/Content-Type, CORS for the Web app).
+  # MinIO images are no longer published to public registries, so SeaweedFS stands in for R2 locally and in CI.
+  # Local-only credentials: infra/local/seaweedfs/s3.json (matches R2_ACCESS_KEY_ID/R2_SECRET_ACCESS_KEY from setup.mjs).
+  s3:
+    image: chrislusf/seaweedfs:4.48
+    command: server -dir=/data -s3 -s3.config=/etc/seaweedfs/s3.json -volume.max=8 -master.volumeSizeLimitMB=256
+    ports: ["127.0.0.1:9100:8333"]
+    volumes: ["arms-s3:/data", "./seaweedfs/s3.json:/etc/seaweedfs/s3.json:ro"]
 
-  minio-init:
-    image: quay.io/minio/mc:RELEASE.2025-04-16T18-13-26Z
-    depends_on: [minio]
+  s3-init:
+    image: chrislusf/seaweedfs:4.48
+    depends_on: [s3]
+    # Retries until the master/filer answer; idempotent (an existing bucket is left as is).
     entrypoint: >
-      /bin/sh -c "until mc alias set local http://minio:9000 arms-minio arms-minio-dev-pw; do sleep 1; done;
-      mc mb --ignore-existing local/arms-materials; mc anonymous set none local/arms-materials"
+      /bin/sh -c "until echo 's3.bucket.create -name arms-materials' | timeout 20 weed shell -master=s3:9333 2>&1 | grep -q -E 'created bucket|already exists'; do sleep 2; done; echo bucket arms-materials ready"
 
   # Real malware scanning for local development: ClamAV (signatures updated by freshclam on start) behind the
   # ARMS scanner-protocol adapter (infra/scanner/server.mjs). Without a scanner, files are never published.
@@ -106,7 +106,7 @@ services:
 
   scanner:
     image: node:22-alpine
-    # Host networking so the adapter can fetch MinIO presigned URLs (127.0.0.1:9100) and call back the local API.
+    # Host networking so the adapter can fetch S3 presigned URLs (127.0.0.1:9100) and call back the local API.
     network_mode: host
     depends_on: [clamav]
     command: ["node", "/app/server.mjs"]
@@ -123,5 +123,5 @@ services:
 
 volumes:
   arms-pg: {}
-  arms-minio: {}
+  arms-s3: {}
   arms-clamav: {}
