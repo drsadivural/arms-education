@@ -99,6 +99,28 @@ export const THEME_LABELS = { light: "ライト", dark: "ダーク", system: "�
 
 // ---- area: learning (append below) ----
 
+export const UPLOAD_STATE_LABELS = {
+  awaiting_upload: "アップロード待ち",
+  scanning: "検査中",
+  clean: "検査済み",
+  blocked: "公開不可（検出）",
+  rejected: "形式不一致のため拒否",
+  expired: "期限切れ",
+} as const;
+
+export const EXPORT_STATE_LABELS = { pending: "作成中", ready: "ダウンロード可能", failed: "作成失敗", expired: "保存期限切れ" } as const;
+
+export const QUIZ_SCORE_POLICY_LABELS = { highest: "最高点を採用", latest: "最新の点数を採用" } as const;
+
+/** Legacy 社員教育進捗管理 columns (assets/reference/legacy-progress.png), kept verbatim in Web, CSV and PDF. */
+export const PROGRESS_RECORD_COLUMN_LABELS = {
+  due_date: "終了予定日",
+  student_name: "社員名",
+  department_name: "教育担当部署",
+  teacher_name: "教育担当者",
+  content: "内容",
+} as const;
+
 // ---- area: booking & notifications (append below) ----
 
 // ---- area: voice (append below) ----

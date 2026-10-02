@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "ARMS API",
-    "version": "1.0.0+arms.1",
+    "version": "1.0.0+arms.2",
     "description": "ARMS日本語研修システムのAPI契約。ID/権限/組織はサーバーから決定、typed DTOと日本語エラーを使用。"
   },
   "servers": [
@@ -2727,6 +2727,86 @@
             }
           }
         }
+      },
+      "get": {
+        "operationId": "get_programs_id_versions",
+        "summary": "プログラムのバージョン一覧",
+        "description": "許可ロール: admin/teacher。新しい順。",
+        "tags": [
+          "programs"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 30
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProgramVersionPage"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
       }
     },
     "/program-versions/{id}/publish": {
@@ -3464,6 +3544,69 @@
                 "$ref": "#/components/schemas/MaterialInput"
               }
             }
+          }
+        }
+      },
+      "get": {
+        "operationId": "get_materials_id",
+        "summary": "教材詳細",
+        "description": "許可ロール: admin/teacher/student。受講者は割当済みバージョンの公開教材のみ（それ以外は404）。",
+        "tags": [
+          "materials"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MaterialResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error"
           }
         }
       }
@@ -4339,9 +4482,9 @@
       "patch": {
         "operationId": "patch_progress_records_id",
         "summary": "教育記録訂正",
-        "description": "許可ロール: admin/teacher。組織・本人・担当範囲は認証情報とDBから決定する。",
+        "description": "許可ロール: admin/teacher（担当範囲のみ）。値を変更する場合は correction_reason が必須。変更前後・理由・実施者を履歴に記録する。",
         "tags": [
-          "progress-records"
+          "progress"
         ],
         "security": [
           {
@@ -4351,6 +4494,44 @@
             "sessionCookie": []
           }
         ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "If-Match",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "現在のrow_version。"
+          },
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "schema": {
+              "type": "string"
+            },
+            "description": "cookie認証の場合必須。Bearer専用iOSには不要。"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProgressRecordUpdateInput"
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
             "description": "成功",
@@ -4386,7 +4567,23 @@
           "503": {
             "$ref": "#/components/responses/Error"
           }
-        },
+        }
+      },
+      "get": {
+        "operationId": "get_progress_records_id",
+        "summary": "教育記録の詳細と訂正履歴",
+        "description": "許可ロール: admin/teacher（担当範囲のみ）。履歴は監査ログ（変更前後・理由・実施者・日時）。",
+        "tags": [
+          "progress"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
         "parameters": [
           {
             "name": "id",
@@ -4396,33 +4593,42 @@
               "type": "string",
               "format": "uuid"
             }
-          },
-          {
-            "name": "If-Match",
-            "in": "header",
-            "required": true,
-            "schema": {
-              "type": "string"
-            },
-            "description": "現在のrow_version。予約判断はbody.expected_versionと一致。"
-          },
-          {
-            "name": "X-CSRF-Token",
-            "in": "header",
-            "schema": {
-              "type": "string"
-            },
-            "description": "cookie認証の場合必須。Bearer専用iOSには不要。"
           }
         ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/ProgressRecordInput"
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProgressRecordDetailResponse"
+                }
               }
             }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error"
           }
         }
       }
@@ -7625,7 +7831,7 @@
       "put": {
         "operationId": "put__materials_id_quiz-definition",
         "summary": "確認テストを登録・更新",
-        "description": "許可ロール: admin/teacher。認証DBの組織と担当範囲を強制。",
+        "description": "許可ロール: admin/そのプログラムを使うクラスの担当講師。draftバージョンのみ。問題を全件置換する。",
         "tags": [
           "materials"
         ],
@@ -7637,6 +7843,44 @@
             "sessionCookie": []
           }
         ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "schema": {
+              "type": "string"
+            },
+            "description": "cookie認証の場合必須。Bearer専用iOSには不要。"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/QuizDefinitionInput"
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
             "description": "成功",
@@ -7672,7 +7916,23 @@
           "503": {
             "$ref": "#/components/responses/Error"
           }
-        },
+        }
+      },
+      "get": {
+        "operationId": "get_materials_id_quiz_definition",
+        "summary": "確認テスト定義（正答を含む）",
+        "description": "許可ロール: admin/teacher。正答を含むため受講者は取得できない。",
+        "tags": [
+          "materials"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
         "parameters": [
           {
             "name": "id",
@@ -7682,25 +7942,42 @@
               "type": "string",
               "format": "uuid"
             }
-          },
-          {
-            "name": "Idempotency-Key",
-            "in": "header",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            }
           }
         ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/QuizDefinitionInput"
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/QuizDefinitionResponse"
+                }
               }
             }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error"
           }
         }
       }
@@ -8068,6 +8345,424 @@
           }
         }
       }
+    },
+    "/submissions": {
+      "get": {
+        "operationId": "get_submissions",
+        "summary": "課題提出一覧（評価待ちキュー）",
+        "description": "許可ロール: admin/teacher。講師は担当受講者（担当講師またはクラス担当）の提出のみ。各受講者・教材の最新提出を新しい順に返す。",
+        "tags": [
+          "submissions"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "state",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "submitted",
+                "accepted",
+                "revision_requested"
+              ]
+            }
+          },
+          {
+            "name": "student_id",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "classroom_id",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "material_id",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 30
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SubmissionPage"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/submissions/{id}/file": {
+      "get": {
+        "operationId": "get_submissions_id_file",
+        "summary": "提出ファイルの5分署名URL",
+        "description": "許可ロール: admin/担当講師/提出した受講者本人。検査済み(clean)のファイルのみ。",
+        "tags": [
+          "submissions"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DownloadResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/classrooms/{id}/enrollments": {
+      "post": {
+        "operationId": "post_classrooms_id_enrollments",
+        "summary": "クラス在籍者へ一括で受講割当",
+        "description": "許可ロール: admin。公開中バージョンをクラスの有効な在籍者へ割り当てる。既に同じプログラムを受講中の受講者はスキップ。",
+        "tags": [
+          "enrollments"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "schema": {
+              "type": "string"
+            },
+            "description": "cookie認証の場合必須。Bearer専用iOSには不要。"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ClassroomEnrollmentInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ActionResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/uploads/{id}": {
+      "get": {
+        "operationId": "get_uploads_id",
+        "summary": "アップロード・検疫状態",
+        "description": "許可ロール: アップロードした本人またはadmin。",
+        "tags": [
+          "files"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UploadStatusResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/uploads/{id}/scan-result": {
+      "post": {
+        "operationId": "post_uploads_id_scan_result",
+        "summary": "ファイル検査サービスからの結果通知",
+        "description": "公開（ユーザー認証なし）。X-ARMS-Scan-Timestamp と X-ARMS-Scan-Signature（v1=HMAC-SHA256(MALWARE_SCAN_API_KEY, timestamp + '.' + 生のbody) の16進）で検証し、5分以上ずれた時刻は拒否する。org はファイル提出時に通知したcallback URLのクエリ。",
+        "tags": [
+          "files"
+        ],
+        "security": [],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "org",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "X-ARMS-Scan-Timestamp",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-ARMS-Scan-Signature",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ScanCallbackInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ActionResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
     }
   },
   "components": {
@@ -8394,7 +9089,12 @@
             "pattern": "^https://"
           },
           "object_key": {
-            "type": "string"
+            "type": "string",
+            "description": "POST /uploads の応答 object_key（同じ組織・本人または管理者のアップロード）。pdf/video/image で必須。"
+          },
+          "description": {
+            "type": "string",
+            "maxLength": 5000
           }
         },
         "required": [
@@ -9063,7 +9763,8 @@
               "null"
             ],
             "minimum": 0,
-            "maximum": 100
+            "maximum": 100,
+            "description": "全割当の必須単元の完了weight/必須weight×100の四捨五入。必須単元がない場合null（未設定）。"
           },
           "required_total": {
             "type": "integer"
@@ -9080,6 +9781,15 @@
           "checked_at": {
             "type": "string",
             "format": "date-time"
+          },
+          "student_name": {
+            "type": "string"
+          },
+          "enrollments": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/EnrollmentProgress"
+            }
           }
         },
         "required": [
@@ -9088,7 +9798,9 @@
           "required_total",
           "required_completed",
           "units",
-          "checked_at"
+          "checked_at",
+          "student_name",
+          "enrollments"
         ],
         "additionalProperties": false
       },
@@ -9567,16 +10279,63 @@
             "format": "uuid"
           },
           "unit_count": {
-            "type": "integer"
+            "type": "integer",
+            "description": "公開中バージョン（なければ最新バージョン）の単元数。DB集計。"
           },
           "material_count": {
-            "type": "integer"
+            "type": "integer",
+            "description": "同バージョンの教材数。DB集計。"
           },
           "student_count": {
-            "type": "integer"
+            "type": "integer",
+            "description": "このプログラムのいずれかのバージョンに割り当てられた有効な受講者数。DB集計。"
           },
           "row_version": {
             "type": "integer"
+          },
+          "latest_version": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "version_number": {
+                    "type": "integer"
+                  },
+                  "state": {
+                    "type": "string",
+                    "enum": [
+                      "draft",
+                      "published",
+                      "archived"
+                    ]
+                  }
+                },
+                "required": [
+                  "id",
+                  "version_number",
+                  "state"
+                ],
+                "additionalProperties": false
+              }
+            ]
+          },
+          "draft_version_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
           }
         },
         "required": [
@@ -9589,7 +10348,10 @@
           "unit_count",
           "material_count",
           "student_count",
-          "row_version"
+          "row_version",
+          "latest_version",
+          "draft_version_id",
+          "created_at"
         ],
         "additionalProperties": false
       },
@@ -9661,6 +10423,54 @@
           },
           "row_version": {
             "type": "integer"
+          },
+          "policy": {
+            "type": "object",
+            "properties": {
+              "max_quiz_attempts": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "quiz_score_policy": {
+                "type": "string",
+                "enum": [
+                  "highest",
+                  "latest"
+                ]
+              }
+            },
+            "required": [
+              "max_quiz_attempts",
+              "quiz_score_policy"
+            ],
+            "additionalProperties": false
+          },
+          "published_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "source_version_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "unit_count": {
+            "type": "integer"
+          },
+          "material_count": {
+            "type": "integer"
+          },
+          "required_weight_total": {
+            "type": "number"
           }
         },
         "required": [
@@ -9668,7 +10478,14 @@
           "program_id",
           "version_number",
           "state",
-          "row_version"
+          "row_version",
+          "policy",
+          "published_at",
+          "created_at",
+          "source_version_id",
+          "unit_count",
+          "material_count",
+          "required_weight_total"
         ],
         "additionalProperties": false
       },
@@ -9743,9 +10560,13 @@
             "exclusiveMinimum": 0
           },
           "pass_score": {
-            "type": "number",
+            "type": [
+              "number",
+              "null"
+            ],
             "minimum": 0,
-            "maximum": 100
+            "maximum": 100,
+            "description": "確認テストの合格点。null の場合は100点（全問正解）を合格条件とする。"
           },
           "required_attendance": {
             "type": "boolean"
@@ -9754,6 +10575,9 @@
             "type": "boolean"
           },
           "row_version": {
+            "type": "integer"
+          },
+          "material_count": {
             "type": "integer"
           }
         },
@@ -9767,7 +10591,8 @@
           "pass_score",
           "required_attendance",
           "requires_review",
-          "row_version"
+          "row_version",
+          "material_count"
         ],
         "additionalProperties": false
       },
@@ -9826,7 +10651,14 @@
             "type": "string",
             "format": "uuid"
           },
+          "program_version_id": {
+            "type": "string",
+            "format": "uuid"
+          },
           "title": {
+            "type": "string"
+          },
+          "description": {
             "type": "string"
           },
           "kind": {
@@ -9863,18 +10695,117 @@
           },
           "row_version": {
             "type": "integer"
+          },
+          "external_url": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "kind=link のときのみ。"
+          },
+          "upload_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "filename": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "content_type": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "question_count": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "description": "kind=quiz のときの問題数。"
+          },
+          "learner_status": {
+            "description": "受講者本人が取得した場合のみ。本人の確認・受験・提出状況。",
+            "type": "object",
+            "properties": {
+              "confirmed_at": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "format": "date-time"
+              },
+              "quiz_attempts_used": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "quiz_score": {
+                "type": [
+                  "number",
+                  "null"
+                ],
+                "description": "バージョンの方針（最高点/最新点）で評価した点数。"
+              },
+              "quiz_passed": {
+                "type": [
+                  "boolean",
+                  "null"
+                ]
+              },
+              "submission_state": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "enum": [
+                  "submitted",
+                  "accepted",
+                  "revision_requested",
+                  null
+                ]
+              },
+              "feedback": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            },
+            "required": [
+              "confirmed_at",
+              "quiz_attempts_used",
+              "quiz_score",
+              "quiz_passed",
+              "submission_state",
+              "feedback"
+            ],
+            "additionalProperties": false
           }
         },
         "required": [
           "id",
           "unit_id",
+          "program_version_id",
           "title",
+          "description",
           "kind",
           "required",
           "scan_state",
           "published",
           "size_bytes",
-          "row_version"
+          "row_version",
+          "external_url",
+          "upload_id",
+          "filename",
+          "content_type",
+          "question_count"
         ],
         "additionalProperties": false
       },
@@ -10146,10 +11077,40 @@
             "type": [
               "integer",
               "null"
-            ]
+            ],
+            "minimum": 0,
+            "maximum": 100
           },
           "row_version": {
             "type": "integer"
+          },
+          "overdue": {
+            "type": "boolean",
+            "description": "終了予定日 < 組織タイムゾーンの今日 かつ 未完了（保存値ではなく導出）。"
+          },
+          "employee_number": {
+            "type": "string"
+          },
+          "classroom_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "classroom_name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
           }
         },
         "required": [
@@ -10164,7 +11125,13 @@
           "student_name",
           "teacher_name",
           "progress_percent",
-          "row_version"
+          "row_version",
+          "overdue",
+          "employee_number",
+          "classroom_id",
+          "classroom_name",
+          "created_at",
+          "updated_at"
         ],
         "additionalProperties": false
       },
@@ -10623,6 +11590,28 @@
           },
           "pass_score": {
             "type": "number"
+          },
+          "max_attempts": {
+            "type": "integer"
+          },
+          "score_policy": {
+            "type": "string",
+            "enum": [
+              "highest",
+              "latest"
+            ]
+          },
+          "total_points": {
+            "type": "number"
+          },
+          "effective_score": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "passed": {
+            "type": "boolean"
           }
         },
         "required": [
@@ -10631,7 +11620,12 @@
           "questions",
           "attempts_used",
           "attempts_remaining",
-          "pass_score"
+          "pass_score",
+          "max_attempts",
+          "score_policy",
+          "total_points",
+          "effective_score",
+          "passed"
         ],
         "additionalProperties": false
       },
@@ -10695,13 +11689,38 @@
           "submitted_at": {
             "type": "string",
             "format": "date-time"
+          },
+          "attempts_used": {
+            "type": "integer"
+          },
+          "attempts_remaining": {
+            "type": "integer"
+          },
+          "pass_score": {
+            "type": "number"
+          },
+          "effective_score": {
+            "type": "number",
+            "description": "方針（最高点/最新点）で評価した現在の点数。"
+          },
+          "correct_count": {
+            "type": "integer"
+          },
+          "question_count": {
+            "type": "integer"
           }
         },
         "required": [
           "id",
           "score",
           "passed",
-          "submitted_at"
+          "submitted_at",
+          "attempts_used",
+          "attempts_remaining",
+          "pass_score",
+          "effective_score",
+          "correct_count",
+          "question_count"
         ],
         "additionalProperties": false
       },
@@ -10776,7 +11795,13 @@
             "type": "string"
           },
           "scan_state": {
-            "type": "string"
+            "type": "string",
+            "enum": [
+              "pending",
+              "clean",
+              "blocked",
+              "not_applicable"
+            ]
           },
           "feedback": {
             "type": [
@@ -10790,6 +11815,41 @@
           "submitted_at": {
             "type": "string",
             "format": "date-time"
+          },
+          "student_name": {
+            "type": "string"
+          },
+          "material_title": {
+            "type": "string"
+          },
+          "unit_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "unit_title": {
+            "type": "string"
+          },
+          "has_file": {
+            "type": "boolean"
+          },
+          "filename": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "reviewed_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "reviewer_name": {
+            "type": [
+              "string",
+              "null"
+            ]
           }
         },
         "required": [
@@ -10801,7 +11861,15 @@
           "scan_state",
           "feedback",
           "row_version",
-          "submitted_at"
+          "submitted_at",
+          "student_name",
+          "material_title",
+          "unit_id",
+          "unit_title",
+          "has_file",
+          "filename",
+          "reviewed_at",
+          "reviewer_name"
         ],
         "additionalProperties": false
       },
@@ -10867,13 +11935,31 @@
           "due_on": {
             "type": "string",
             "format": "date"
+          },
+          "program_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "program_name": {
+            "type": "string"
+          },
+          "version_number": {
+            "type": "integer"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
           }
         },
         "required": [
           "id",
           "student_id",
           "program_version_id",
-          "due_on"
+          "due_on",
+          "program_id",
+          "program_name",
+          "version_number",
+          "created_at"
         ],
         "additionalProperties": false
       },
@@ -11042,7 +12128,8 @@
             "enum": [
               "pending",
               "ready",
-              "failed"
+              "failed",
+              "expired"
             ]
           },
           "download_url": {
@@ -11057,13 +12144,47 @@
               "null"
             ],
             "format": "date-time"
+          },
+          "format": {
+            "type": "string",
+            "enum": [
+              "csv",
+              "pdf"
+            ]
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "row_count": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "filename": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "error_code": {
+            "type": [
+              "string",
+              "null"
+            ]
           }
         },
         "required": [
           "id",
           "state",
           "download_url",
-          "expires_at"
+          "expires_at",
+          "format",
+          "created_at",
+          "row_count",
+          "filename",
+          "error_code"
         ],
         "additionalProperties": false
       },
@@ -11401,7 +12522,8 @@
             "type": [
               "number",
               "null"
-            ]
+            ],
+            "description": "必須確認テストの評価点（複数ある場合は最も低い点）。未受験はnull。"
           },
           "requires_review": {
             "type": "boolean"
@@ -11411,6 +12533,62 @@
               "string",
               "null"
             ]
+          },
+          "enrollment_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "program_version_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "program_name": {
+            "type": "string"
+          },
+          "position": {
+            "type": "integer"
+          },
+          "required": {
+            "type": "boolean"
+          },
+          "completed_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "materials_total": {
+            "type": "integer",
+            "description": "確認が必要な必須教材（PDF/動画/画像/リンク）の数。"
+          },
+          "materials_confirmed": {
+            "type": "integer"
+          },
+          "quiz_passed": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "必須確認テストがない単元はnull。"
+          },
+          "submission_state": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "submitted",
+              "accepted",
+              "revision_requested",
+              null
+            ]
+          },
+          "attendance_required": {
+            "type": "boolean"
+          },
+          "attendance_satisfied": {
+            "type": "boolean"
           }
         },
         "required": [
@@ -11420,7 +12598,19 @@
           "weight",
           "score",
           "requires_review",
-          "feedback"
+          "feedback",
+          "enrollment_id",
+          "program_version_id",
+          "program_name",
+          "position",
+          "required",
+          "completed_at",
+          "materials_total",
+          "materials_confirmed",
+          "quiz_passed",
+          "submission_state",
+          "attendance_required",
+          "attendance_satisfied"
         ],
         "additionalProperties": false
       },
@@ -11448,6 +12638,21 @@
           "teacher_id": {
             "type": "string",
             "format": "uuid"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "unverified",
+              "not_started",
+              "in_progress",
+              "review_pending",
+              "completed",
+              "overdue"
+            ]
+          },
+          "q": {
+            "type": "string",
+            "maxLength": 100
           }
         },
         "required": [
@@ -11875,6 +13080,548 @@
           "checked_at"
         ],
         "additionalProperties": false
+      },
+      "QuizDefinition": {
+        "type": "object",
+        "properties": {
+          "material_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "title": {
+            "type": "string"
+          },
+          "questions": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "prompt": {
+                  "type": "string"
+                },
+                "choices": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "type": "string"
+                      },
+                      "label": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "label"
+                    ],
+                    "additionalProperties": false
+                  }
+                },
+                "correct_option_ids": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "points": {
+                  "type": "number"
+                }
+              },
+              "required": [
+                "id",
+                "prompt",
+                "choices",
+                "correct_option_ids",
+                "points"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "total_points": {
+            "type": "number"
+          },
+          "pass_score": {
+            "type": "number"
+          },
+          "editable": {
+            "type": "boolean",
+            "description": "draftバージョンの場合のみtrue。"
+          },
+          "row_version": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "material_id",
+          "title",
+          "questions",
+          "total_points",
+          "pass_score",
+          "editable",
+          "row_version"
+        ],
+        "additionalProperties": false
+      },
+      "QuizDefinitionResponse": {
+        "type": "object",
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/QuizDefinition"
+          },
+          "checked_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "data",
+          "checked_at"
+        ],
+        "additionalProperties": false
+      },
+      "ClassroomEnrollmentInput": {
+        "type": "object",
+        "properties": {
+          "program_version_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "due_on": {
+            "type": "string",
+            "format": "date"
+          }
+        },
+        "required": [
+          "program_version_id",
+          "due_on"
+        ],
+        "additionalProperties": false
+      },
+      "EnrollmentProgress": {
+        "type": "object",
+        "properties": {
+          "enrollment_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "program_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "program_name": {
+            "type": "string"
+          },
+          "program_version_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "version_number": {
+            "type": "integer"
+          },
+          "due_on": {
+            "type": "string",
+            "format": "date"
+          },
+          "overdue": {
+            "type": "boolean"
+          },
+          "progress_percent": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0,
+            "maximum": 100
+          },
+          "required_total": {
+            "type": "integer"
+          },
+          "required_completed": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "enrollment_id",
+          "program_id",
+          "program_name",
+          "program_version_id",
+          "version_number",
+          "due_on",
+          "overdue",
+          "progress_percent",
+          "required_total",
+          "required_completed"
+        ],
+        "additionalProperties": false
+      },
+      "ProgressRecordUpdateInput": {
+        "type": "object",
+        "properties": {
+          "student_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "teacher_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "department_name": {
+            "type": "string"
+          },
+          "due_date": {
+            "type": "string",
+            "format": "date"
+          },
+          "content": {
+            "type": "string",
+            "minLength": 1
+          },
+          "notes": {
+            "type": "string"
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "unverified",
+              "not_started",
+              "in_progress",
+              "review_pending",
+              "completed"
+            ]
+          },
+          "correction_reason": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 1000,
+            "description": "既存記録の値を変更する場合は必須（履歴に記録）。"
+          }
+        },
+        "required": [
+          "student_id",
+          "teacher_id",
+          "department_name",
+          "due_date",
+          "content",
+          "state"
+        ],
+        "additionalProperties": false
+      },
+      "ProgressRecordHistoryEntry": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "event_type": {
+            "type": "string"
+          },
+          "actor_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "actor_name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "reason": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "changes": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "object",
+              "properties": {
+                "before": {},
+                "after": {}
+              },
+              "required": [
+                "before",
+                "after"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "id",
+          "event_type",
+          "actor_id",
+          "actor_name",
+          "created_at",
+          "reason",
+          "changes"
+        ],
+        "additionalProperties": false
+      },
+      "ProgressRecordDetail": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "student_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "teacher_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "department_name": {
+            "type": "string"
+          },
+          "due_date": {
+            "type": "string",
+            "format": "date"
+          },
+          "content": {
+            "type": "string",
+            "minLength": 1
+          },
+          "notes": {
+            "type": "string"
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "unverified",
+              "not_started",
+              "in_progress",
+              "review_pending",
+              "completed"
+            ]
+          },
+          "student_name": {
+            "type": "string"
+          },
+          "teacher_name": {
+            "type": "string"
+          },
+          "progress_percent": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0,
+            "maximum": 100
+          },
+          "row_version": {
+            "type": "integer"
+          },
+          "overdue": {
+            "type": "boolean",
+            "description": "終了予定日 < 組織タイムゾーンの今日 かつ 未完了（保存値ではなく導出）。"
+          },
+          "employee_number": {
+            "type": "string"
+          },
+          "classroom_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "classroom_name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "history": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ProgressRecordHistoryEntry"
+            }
+          }
+        },
+        "required": [
+          "id",
+          "student_id",
+          "teacher_id",
+          "department_name",
+          "due_date",
+          "content",
+          "notes",
+          "state",
+          "student_name",
+          "teacher_name",
+          "progress_percent",
+          "row_version",
+          "overdue",
+          "employee_number",
+          "classroom_id",
+          "classroom_name",
+          "created_at",
+          "updated_at",
+          "history"
+        ],
+        "additionalProperties": false
+      },
+      "ProgressRecordDetailResponse": {
+        "type": "object",
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/ProgressRecordDetail"
+          },
+          "checked_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "data",
+          "checked_at"
+        ],
+        "additionalProperties": false
+      },
+      "UploadStatus": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "purpose": {
+            "type": "string",
+            "enum": [
+              "material",
+              "assignment",
+              "import"
+            ]
+          },
+          "filename": {
+            "type": "string"
+          },
+          "content_type": {
+            "type": "string"
+          },
+          "size_bytes": {
+            "type": "integer"
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "awaiting_upload",
+              "scanning",
+              "clean",
+              "blocked",
+              "rejected",
+              "expired"
+            ]
+          },
+          "scan_state": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "clean",
+              "blocked",
+              "not_applicable"
+            ]
+          },
+          "object_key": {
+            "type": "string"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "completed_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "reject_code": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "purpose",
+          "filename",
+          "content_type",
+          "size_bytes",
+          "state",
+          "scan_state",
+          "object_key",
+          "created_at",
+          "completed_at",
+          "reject_code"
+        ],
+        "additionalProperties": false
+      },
+      "UploadStatusResponse": {
+        "type": "object",
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/UploadStatus"
+          },
+          "checked_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "data",
+          "checked_at"
+        ],
+        "additionalProperties": false
+      },
+      "ScanCallbackInput": {
+        "type": "object",
+        "properties": {
+          "scan_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "status": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 50
+          },
+          "upload_id": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        "required": [
+          "scan_id",
+          "status"
+        ],
+        "additionalProperties": true
       }
     },
     "securitySchemes": {

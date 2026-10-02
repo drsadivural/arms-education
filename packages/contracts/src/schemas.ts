@@ -210,6 +210,7 @@ export const MaterialInput = z
     required: z.boolean(),
     external_url: zHttpsUrl.optional(),
     object_key: z.string().min(1).max(300).optional(),
+    description: trimmed(5000).optional(),
   })
   .refine((v) => v.kind !== "link" || !!v.external_url, { path: ["external_url"], message: "リンク教材にはURLが必要です。" })
   .refine((v) => v.kind === "link" || !v.external_url, { path: ["external_url"], message: "URLはリンク教材にのみ指定できます。" });
@@ -274,6 +275,8 @@ export const ExportInput = z.strictObject({
   department: trimmed(100).optional(),
   classroom_id: zId.optional(),
   teacher_id: zId.optional(),
+  status: z.enum([...PROGRESS_RECORD_STATES, "overdue"]).optional(),
+  q: trimmed(100).optional(),
 });
 
 // ---- booking -------------------------------------------------------------------------------
@@ -350,6 +353,34 @@ export type ProgressRecordInputT = z.infer<typeof ProgressRecordInput>;
 // ---- area: admin (append below) ----
 
 // ---- area: learning (append below) ----
+
+/** PATCH /progress-records/{id}: the full record plus the correction reason (required when any value changes). */
+export const ProgressRecordUpdateInput = z.strictObject({
+  student_id: zId,
+  teacher_id: zId,
+  department_name: required(100),
+  due_date: zDate,
+  content: required(2000),
+  notes: trimmed(5000).optional(),
+  state: z.enum(PROGRESS_RECORD_STATES),
+  correction_reason: z.string().trim().min(1, { message: "訂正理由を入力してください。" }).max(1000).optional(),
+});
+
+/** POST /classrooms/{id}/enrollments: assigns a published version to every active student of the classroom. */
+export const ClassroomEnrollmentInput = z.strictObject({ program_version_id: zId, due_on: zDate });
+
+/** POST /uploads/{id}/scan-result: scanner callback body (extra provider fields are ignored). */
+export const ScanCallbackInput = z.looseObject({
+  scan_id: z.string().min(1).max(200),
+  status: z.string().min(1).max(50),
+  upload_id: zId.optional(),
+});
+
+/** Upload purposes and the roles allowed to create each. */
+export const UPLOAD_PURPOSES = ["material", "assignment", "import"] as const;
+
+export type ProgressRecordUpdateInputT = z.infer<typeof ProgressRecordUpdateInput>;
+export type ExportInputT = z.infer<typeof ExportInput>;
 
 // ---- area: booking & notifications (append below) ----
 

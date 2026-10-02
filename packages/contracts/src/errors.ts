@@ -75,6 +75,22 @@ export const ERROR_CATALOG = {
   // ---- area: admin (append new codes directly below this line) ----
 
   // ---- area: learning (append new codes directly below this line) ----
+  PROGRAM_ARCHIVED: { status: 409, message_ja: "アーカイブ済みのプログラムは変更できません。" },
+  DRAFT_VERSION_EXISTS: { status: 409, message_ja: "このプログラムには編集中の下書きバージョンがあります。既存の下書きを編集または公開してください。" },
+  UNIT_POSITION_TAKEN: { status: 409, message_ja: "この順番は既に別の単元で使われています。別の順番を指定してください。" },
+  MATERIAL_NOT_PUBLISHABLE: { status: 409, message_ja: "教材の公開条件を満たしていません。ファイル検査・リンク・問題の登録状況を確認してください。" },
+  MATERIAL_KIND_MISMATCH: { status: 409, message_ja: "この教材の種類ではこの操作はできません。" },
+  QUIZ_NOT_DEFINED: { status: 409, message_ja: "確認テストの問題が登録されていません。" },
+  VERSION_NOT_PUBLISHED: { status: 409, message_ja: "公開中のバージョンにのみ受講を割り当てられます。" },
+  ENROLLMENT_EXISTS: { status: 409, message_ja: "この新入社員は既にこのプログラムを受講しています。" },
+  SUBMISSION_AWAITING_REVIEW: { status: 409, message_ja: "提出済みの課題は講師の確認待ちです。評価後に再提出できます。" },
+  SUBMISSION_ALREADY_ACCEPTED: { status: 409, message_ja: "この課題は既に承認されています。" },
+  UPLOAD_NOT_RECEIVED: { status: 409, message_ja: "ファイルのアップロードが確認できません。アップロードが完了してから再度お試しください。" },
+  UPLOAD_EXPIRED: { status: 409, message_ja: "アップロードの有効期限が切れました。もう一度ファイルを選択してください。" },
+  UPLOAD_NOT_READY: { status: 409, message_ja: "ファイルの確認が完了していません。アップロードを完了してから選択してください。" },
+  SCAN_SIGNATURE_INVALID: { status: 401, message_ja: "検査結果の署名を確認できませんでした。" },
+  PDF_FONT_UNAVAILABLE: { status: 503, message_ja: "PDF出力用の日本語フォントが配置されていないため、PDFを作成できません。管理者にお問い合わせください。" },
+  EXPORT_TOO_LARGE: { status: 422, message_ja: "出力件数が上限（10,000件）を超えています。月や部署で絞り込んでください。" },
 
   // ---- area: booking & notifications (append new codes directly below this line) ----
 
