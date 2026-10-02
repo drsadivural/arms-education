@@ -25,12 +25,15 @@ function cspInlineScriptHash(): Plugin {
   };
 }
 
+const webPort = Number(process.env.ARMS_WEB_PORT ?? 5188);
+const apiPort = Number(process.env.ARMS_API_PORT ?? 8787);
+
 export default defineConfig({
   plugins: [react(), tailwindcss(), cspInlineScriptHash()],
   server: {
-    port: 5188,
+    port: webPort,
     strictPort: true,
-    proxy: { "/api": { target: "http://127.0.0.1:8787", changeOrigin: false } },
+    proxy: { "/api": { target: `http://127.0.0.1:${apiPort}`, changeOrigin: false } },
   },
   build: { sourcemap: false, target: "es2022" },
   test: {
