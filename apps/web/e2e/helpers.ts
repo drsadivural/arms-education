@@ -31,7 +31,12 @@ export async function loginAs(page: Page, role: "admin" | "teacher"): Promise<vo
 
 /** WCAG 2.x A/AA automated checks (axe). Manual checks are still required for full conformance. */
 export async function expectNoA11yViolations(page: Page): Promise<void> {
+  // Measure settled colours: CSS transitions (e.g. right after a theme switch) would otherwise be sampled mid-way.
+  await page.addStyleTag({ content: "*,*::before,*::after{transition:none!important;animation:none!important}" });
+  await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(() => r(null)))));
   const results = await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa"]).analyze();
-  const summary = results.violations.map((v) => `${v.id} (${v.impact}): ${v.nodes.length} node(s) — ${v.help}`);
+  const summary = results.violations.map(
+    (v) => `${v.id} (${v.impact}): ${v.nodes.length} node(s) — ${v.help} — ${v.nodes.map((n) => `${n.target.join(" ")}: ${n.failureSummary?.split("\n").slice(1).join(" ") ?? ""}`).join(" | ")}`,
+  );
   expect(summary, summary.join("\n")).toEqual([]);
 }

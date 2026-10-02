@@ -103,7 +103,8 @@ test.describe("新入社員管理（WEB-05/06）", () => {
   test("トップバーの検索で /students?q= を開き、URLの絞り込みが一覧に反映される", async ({ page }) => {
     await page.goto("/students");
     const student = await createStudent(page, fixture().classroomId, fixture().teacher.id, { name: `検索 太郎 ${uniq()}` });
-    await page.goto("/dashboard");
+    await page.getByRole("navigation", { name: "メインメニュー" }).getByRole("link", { name: "ダッシュボード" }).click();
+    await expect(page).toHaveURL(/\/dashboard$/);
     await page.getByLabel("社員名で検索").fill(student.employee_number);
     await page.getByLabel("社員名で検索").press("Enter");
     await expect(page).toHaveURL(new RegExp(`/students\\?q=${student.employee_number}`));

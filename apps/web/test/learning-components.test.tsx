@@ -140,11 +140,14 @@ describe("ExportControls", () => {
   it("sends the current filters, polls a background export and downloads only when ready", async () => {
     vi.useFakeTimers();
     const click = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => undefined);
+    Object.assign(URL, { createObjectURL: vi.fn(() => "blob:http://localhost/export"), revokeObjectURL: vi.fn() });
     const calls: { url: string; body?: string }[] = [];
     vi.stubGlobal(
       "fetch",
       vi.fn(async (url: string, init: RequestInit) => {
         calls.push({ url, body: init.body as string | undefined });
+        // The ready file is fetched and saved through a same-origin blob link (no cross-origin navigation).
+        if (url.startsWith("https://files.example/")) return new Response("\uFEFF終了予定日\r\n", { status: 200, headers: { "Content-Type": "text/csv" } });
         const job = url.endsWith("/exports/progress") ? exportJob({}) : exportJob({ state: "ready", download_url: "https://files.example/e.csv?sig=1", filename: "社員教育進捗_2026-10.csv" });
         return new Response(JSON.stringify({ data: job, checked_at: "2026-10-02T00:00:00Z" }), { status: 200 });
       }),
@@ -160,7 +163,10 @@ describe("ExportControls", () => {
       await vi.advanceTimersByTimeAsync(2100);
     });
     expect(calls[1]!.url).toBe("/api/v1/exports/11111111-1111-4111-8111-111111111111");
+    expect(calls[2]!.url).toBe("https://files.example/e.csv?sig=1");
     expect(click).toHaveBeenCalledTimes(1);
+    expect((click.mock.contexts[0] as HTMLAnchorElement).href).toBe("blob:http://localhost/export");
+    expect((click.mock.contexts[0] as HTMLAnchorElement).download).toBe("社員教育進捗_2026-10.csv");
     expect(screen.getByText(/CSV（812件）をダウンロードしました。/)).toBeInTheDocument();
   });
 

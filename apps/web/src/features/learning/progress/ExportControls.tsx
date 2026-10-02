@@ -21,15 +21,31 @@ const POLL_LIMIT = 90; // ~3 minutes; larger exports keep running and can be fet
 
 const FORMAT_LABEL = { csv: "CSV", pdf: "PDF" } as const;
 
-/** Starts the browser download of a ready export (5-minute URL, Content-Disposition: attachment). */
-export function triggerDownload(url: string, filename: string | null): void {
+/**
+ * Saves a ready export (5-minute presigned URL). The file is fetched and saved through a same-origin blob link:
+ * navigating to the cross-origin URL can make some engines (WebKit) render the CSV in place of the app instead of
+ * downloading it. Falls back to navigation only if the fetch itself is not possible (e.g. storage CORS missing).
+ */
+export async function triggerDownload(url: string, filename: string | null): Promise<void> {
+  let blob: Blob | null = null;
+  try {
+    const res = await fetch(url, { credentials: "omit" });
+    if (res.ok) blob = await res.blob();
+  } catch {
+    blob = null;
+  }
+  if (!blob) {
+    window.location.assign(url);
+    return;
+  }
+  const objectUrl = URL.createObjectURL(blob);
   const a = document.createElement("a");
-  a.href = url;
-  if (filename) a.download = filename;
-  a.rel = "noopener";
+  a.href = objectUrl;
+  a.download = filename ?? "download";
   document.body.appendChild(a);
   a.click();
   a.remove();
+  setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000);
 }
 
 /**
@@ -52,7 +68,7 @@ export function ExportControls({ filters }: { filters: ExportFilters }) {
   const settle = (format: "csv" | "pdf", job: ExportJob) => {
     if (job.state === "ready" && job.download_url) {
       setState({ phase: "ready", format, job });
-      triggerDownload(job.download_url, job.filename);
+      void triggerDownload(job.download_url, job.filename);
       return true;
     }
     if (job.state === "failed") {
@@ -113,9 +129,9 @@ export function ExportControls({ filters }: { filters: ExportFilters }) {
           <p className="text-success">
             {FORMAT_LABEL[state.format]}（{state.job.row_count ?? 0}件）をダウンロードしました。
             {state.job.download_url ? (
-              <a className="ml-1 underline" href={state.job.download_url} download={state.job.filename ?? undefined}>
+              <button type="button" className="ml-1 underline" onClick={() => void triggerDownload(state.job.download_url as string, state.job.filename)}>
                 もう一度ダウンロード
-              </a>
+              </button>
             ) : null}
           </p>
         ) : null}

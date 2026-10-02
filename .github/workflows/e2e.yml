@@ -11,6 +11,11 @@ jobs:
   web-e2e:
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        # One engine per job: each run seeds its own organisation (shared test data would collide across engines).
+        browser: [chromium, firefox, webkit]
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -20,7 +25,7 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - name: Browsers (with OS dependencies)
-        run: pnpm --filter @arms/web exec playwright install --with-deps chromium firefox webkit
+        run: pnpm --filter @arms/web exec playwright install --with-deps ${{ matrix.browser }}
       - name: Local stack (PostgreSQL, PgBouncer, Supabase Auth, MinIO, Mailpit) with generated local-only keys
         run: |
           node infra/local/setup.mjs
@@ -32,11 +37,11 @@ jobs:
         working-directory: apps/web
         env:
           E2E_ALL_BROWSERS: '1'
-        run: pnpm exec playwright test
+        run: pnpm exec playwright test --project=${{ matrix.browser }}
       - if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: playwright-report
+          name: playwright-report-${{ matrix.browser }}
           path: |
             apps/web/playwright-report
             apps/web/test-results
