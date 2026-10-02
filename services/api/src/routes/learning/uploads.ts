@@ -64,8 +64,9 @@ const MAX_CALLBACK_BYTES = 64 * 1024;
 
 /**
  * POST /uploads/{id}/scan-result — asynchronous scanner verdict. Authenticated by the HMAC signature, not by a user
- * session: it must be listed in PUBLIC_ENDPOINTS (routes/index.ts) to be reachable by the scanner. Until then the
- * learning cron polls the scanner for pending verdicts.
+ * session: routes/index.ts must exempt `POST /api/v1/uploads/<uuid>/scan-result` from authenticate() (a pattern match —
+ * PUBLIC_ENDPOINTS is an exact-string Set) for the scanner to reach it. Until then the learning cron polls the scanner
+ * for pending verdicts.
  */
 uploadRoutes.post("/uploads/:id/scan-result", async (c) => {
   const id = pathId(c);

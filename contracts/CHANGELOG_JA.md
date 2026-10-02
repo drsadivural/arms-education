@@ -46,7 +46,7 @@
 | ExportInput | 修正 | 一覧と同じ絞込み（status［overdue含む］、q）を追加。 |
 | Export | 修正 | state に expired（保存期限24時間経過）を追加。format・created_at・row_count・filename・error_code を追加。 |
 | GET /uploads/{id}, UploadStatus | 追加 | 検疫・検査状態（WEB-10「検疫状態」）をアップロードした本人/管理者が確認する。 |
-| POST /uploads/{id}/scan-result, ScanCallbackInput | 追加 | ファイル検査サービスの非同期結果通知。ユーザー認証ではなく HMAC-SHA256 署名（X-ARMS-Scan-Timestamp / X-ARMS-Scan-Signature）で認証。routes/index.ts の PUBLIC_ENDPOINTS への追加が必要（未追加の間は cron のポーリングで判定）。 |
+| POST /uploads/{id}/scan-result, ScanCallbackInput | 追加 | ファイル検査サービスの非同期結果通知。ユーザー認証ではなく HMAC-SHA256 署名（X-ARMS-Scan-Timestamp / X-ARMS-Scan-Signature）で認証。routes/index.ts の認証除外に `POST /api/v1/uploads/<uuid>/scan-result` のパターン一致（PUBLIC_ENDPOINTS は完全一致の Set のため動的パスに一致しない）を追加する必要がある（未追加の間は cron のポーリングで判定）。 |
 
 ## 30-booking.json（授業枠・予約・出欠・通知）
 | 対象 | 種別 | 理由 |

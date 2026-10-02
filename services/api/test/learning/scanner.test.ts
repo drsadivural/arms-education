@@ -177,23 +177,36 @@ describe("applying asynchronous verdicts (callback handler domain)", () => {
     }
   });
 
-  it("the callback route verifies the HMAC itself; until it is public the default-deny gate answers 401", async () => {
+  it("through the real app: signed callbacks apply once the route is exempted; until then the gate answers 401 and polling resolves", async () => {
     const a = await pendingUpload("c.pdf", SAMPLE.pdf());
     const raw = JSON.stringify({ scan_id: a.ref, status: "clean", upload_id: a.id });
     const ts = String(Math.floor(Date.now() / 1000));
     const sig = await signScanCallback(w.scanner.apiKey, ts, raw);
     const headers = { "Content-Type": "application/json", "X-ARMS-Scan-Timestamp": ts, "X-ARMS-Scan-Signature": sig };
-    const unauthenticated = await w.ctx.app.request(`/api/v1/uploads/${a.id}/scan-result?org=${w.org.orgId}`, { method: "POST", headers, body: raw });
-    // routes/index.ts does not list this endpoint in PUBLIC_ENDPOINTS yet (see report) — the scanner cannot reach it.
-    expect(unauthenticated.status).toBe(401);
-    // The polling fallback still resolves the verdict without the callback.
-    const db = new RequestDb(w.ctx.deps.connections);
-    try {
-      w.scanner.finish(a.ref);
-      const { pollScans } = await import("../../src/jobs/learning");
-      expect(await pollScans(w.ctx.deps, db, w.org.orgId)).toBeGreaterThanOrEqual(1);
-    } finally {
-      await db.close();
+    const res = await w.ctx.app.request(`/api/v1/uploads/${a.id}/scan-result?org=${w.org.orgId}`, { method: "POST", headers, body: raw });
+    const body = (await res.json()) as { code?: string; data?: { state?: string } };
+    if (res.status === 401) {
+      // routes/index.ts does not exempt this dynamic path from authentication yet (see report): default-deny holds,
+      // and the polling fallback resolves the verdict without the callback.
+      expect(body.code).toBe("UNAUTHENTICATED");
+      const db = new RequestDb(w.ctx.deps.connections);
+      try {
+        w.scanner.finish(a.ref);
+        const { pollScans } = await import("../../src/jobs/learning");
+        expect(await pollScans(w.ctx.deps, db, w.org.orgId)).toBeGreaterThanOrEqual(1);
+      } finally {
+        await db.close();
+      }
+    } else {
+      // Once exempted (pattern match in routes/index.ts) the signed callback itself applies the verdict.
+      expect(res.status).toBe(200);
+      expect(body.data?.state).toBe("clean");
+      const forged = await w.ctx.app.request(`/api/v1/uploads/${a.id}/scan-result?org=${w.org.orgId}`, {
+        method: "POST",
+        headers: { ...headers, "X-ARMS-Scan-Signature": "v1=00" },
+        body: raw,
+      });
+      expect(forged.status).toBe(401);
     }
     expect((await w.ctx.admin.query("SELECT state FROM app.upload_jobs WHERE id = $1", [a.id])).rows[0].state).toBe("clean");
   });
