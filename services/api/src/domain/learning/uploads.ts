@@ -184,10 +184,16 @@ export async function applyVerdict(tx: Tx, storage: ObjectStorage, orgId: string
   if (!row || row.state !== "scanning") return null;
   const quarantine = quarantineKeyOf(row);
   if (verdict === "clean") {
-    const finalKey = `${STORED_PREFIX[row.purpose]}/${orgId}/${crypto.randomUUID()}`;
-    await storage.copy(quarantine, finalKey);
-    const copied = await storage.head(finalKey);
-    if (!copied || copied.size !== num(row.size_bytes ?? row.expected_size)) throw new ApiError("STORAGE_UNAVAILABLE");
+    // Deterministic per upload (a UUID, never the filename): a retried verdict overwrites instead of orphaning copies.
+    const finalKey = `${STORED_PREFIX[row.purpose]}/${orgId}/${row.id}`;
+    const size = num(row.size_bytes ?? row.expected_size);
+    // A previous attempt may already have copied the file (and even removed the quarantine copy) before failing.
+    let copied = await storage.head(finalKey);
+    if (!copied || copied.size !== size) {
+      await storage.copy(quarantine, finalKey);
+      copied = await storage.head(finalKey);
+    }
+    if (!copied || copied.size !== size) throw new ApiError("STORAGE_UNAVAILABLE");
     const updated = await tx.one<UploadRow>(sql`
       UPDATE app.upload_jobs SET state = 'clean', scan_state = 'clean', object_key = ${finalKey}, scanned_at = now()
       WHERE org_id = ${orgId} AND id = ${uploadId} RETURNING ${UPLOAD_COLUMNS}`);

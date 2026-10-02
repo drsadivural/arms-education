@@ -114,6 +114,14 @@ describe("programs", () => {
     expect(ok.body.data).toMatchObject({ name: "改名後", department_name: "営業部", row_version: 2 });
     expect((await call(w.ctx, w.teacher, "PATCH", `/programs/${p.id}`, { body: { name: "x", description: "" }, ifMatch: 2 })).status).toBe(403);
 
+    const invalid = await call(w.ctx, w.admin, "PATCH", `/programs/${p.id}`, { body: { name: " ", description: "x".repeat(5001), extra: 1 }, ifMatch: 2 });
+    expect(invalid.status).toBe(422);
+    expect(invalid.body.field_errors).toMatchObject({ name: "必須項目です。", description: "5000文字以内で入力してください。" });
+    expect(invalid.body.field_errors._).toContain("許可されていない項目");
+    expect((await call(w.ctx, null, "GET", `/programs/${p.id}`)).status).toBe(401);
+    expect((await call(w.ctx, w.student, "GET", `/programs/${p.id}`)).status).toBe(403);
+    expect((await call(w.ctx, w.admin, "DELETE", `/programs/${p.id}`)).body.code).toBe("IF_MATCH_REQUIRED");
+    expect((await call(w.ctx, w.teacher, "DELETE", `/programs/${p.id}`, { ifMatch: 2 })).status).toBe(403);
     const del = await call(w.ctx, w.admin, "DELETE", `/programs/${p.id}`, { ifMatch: 2 });
     expect(del.status).toBe(200);
     expectContract(del, "delete", "/programs/{id}");
@@ -150,6 +158,9 @@ describe("program versions and units", () => {
     expect(list.status).toBe(200);
     expectContract(list, "get", "/programs/{id}/versions");
     expect(list.body.items).toHaveLength(1);
+    expect((await call(w.ctx, w.student, "GET", `/programs/${p.id}/versions`)).status).toBe(403);
+    expect((await call(w.ctx, null, "GET", `/programs/${p.id}/versions`)).status).toBe(401);
+    expect((await call(w.ctx, w.admin, "GET", `/programs/${crypto.randomUUID()}/versions`)).status).toBe(404);
     expect((await call(w.ctx, w.teacher, "POST", `/programs/${p.id}/versions`, { body: { policy: POLICY } })).status).toBe(403);
   });
 
@@ -297,6 +308,14 @@ describe("program versions and units", () => {
     // The archived version's weights are untouched.
     const v1Units = await call(w.ctx, w.admin, "GET", `/program-versions/${v1.id}/units`);
     expect(v1Units.body.items[0]).toMatchObject({ title: "IT基礎", weight: 30 });
+    // Students read the units of the version they are enrolled in (even after it was archived), and nothing else.
+    const enrolled = await call(w.ctx, w.admin, "POST", "/enrollments", { body: { student_id: w.org.student2.userId, program_version_id: v2.id, due_on: "2026-12-31" } });
+    expect(enrolled.status).toBe(200);
+    const studentUnits = await call(w.ctx, w.student2, "GET", `/program-versions/${v2.id}/units`);
+    expect(studentUnits.status).toBe(200);
+    expect(studentUnits.body.items[0]).toMatchObject({ title: "IT基礎（改訂）", weight: 50, pass_score: 90 });
+    expect((await call(w.ctx, w.student2, "GET", `/program-versions/${v1.id}/units`)).status).toBe(404);
+    expect((await call(w.ctx, w.student, "GET", `/program-versions/${v2.id}/units`)).status).toBe(404);
   });
 });
 
