@@ -216,3 +216,82 @@ public enum AttendanceState: String, Codable, Sendable, CaseIterable, Hashable {
   case late
   case excused
 }
+
+/// Contract `AttendanceRoster` (`GET /lesson-slots/{id}/attendance`, IOS-16): the students holding
+/// an approved reservation for the slot plus anyone already recorded, with the current record.
+/// `editable` is true from 30 minutes before the start for slots that are not cancelled.
+public struct AttendanceRoster: Codable, Sendable, Hashable {
+  /// Contract `AttendanceRosterItem`.
+  public struct Item: Codable, Sendable, Hashable, Identifiable {
+    public let studentId: String
+    public let studentName: String
+    public let employeeNumber: String
+    public let reservationId: String?
+    public let reservationStatus: ReservationStatus?
+    /// nil until attendance was recorded for the student.
+    public let attendanceState: AttendanceState?
+    public let note: String
+    public let recordedByName: String?
+    public let recordedAt: Date?
+
+    public var id: String { studentId }
+
+    public init(
+      studentId: String, studentName: String, employeeNumber: String, reservationId: String?,
+      reservationStatus: ReservationStatus?, attendanceState: AttendanceState?, note: String, recordedByName: String?,
+      recordedAt: Date?
+    ) {
+      self.studentId = studentId
+      self.studentName = studentName
+      self.employeeNumber = employeeNumber
+      self.reservationId = reservationId
+      self.reservationStatus = reservationStatus
+      self.attendanceState = attendanceState
+      self.note = note
+      self.recordedByName = recordedByName
+      self.recordedAt = recordedAt
+    }
+
+    enum CodingKeys: String, CodingKey {
+      case studentId = "student_id"
+      case studentName = "student_name"
+      case employeeNumber = "employee_number"
+      case reservationId = "reservation_id"
+      case reservationStatus = "reservation_status"
+      case attendanceState = "attendance_state"
+      case note
+      case recordedByName = "recorded_by_name"
+      case recordedAt = "recorded_at"
+    }
+  }
+
+  public let slotId: String
+  public let slotTitle: String
+  public let startsAt: Date
+  public let endsAt: Date
+  public let state: SlotState
+  public let editable: Bool
+  public let items: [Item]
+
+  public init(
+    slotId: String, slotTitle: String, startsAt: Date, endsAt: Date, state: SlotState, editable: Bool, items: [Item]
+  ) {
+    self.slotId = slotId
+    self.slotTitle = slotTitle
+    self.startsAt = startsAt
+    self.endsAt = endsAt
+    self.state = state
+    self.editable = editable
+    self.items = items
+  }
+
+  enum CodingKeys: String, CodingKey {
+    case slotId = "slot_id"
+    case slotTitle = "slot_title"
+    case startsAt = "starts_at"
+    case endsAt = "ends_at"
+    case state
+    case editable
+    case items
+  }
+}

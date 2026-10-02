@@ -1,24 +1,35 @@
 import Foundation
 
-/// In-app destinations reachable from URLs (`arms://…`), push payloads and notification rows.
+/// In-app destinations reachable from URLs (`arms://…`), push payloads (APNs top-level key
+/// `deep_link`, services/api/src/integrations/push.ts) and notification rows (`deep_link`).
 ///
-/// Accepted forms (host-style and path-style are equivalent):
+/// Links produced by the server (services/api/src/domain/notifications/rules.ts `DEEP_LINKS`):
 /// - `arms://reservations/<uuid>` → reservation detail
-/// - `arms://reservations` → my reservations / teacher reservations
 /// - `arms://lessons/today` → today's lessons
-/// - `arms://notifications` → notifications
-/// - `arms://progress` → progress
-/// - `arms://units/<uuid>/materials` → unit materials
-/// - relative paths from the API (`/reservations/<uuid>`, `/lessons/today`, …)
+/// - `arms://lesson-slots/<uuid>` → lesson slot (e.g. 「担当授業が取り消されました」)
+/// - `arms://settings/users` → admin-only (Web); ignored by the app
+///
+/// Also accepted (host-style and path-style are equivalent):
+/// - `arms://reservations`, `arms://notifications`, `arms://progress`, `arms://units/<uuid>/materials`
+/// - relative paths (`/reservations/<uuid>`, `/lessons/today`, …)
 public enum DeepLink: Hashable, Sendable {
   case reservation(id: String)
   case reservations
   case todayLessons
+  case lessonSlot(id: String)
   case notifications
   case progress
   case unitMaterials(unitId: String)
 
   public static let scheme = "arms"
+
+  /// Top-level APNs payload key: `{"aps":{"alert":{…},"sound":"default"},"deep_link":"arms://…"}`.
+  public static let pushPayloadKey = "deep_link"
+
+  /// Link of a tapped push notification (nil when absent or not an app link).
+  public static func fromPush(userInfo: [AnyHashable: Any]) -> DeepLink? {
+    (userInfo[pushPayloadKey] as? String).flatMap { parse($0) }
+  }
 
   public static func parse(_ raw: String) -> DeepLink? {
     let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -51,6 +62,8 @@ public enum DeepLink: Hashable, Sendable {
       return segments.count >= 2 && segments[1].lowercased() == "today" ? .todayLessons : nil
     case "today-lessons", "today":
       return .todayLessons
+    case "lesson-slots", "lesson-slot", "slots":
+      return segments.count >= 2 && isUUID(segments[1]) ? .lessonSlot(id: segments[1].lowercased()) : nil
     case "notifications":
       return .notifications
     case "progress":
@@ -72,6 +85,7 @@ public enum DeepLink: Hashable, Sendable {
     switch self {
     case .reservation, .reservations: return "予約内容を確認"
     case .todayLessons: return "本日の授業を見る"
+    case .lessonSlot: return "授業の内容を確認"
     case .notifications: return "お知らせを見る"
     case .progress: return "進捗を確認"
     case .unitMaterials: return "教材を開く"
@@ -83,6 +97,7 @@ public enum DeepLink: Hashable, Sendable {
     case .reservation(let id): return URL(string: "arms://reservations/\(id)")!
     case .reservations: return URL(string: "arms://reservations")!
     case .todayLessons: return URL(string: "arms://lessons/today")!
+    case .lessonSlot(let id): return URL(string: "arms://lesson-slots/\(id)")!
     case .notifications: return URL(string: "arms://notifications")!
     case .progress: return URL(string: "arms://progress")!
     case .unitMaterials(let id): return URL(string: "arms://units/\(id)/materials")!

@@ -111,6 +111,8 @@ public enum StorageKeys {
   public static let voiceDisclosureShown = "arms.voiceDisclosureShown"
   public static let theme = "arms.theme"
   public static let lastUserId = "arms.lastUserId"
+  /// SHA-256 of the registered APNs token (for `DELETE /devices/{token_hash}` on sign-out).
+  public static let deviceTokenHash = "arms.deviceTokenHash"
 }
 
 /// Thread-safe holder of the `X-ARMS-Org` selection (multi-organisation users).

@@ -141,6 +141,9 @@ struct PasswordResetSheet: View {
           Text("登録しているメールアドレスを入力してください。パスワード再設定の案内をお送りします。")
             .font(.subheadline)
             .foregroundStyle(ARMSColor.text)
+          // The e-mail link opens the ARMS Web page where the new password is set; then sign in here.
+          InfoNote(
+            text: "メールのリンクから新しいパスワードを設定し、このアプリでログインしてください。\(SessionStore.passwordPolicyMessage)")
           TextField("メールアドレス", text: $email)
             .textContentType(.username)
             .keyboardType(.emailAddress)

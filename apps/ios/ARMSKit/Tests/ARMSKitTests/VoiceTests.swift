@@ -44,14 +44,43 @@ final class EventSink {
 
 let token32 = String(repeating: "t", count: 40)
 
+/// `prepare_reservation` success data exactly as services/api/src/domain/voice/executor.ts builds it.
 func prepareData(expires: String = "2026-10-02T02:02:00Z", token: String = token32) -> JSONValue {
   [
-    "action_token": .string(token), "expires_at": .string(expires), "intent": "reserve",
-    "slot": [
-      "id": .string(Fixtures.slotId), "title": "IT基礎・セキュリティ", "starts_at": "2026-10-05T05:00:00Z",
-      "ends_at": "2026-10-05T06:30:00Z", "teacher_name": "田中 祥司", "classroom_name": "新入社員Aクラス",
+    "action_token": .string(token), "expires_at": .string(expires),
+    "confirmation_ja": "10月5日（月）14時から、田中講師のIT基礎・セキュリティを予約申請します。申請してよろしいですか？",
+    "card": [
+      "slot_id": .string(Fixtures.slotId), "title": "IT基礎・セキュリティ", "date": "2026-10-05", "date_ja": "10月5日（月）",
+      "start": "14:00", "end": "15:30", "teacher_name": "田中 祥司", "classroom_name": "新入社員Aクラス", "remaining": 3,
+      "state": "open",
     ],
-    "student_name": "和田 一夫",
+    "checked_at": "2026-10-02T02:00:00.000Z",
+  ]
+}
+
+/// `prepare_cancellation` success data (reservation summary card).
+func prepareCancelData(token: String = token32) -> JSONValue {
+  [
+    "action_token": .string(token), "expires_at": "2026-10-02T02:02:00Z",
+    "confirmation_ja": "10月5日（月）14時からのIT基礎・セキュリティの予約を取り消します。よろしいですか？",
+    "card": [
+      "reservation_id": .string(Fixtures.reservationId), "title": "IT基礎・セキュリティ", "date": "2026-10-05",
+      "date_ja": "10月5日（月）", "start": "14:00", "end": "15:30", "status": "approved", "status_ja": "承認済み",
+      "teacher_name": "田中 祥司", "student_name": "和田 一夫", "cancel_deadline": "2026-10-04T05:00:00.000Z",
+    ],
+    "checked_at": "2026-10-02T02:00:00.000Z",
+  ]
+}
+
+/// `commit_*` success data.
+func commitData(status: String, message: String) -> JSONValue {
+  [
+    "reservation": [
+      "reservation_id": .string(Fixtures.reservationId), "title": "IT基礎・セキュリティ", "date": "2026-10-05",
+      "date_ja": "10月5日（月）", "start": "14:00", "end": "15:30", "status": .string(status), "status_ja": "承認待ち",
+      "teacher_name": "田中 祥司",
+    ],
+    "message_ja": .string(message), "checked_at": "2026-10-02T02:00:30.000Z",
   ]
 }
 
@@ -192,11 +221,34 @@ final class VoiceToolTests: XCTestCase {
     XCTAssertEqual(card.prompt, "10月5日（月）14時から、田中講師のIT基礎・セキュリティを予約申請します。申請してよろしいですか？")
     XCTAssertEqual(card.remainingLabel(now: fixedNow.addingTimeInterval(15)), "確認内容の有効時間：残り1分45秒")
     XCTAssertEqual(card.slotId, Fixtures.slotId)
-    XCTAssertNil(VoiceConfirmationCard.parse(data: ["action_token": "short"], intent: .reserve, receivedAt: fixedNow, calendar: .tokyo))
-    let withSummary = VoiceConfirmationCard.parse(
-      data: ["action_token": .string(token32), "summary_ja": "サーバー文面"], intent: .cancel, receivedAt: fixedNow, calendar: .tokyo)
-    XCTAssertEqual(withSummary?.prompt, "サーバー文面")
-    XCTAssertEqual(withSummary?.confirmButtonTitle, "この予約を取り消す")
+    XCTAssertEqual(card.scheduleLabel, "10月5日（月） 14:00–15:30")
+    XCTAssertEqual(card.lessonTitle, "IT基礎・セキュリティ")
+    XCTAssertEqual(card.teacherName, "田中 祥司")
+    XCTAssertEqual(card.classroomName, "新入社員Aクラス")
+    XCTAssertEqual(card.remainingSeats, 3)
+    XCTAssertNil(card.statusLabel)
+    let shorter = VoiceConfirmationCard.parse(
+      data: prepareData(expires: "2026-10-02T02:01:00Z"), intent: .reserve, receivedAt: fixedNow, calendar: .tokyo)!
+    XCTAssertEqual(shorter.expiresAt, ISO8601.parse("2026-10-02T02:01:00Z"), "the server's earlier expiry wins")
+    XCTAssertNil(VoiceConfirmationCard.parse(data: ["action_token": "short", "card": [:]], intent: .reserve, receivedAt: fixedNow, calendar: .tokyo))
+    XCTAssertNil(
+      VoiceConfirmationCard.parse(data: ["action_token": .string(token32)], intent: .reserve, receivedAt: fixedNow, calendar: .tokyo),
+      "no card, nothing to confirm")
+
+    let cancel = VoiceConfirmationCard.parse(data: prepareCancelData(), intent: .cancel, receivedAt: fixedNow, calendar: .tokyo)!
+    XCTAssertEqual(cancel.prompt, "10月5日（月）14時からのIT基礎・セキュリティの予約を取り消します。よろしいですか？")
+    XCTAssertEqual(cancel.confirmButtonTitle, "この予約を取り消す")
+    XCTAssertEqual(cancel.reservationId, Fixtures.reservationId)
+    XCTAssertEqual(cancel.statusLabel, "承認済み")
+    XCTAssertEqual(cancel.studentName, "和田 一夫")
+    XCTAssertEqual(cancel.cancelDeadline.map(ISO8601.format), "2026-10-04T05:00:00.000Z")
+    XCTAssertNil(cancel.remainingSeats)
+
+    // Fallback wording only when the server omitted confirmation_ja.
+    let noText = VoiceConfirmationCard.parse(
+      data: ["action_token": .string(token32), "card": ["title": "IT基礎", "date_ja": "10月5日（月）", "start": "14:00", "teacher_name": "田中 祥司"]],
+      intent: .reserve, receivedAt: fixedNow, calendar: .tokyo)
+    XCTAssertEqual(noText?.prompt, "10月5日（月）14:00から、田中講師のIT基礎を予約申請します。申請してよろしいですか？")
   }
 
   func testConfirmationMachine() {
@@ -234,7 +286,10 @@ final class VoiceConversationTests: XCTestCase {
     let clock = TestClock()
     let executor = FakeToolExecutor()
     executor.results["today_lessons"] = FakeToolExecutor.ok(
-      ["items": .array([try JSONValue(jsonString: Fixtures.slotJSON(title: "ビジネスマナー"))])])
+      try JSONValue(
+        jsonString:
+          #"{"date":"2026-10-02","date_ja":"2026年10月2日（金）","lessons":[{"slot_id":"\#(Fixtures.slotId)","title":"ビジネスマナー","date":"2026-10-02","date_ja":"10月2日（金）","start":"10:00","end":"11:30","teacher_name":"田中 祥司","classroom_name":"新入社員Aクラス","remaining":2,"state":"open"}],"count":1,"checked_at":"2026-10-02T02:00:00.000Z"}"#
+      ))
     let sink = EventSink()
     let conv = makeConversation(clock: clock, executor: executor, sink: sink)
 
@@ -248,7 +303,7 @@ final class VoiceConversationTests: XCTestCase {
     XCTAssertEqual(sink.types, ["conversation.item.create", "response.create"])
     let output = try JSONValue(jsonString: sink.events[0].json["item"]?["output"]?.stringValue ?? "")
     XCTAssertEqual(output["ok"], true)
-    XCTAssertEqual(output["data"]?["items"]?[0]?["title"], "ビジネスマナー")
+    XCTAssertEqual(output["data"]?["lessons"]?[0]?["title"], "ビジネスマナー")
     XCTAssertTrue(conv.entries.contains { if case .lessons(let title, let slots)? = $0.card { return title == "本日の授業" && slots.count == 1 } else { return false } })
 
     // The same call id repeated by response.done is not executed twice.
@@ -309,7 +364,8 @@ final class VoiceConversationTests: XCTestCase {
     let clock = TestClock()
     let executor = FakeToolExecutor()
     executor.results["prepare_reservation"] = FakeToolExecutor.ok(prepareData())
-    executor.results["commit_reservation"] = FakeToolExecutor.ok(["reservation": ["id": "r1", "status": "pending"]])
+    executor.results["commit_reservation"] = FakeToolExecutor.ok(
+      commitData(status: "pending", message: "予約を申請しました。現在は承認待ちです。"))
     let sink = EventSink()
     let conv = makeConversation(clock: clock, executor: executor, sink: sink)
     conv.handle(.functionCallArgumentsDone(RealtimeFunctionCall(callId: "p1", name: "prepare_reservation", arguments: #"{"slot_id":"\#(Fixtures.slotId)"}"#)))
@@ -324,7 +380,7 @@ final class VoiceConversationTests: XCTestCase {
     XCTAssertEqual(executor.inputs[1].arguments["action_token"]?.stringValue, token32)
     XCTAssertEqual(executor.inputs[1].callId, "c1")
     guard case .committed(_, let message) = conv.confirmation.state else { return XCTFail("not committed") }
-    XCTAssertEqual(message, "予約を申請しました。現在、担当講師の承認待ちです。")
+    XCTAssertEqual(message, "予約を申請しました。現在は承認待ちです。", "the server's message_ja")
     XCTAssertFalse(message.contains("確定"), "a pending request is never described as confirmed")
     conv.dismissConfirmationResult()
     XCTAssertEqual(conv.confirmation.state, .none)
@@ -352,7 +408,8 @@ final class VoiceConversationTests: XCTestCase {
     let clock = TestClock()
     let executor = FakeToolExecutor()
     executor.results["prepare_reservation"] = FakeToolExecutor.ok(prepareData())
-    executor.results["commit_reservation"] = FakeToolExecutor.ok(["reservation": ["id": "r1", "status": "pending"]])
+    executor.results["commit_reservation"] = FakeToolExecutor.ok(
+      commitData(status: "pending", message: "予約を申請しました。現在は承認待ちです。"))
     let sink = EventSink()
     let conv = makeConversation(clock: clock, executor: executor, sink: sink)
     conv.handle(.functionCallArgumentsDone(RealtimeFunctionCall(callId: "p1", name: "prepare_reservation", arguments: #"{"slot_id":"\#(Fixtures.slotId)"}"#)))
@@ -481,6 +538,65 @@ final class VoiceConversationTests: XCTestCase {
     XCTAssertEqual(VoiceConversation.commitMessage(intent: .reserve, data: ["status": "approved"]), "予約が確定しました。")
     XCTAssertEqual(VoiceConversation.commitMessage(intent: .reserve, data: nil), "申請を受け付けました。状態は「自分の予約」で確認できます。")
     XCTAssertEqual(VoiceConversation.commitMessage(intent: .cancel, data: ["reservation": ["status": "cancelled"]]), "予約を取り消しました。")
+    XCTAssertEqual(
+      VoiceConversation.commitMessage(intent: .cancel, data: commitData(status: "cancelled", message: "予約を取り消しました。")),
+      "予約を取り消しました。")
+    XCTAssertEqual(
+      VoiceConversation.commitMessage(intent: .reserve, data: commitData(status: "pending", message: "予約が確定しました。")),
+      "予約を申請しました。現在、担当講師の承認待ちです。", "「確定」 is never shown for a pending request, whatever the text says")
+  }
+
+  /// Business failures are HTTP 200 `success:false, data:{error_code, message_ja}` — never a success.
+  func testPrepareFailureIsReportedNotPresented() async throws {
+    let clock = TestClock()
+    let executor = FakeToolExecutor()
+    executor.results["prepare_reservation"] = .success(
+      ActionResult(
+        success: false, checkedAt: fixedNow,
+        data: ["error_code": "ALREADY_RESERVED", "message_ja": "この授業は既に申請済みです（承認待ち）。"]))
+    let sink = EventSink()
+    let conv = makeConversation(clock: clock, executor: executor, sink: sink)
+    conv.handle(.functionCallArgumentsDone(RealtimeFunctionCall(callId: "p1", name: "prepare_reservation", arguments: #"{"slot_id":"\#(Fixtures.slotId)"}"#)))
+    await waitUntil { sink.count("conversation.item.create") == 1 }
+    XCTAssertEqual(conv.confirmation.state, .none, "no card for a failed prepare")
+    let output = try JSONValue(jsonString: sink.events[0].json["item"]?["output"]?.stringValue ?? "")
+    XCTAssertEqual(output["ok"], false)
+    XCTAssertEqual(output["code"], "ALREADY_RESERVED")
+    XCTAssertEqual(output["message_ja"], "この授業は既に申請済みです（承認待ち）。")
+    XCTAssertTrue(conv.entries.contains { $0.text == "この授業は既に申請済みです（承認待ち）。" })
+  }
+
+  func testCommitFailureMarksCardFailed() async throws {
+    let clock = TestClock()
+    let executor = FakeToolExecutor()
+    executor.results["prepare_cancellation"] = FakeToolExecutor.ok(prepareCancelData())
+    executor.results["commit_cancellation"] = .success(
+      ActionResult(
+        success: false, checkedAt: fixedNow,
+        data: ["error_code": "CANCELLATION_CLOSED", "message_ja": "取消期限を過ぎているため取消できません。"]))
+    let sink = EventSink()
+    let conv = makeConversation(clock: clock, executor: executor, sink: sink)
+    conv.handle(.functionCallArgumentsDone(RealtimeFunctionCall(callId: "p1", name: "prepare_cancellation", arguments: #"{"reservation_id":"\#(Fixtures.reservationId)"}"#)))
+    await waitUntil { conv.confirmation.state.isAwaitingUser }
+    conv.handle(.responseDone(responseId: nil, status: "completed", functionCalls: []))
+    await conv.confirmByButton()
+    guard case .failed(_, let message) = conv.confirmation.state else { return XCTFail("expected failure") }
+    XCTAssertEqual(message, "取消期限を過ぎているため取消できません。")
+    XCTAssertEqual(executor.inputs.map(\.toolName), ["prepare_cancellation", "commit_cancellation"])
+  }
+
+  func testServerToolListIsEnforced() async throws {
+    let clock = TestClock()
+    let executor = FakeToolExecutor()
+    let sink = EventSink()
+    let conv = VoiceConversation(
+      sessionId: "voice-session-1", role: .student, calendar: .tokyo, expiresAt: nil, serverTools: ["today_lessons"],
+      executor: executor, now: { clock.now }, sleeper: RecordingSleeper(), send: { sink.send($0) }, setMicrophone: { _ in })
+    conv.handle(.functionCallArgumentsDone(RealtimeFunctionCall(callId: "c1", name: "search_slots", arguments: #"{"date":"2026-10-05","time_band":"any"}"#)))
+    await waitUntil { sink.count("conversation.item.create") == 1 }
+    XCTAssertTrue(executor.inputs.isEmpty)
+    let output = try JSONValue(jsonString: sink.events[0].json["item"]?["output"]?.stringValue ?? "")
+    XCTAssertEqual(output["code"], "FORBIDDEN")
   }
 }
 
@@ -556,8 +672,11 @@ final class VoiceSessionControllerTests: XCTestCase {
     t.on(
       .post, "/voice/sessions", status: sessionStatus,
       json: sessionJSON
-        ?? #"{"session_id":"vs-1","client_secret":"ek_memory_only","expires_at":"2026-10-02T02:10:00Z","model":"gpt-realtime-2.1","voice":"marin"}"#)
-    t.on(.post, "/voice/sessions/vs-1/end", json: Fixtures.actionJSON(#"{"daily_used_seconds":180,"daily_quota_seconds":900}"#))
+        ?? #"{"session_id":"vs-1","client_secret":"ek_memory_only","expires_at":"2026-10-02T02:10:00Z","client_secret_expires_at":"2026-10-02T02:10:00Z","model":"gpt-realtime-2.1","voice":"marin","max_seconds":600,"tools":["today_lessons","get_progress","search_slots","get_reservations","prepare_reservation","commit_reservation","prepare_cancellation","commit_cancellation"],"quota_remaining_seconds":300}"#)
+    t.on(.post, "/voice/sessions/vs-1/end", json: Fixtures.actionJSON(#"{"session_id":"vs-1","consumed_seconds":180}"#))
+    t.on(
+      .get, "/voice/quota",
+      json: #"{"data":{"daily_quota_seconds":900,"max_session_seconds":600,"used_seconds":180,"remaining_seconds":720},"checked_at":"2026-10-02T02:03:00.000Z"}"#)
     let realtime = FakeRealtimeTransport()
     let audio = FakeAudioSession()
     let clock = TestClock()
@@ -574,6 +693,8 @@ final class VoiceSessionControllerTests: XCTestCase {
     XCTAssertFalse(h.controller.needsDisclosure)
     await h.controller.start()
     XCTAssertEqual(h.controller.phase, .active)
+    XCTAssertEqual(h.controller.sessionLimitSeconds, 600)
+    XCTAssertEqual(h.controller.conversation?.serverTools?.count, 8)
     XCTAssertEqual(h.realtime.secrets, ["ek_memory_only"])
     XCTAssertEqual(h.realtime.micEnabledAtConnect, true)
     XCTAssertEqual(h.audio.activations, 1)
@@ -589,7 +710,11 @@ final class VoiceSessionControllerTests: XCTestCase {
     XCTAssertEqual(h.realtime.closed, 1)
     XCTAssertEqual(h.audio.deactivations, 1)
     XCTAssertEqual(h.transport.requests(.post, "/voice/sessions/vs-1/end").count, 1)
+    // Daily usage comes from GET /voice/quota (refreshed after the session ended).
+    XCTAssertEqual(h.transport.requests(.get, "/voice/quota").count, 1)
     XCTAssertEqual(h.controller.quota?.labelJa, "3分 / 15分")
+    XCTAssertEqual(h.controller.quota?.remainingLabelJa, "本日の残り：12分")
+    XCTAssertNil(h.controller.sessionLimitSeconds)
   }
 
   func testQuotaExceededShowsServerMessage() async {
@@ -599,6 +724,17 @@ final class VoiceSessionControllerTests: XCTestCase {
     XCTAssertEqual(h.controller.phase, .failed("本日の音声利用上限に達しました。画面から操作してください。"))
     XCTAssertEqual(h.controller.uiState, .error)
     XCTAssertTrue(h.realtime.secrets.isEmpty)
+    XCTAssertEqual(h.transport.requests(.post, "/voice/sessions").count, 1, "a permanent 429 is not retried")
+    XCTAssertNotNil(h.controller.quota, "quota refreshed for the settings / voice screens")
+  }
+
+  func testVoiceUnavailableMapsServerMessage() async {
+    let h = makeHarness(
+      sessionStatus: 503, sessionJSON: Fixtures.errorJSON("VOICE_UNAVAILABLE", "現在、音声機能を利用できません。画面から操作してください。"))
+    await h.controller.start()
+    XCTAssertEqual(h.controller.phase, .failed("現在、音声機能を利用できません。画面から操作してください。"))
+    XCTAssertTrue(h.realtime.secrets.isEmpty)
+    XCTAssertTrue(h.transport.requests(.post, "/voice/sessions/vs-1/end").isEmpty, "no session was created")
   }
 
   func testConnectFailureReleasesServerSession() async {

@@ -30,6 +30,9 @@ jobs:
         run: swift build --package-path apps/ios/ARMSKit
       - name: Test
         run: swift test --package-path apps/ios/ARMSKit
+      # The SwiftUI app needs the iOS SDK (type-checked in the macOS job); a parse catches syntax errors early.
+      - name: Parse app sources
+        run: find apps/ios/ARMS apps/ios/ARMSTests -name '*.swift' -print0 | xargs -0 swiftc -parse
 
   ios:
     name: iOS app (Xcode, simulator)

@@ -12,8 +12,16 @@ public struct ProgressSummary: Sendable, Equatable {
   /// Headline sentence for the progress card.
   public let headline: String
   public let isConfigured: Bool
+  /// Nearest due date of an unfinished program, e.g. 「次の期限：12月25日（金）（新入社員基礎研修）」
+  /// or 「期限超過：…」 (server-computed `overdue`); nil when every program is complete / none assigned.
+  public let dueText: String?
 
   public init(progress: StudentProgress) {
+    let open = progress.enrollments.filter { !EnrollmentPresentation.isCompleted($0) }
+      .sorted { ($0.overdue ? 0 : 1, $0.dueOn) < ($1.overdue ? 0 : 1, $1.dueOn) }
+    dueText = open.first.map { e in
+      "\(e.overdue ? "期限超過" : "次の期限")：\(JaFormat.date(e.dueOn))（\(e.programName)）"
+    }
     let configured = progress.progressPercent != nil
     isConfigured = configured
     percentText = JaFormat.percent(progress.progressPercent)
@@ -33,6 +41,9 @@ public struct ProgressSummary: Sendable, Equatable {
     if progress.requiredTotal > 0, progress.requiredCompleted >= progress.requiredTotal {
       return "すべての必須単元を完了しました"
     }
+    if progress.enrollments.contains(where: \.overdue) {
+      return "期限を過ぎている研修プログラムがあります"
+    }
     if progress.units.contains(where: { $0.state == .reviewPending }) {
       return "講師の確認を待っている単元があります"
     }
@@ -43,27 +54,44 @@ public struct ProgressSummary: Sendable, Equatable {
   }
 }
 
-/// Per-unit detail line, e.g. 「教材確認・テスト92点・講師評価済み」.
+/// Per-unit detail line built only from the server's completion-condition breakdown, e.g.
+/// 「教材確認 3/3・テスト92点（合格）・課題 講師評価済み」.
 public enum UnitPresentation {
   public static func detail(_ unit: UnitProgress) -> String {
     var parts: [String] = []
-    switch unit.state {
-    case .notStarted:
-      return "まだ始めていません"
-    case .reviewPending:
-      parts.append("提出済み・講師の評価を待っています")
-    case .inProgress:
-      parts.append("受講中")
-    case .completed:
-      parts.append("完了条件を満たしました")
+    if unit.materialsTotal > 0 {
+      parts.append("教材確認 \(unit.materialsConfirmed)/\(unit.materialsTotal)")
     }
-    if let score = unit.score {
+    if let passed = unit.quizPassed {
+      if let score = unit.score {
+        parts.append("テスト\(formatScore(score))点（\(passed ? "合格" : "不合格")）")
+      } else {
+        parts.append("テスト未受験")
+      }
+    } else if let score = unit.score {
       parts.append("テスト\(formatScore(score))点")
     }
-    if unit.requiresReview, unit.state == .completed {
-      parts.append("講師評価済み")
+    switch unit.submissionState {
+    case .submitted?: parts.append("課題提出済み・講師の評価待ち")
+    case .accepted?: parts.append(unit.requiresReview ? "課題 講師評価済み" : "課題提出済み")
+    case .revisionRequested?: parts.append("課題 再提出の依頼あり")
+    case nil: break
     }
-    return parts.joined(separator: "・")
+    if unit.attendanceRequired {
+      parts.append(unit.attendanceSatisfied ? "出席済み" : "授業への出席が必要")
+    }
+    if !parts.isEmpty { return parts.joined(separator: "・") }
+    switch unit.state {
+    case .notStarted: return "まだ始めていません"
+    case .inProgress: return "受講中"
+    case .reviewPending: return "講師の評価を待っています"
+    case .completed: return "完了条件を満たしました"
+    }
+  }
+
+  /// 「完了日：10月2日（金）」.
+  public static func completedLabel(_ unit: UnitProgress, calendar: OrgCalendar) -> String? {
+    unit.completedAt.map { "完了日：\(JaFormat.instantDate($0, calendar: calendar, withYear: false))" }
   }
 
   public static func formatScore(_ score: Double) -> String {
@@ -77,6 +105,33 @@ public enum UnitPresentation {
     case .notStarted: return 0
     case .inProgress, .reviewPending: return nil
     }
+  }
+}
+
+/// Display rules for one assigned program (`Progress.enrollments`): program, published version,
+/// due date and the server's overdue flag.
+public enum EnrollmentPresentation {
+  /// 「ビジネス基礎研修（第2版）」.
+  public static func title(_ e: EnrollmentProgress) -> String { "\(e.programName)（第\(e.versionNumber)版）" }
+
+  /// 「期限：2026年12月31日（木）」.
+  public static func dueText(_ e: EnrollmentProgress) -> String { "期限：\(JaFormat.date(e.dueOn, withYear: true))" }
+
+  /// 「必須単元 3 / 5 完了」.
+  public static func requiredText(_ e: EnrollmentProgress) -> String {
+    e.requiredTotal > 0 ? "必須単元 \(e.requiredCompleted) / \(e.requiredTotal) 完了" : "必須単元はありません"
+  }
+
+  public static func isCompleted(_ e: EnrollmentProgress) -> Bool {
+    e.requiredTotal > 0 && e.requiredCompleted >= e.requiredTotal
+  }
+
+  /// 完了 / 期限超過 / 受講中 / 未設定 (colour is never the only signal).
+  public static func status(_ e: EnrollmentProgress) -> (label: String, tone: StatusTone) {
+    if isCompleted(e) { return ("完了", .success) }
+    if e.overdue { return ("期限超過", .danger) }
+    if e.progressPercent == nil { return ("未設定", .neutral) }
+    return ("受講中", .info)
   }
 }
 

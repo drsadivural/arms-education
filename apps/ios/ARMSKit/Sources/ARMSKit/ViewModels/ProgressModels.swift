@@ -59,8 +59,9 @@ public final class TeacherStudentsModel {
     let classNames = Dictionary(classrooms.map { ($0.id, $0.name) }, uniquingKeysWith: { a, _ in a })
     return (students.value?.items ?? []).map { s in
       Row(
-        student: s, status: StudentListStatus(student: s, today: today), classroomName: classNames[s.classroomId],
-        teacherName: teacherName(for: s.teacherId))
+        student: s, status: StudentListStatus(student: s, today: today),
+        classroomName: s.classroomName ?? classNames[s.classroomId],
+        teacherName: s.teacherName ?? teacherName(for: s.teacherId))
     }
   }
 
@@ -69,6 +70,11 @@ public final class TeacherStudentsModel {
   private func teacherName(for id: String) -> String? {
     if id == context.me?.id { return context.me?.displayName }
     return teacherNames[id]
+  }
+
+  /// Only needed for an older server that does not return `teacher_name` on students.
+  private var needsTeacherNames: Bool {
+    (students.value?.items ?? []).contains { $0.teacherName == nil && $0.teacherId != context.me?.id }
   }
 
   private var cacheKey: String { "students/\(classroomId ?? "all")/\(searchText)" }
@@ -84,13 +90,15 @@ public final class TeacherStudentsModel {
         classrooms = all.items.filter { !$0.archived }.sorted { $0.name < $1.name }
       }
     }
-    if teacherNames.isEmpty, let teachers = try? await api.collectAll(query: ListQuery(limit: 100), API.teachers) {
-      teacherNames = Dictionary(teachers.items.map { ($0.id, $0.displayName) }, uniquingKeysWith: { a, _ in a })
-    }
     students.apply(
       await context.fetch(cacheKey: cacheKey, checkedAt: { $0.checkedAt }) { () async throws in
         try await api.send(API.students(query)).value
       })
+    if teacherNames.isEmpty, needsTeacherNames,
+      let teachers = try? await api.collectAll(query: ListQuery(limit: 100), API.teachers)
+    {
+      teacherNames = Dictionary(teachers.items.map { ($0.id, $0.displayName) }, uniquingKeysWith: { a, _ in a })
+    }
   }
 
   public func loadMore() async {
@@ -147,8 +155,10 @@ public final class StudentDetailModel {
     let checked = context.now()
     pendingSubmissions.apply(
       await context.fetch(cacheKey: nil, checkedAt: { _ in checked }) { () async throws in
+        // GET /submissions?student_id=&state=submitted — the latest submission per assignment.
         let all = try await api.collectAll(
-          maxPages: 5, query: ListQuery(limit: 100, studentId: id, status: "submitted"), API.submissions)
+          maxPages: 5, query: ListQuery(limit: 100, studentId: id, state: SubmissionState.submitted.rawValue),
+          API.submissions)
         return all.items.filter { $0.studentId == id && $0.state == .submitted }.sorted { $0.submittedAt > $1.submittedAt }
       })
   }
@@ -159,14 +169,46 @@ public final class StudentDetailModel {
   }
 }
 
-/// Teacher review of one submission (合格にする / 再提出を依頼 with a required comment).
+/// IOS-03/06 「課題の評価待ち」: every assignment of the teacher's students waiting for review
+/// (`GET /submissions?state=submitted`, latest submission per student × assignment).
+@MainActor
+@Observable
+public final class ReviewQueueModel {
+  public private(set) var submissions = Loadable<[Submission]>()
+  public let context: AppContext
+
+  public init(context: AppContext) { self.context = context }
+
+  public var items: [Submission] { submissions.value ?? [] }
+
+  public func load() async {
+    submissions.beginLoading()
+    let api = context.api
+    let checked = context.now()
+    submissions.apply(
+      await context.fetch(cacheKey: nil, checkedAt: { _ in checked }) { () async throws in
+        let all = try await api.collectAll(
+          maxPages: 5, query: ListQuery(limit: 100, state: SubmissionState.submitted.rawValue), API.submissions)
+        return all.items.filter { $0.state == .submitted }.sorted { $0.submittedAt < $1.submittedAt }
+      })
+  }
+
+  public func didReview(_ submission: Submission) {
+    submissions.updateValue { list in list.removeAll { $0.id == submission.id } }
+  }
+}
+
+/// Teacher review of one submission (合格にする / 再提出を依頼 with a required comment), with the
+/// attached file (`GET /submissions/{id}/file`) and optimistic concurrency (`expected_version`).
 @MainActor
 @Observable
 public final class SubmissionReviewModel {
   public let submission: Submission
   public var feedback = ""
   public private(set) var isSubmitting = false
+  public private(set) var isOpeningFile = false
   public private(set) var error: ARMSError?
+  public private(set) var fileError: ARMSError?
   public private(set) var result: Submission?
   private var keys = ActionKeys()
   public let context: AppContext
@@ -178,6 +220,45 @@ public final class SubmissionReviewModel {
   }
 
   public var feedbackError: String? { AssignmentRules.validateFeedback(feedback) }
+
+  /// 「業務改善の提案（実践課題）」.
+  public var heading: String {
+    guard !submission.materialTitle.isEmpty else { return "提出内容" }
+    return submission.unitTitle.isEmpty ? submission.materialTitle : "\(submission.materialTitle)（\(submission.unitTitle)）"
+  }
+
+  /// The file can be opened once scanned clean; otherwise the reason is shown.
+  public var fileStatusText: String? {
+    guard submission.hasFile else { return nil }
+    switch submission.scanState {
+    case .clean: return nil
+    case .pending: return "添付ファイルはウイルス検査中です。検査完了後に確認できます。"
+    case .blocked: return "添付ファイルは検査で問題が見つかったため開けません。"
+    case .notApplicable: return nil
+    }
+  }
+
+  public var canOpenFile: Bool { submission.hasFile && submission.scanState == .clean && !isOpeningFile }
+
+  /// Fresh 5-minute URL for the attached file (never cached).
+  public func fileURL() async -> MaterialDownload? {
+    guard submission.hasFile, !isOpeningFile else { return nil }
+    isOpeningFile = true
+    fileError = nil
+    defer { isOpeningFile = false }
+    do {
+      let download = try await context.api.send(API.submissionFile(id: submission.id)).value.data
+      guard let url = URL(string: download.url), url.scheme?.lowercased() == "https" || UnitMaterialsModel.isLoopback(url)
+      else {
+        fileError = .local(code: "INVALID_URL", messageJa: "ファイルのURLが正しくありません。管理者にお問い合わせください。")
+        return nil
+      }
+      return download
+    } catch {
+      fileError = error
+      return nil
+    }
+  }
 
   /// Returns the reviewed submission confirmed by the server, or nil on failure (see `error`).
   @discardableResult
@@ -205,6 +286,11 @@ public final class SubmissionReviewModel {
       return reviewed
     } catch {
       self.error = error
+      // VERSION_CONFLICT (re-submitted or reviewed elsewhere) / INVALID_STATE: the screen must be
+      // reloaded; a new attempt is a new action.
+      if ["VERSION_CONFLICT", "INVALID_STATE", "SCAN_PENDING", "FILE_REJECTED"].contains(error.code) {
+        keys.complete(action)
+      }
       return nil
     }
   }

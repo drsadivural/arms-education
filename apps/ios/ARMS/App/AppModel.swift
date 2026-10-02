@@ -86,13 +86,17 @@ final class AppModel {
   }
 
   func signOut() async {
+    // While the access token is still valid: DELETE /devices/{token_hash} so this device stops receiving the
+    // user's pushes (best effort; offline sign-out still completes).
+    if context.isOnline { await push.unregister() }
     await resetUserState()
     await session.signOut()
   }
 
   /// Clears everything tied to the signed-in user. Runs for explicit sign-out and whenever the session ends for other
   /// reasons (expired token, role mismatch, disabled account), so voice/microphone, push registration and navigation
-  /// never leak into the next session. Idempotent.
+  /// never leak into the next session. Idempotent. (After a forced sign-out the server drops the device row when the
+  /// next user registers the same token.)
   func resetUserState() async {
     await voice?.end(reason: .user)
     voice = nil

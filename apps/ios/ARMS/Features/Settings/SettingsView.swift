@@ -112,9 +112,16 @@ private struct SettingsScreen: View {
           .accessibilityLabel("マイクの設定：\(microphoneLabel)")
           Divider().overlay(ARMSColor.border)
           SettingRow(title: "本日の音声利用") {
-            Text(app.voice?.quota?.labelJa ?? "音声の利用後に表示されます")
-              .font(.subheadline.weight(.semibold))
-              .foregroundStyle(ARMSColor.text)
+            // GET /voice/quota (organisation-timezone day; open sessions count their reservation).
+            VStack(alignment: .trailing, spacing: 2) {
+              Text(app.voice?.quota?.labelJa ?? "—")
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(ARMSColor.text)
+              if let quota = app.voice?.quota {
+                Text(quota.remainingLabelJa).font(.caption).foregroundStyle(ARMSColor.muted)
+              }
+            }
+            .accessibilityElement(children: .combine)
           }
           Divider().overlay(ARMSColor.border)
           Text("音声・会話全文は保存しません。").font(.footnote).foregroundStyle(ARMSColor.muted)
@@ -144,7 +151,10 @@ private struct SettingsScreen: View {
     }
     .armsScreen()
     .onAppear { microphone = AudioSessionManager.currentPermission() }
-    .task { await app.refreshNotificationAuthorization() }
+    .task {
+      await app.refreshNotificationAuthorization()
+      await app.voice?.refreshQuota()
+    }
     .sheet(isPresented: $showsDeletion) { AccountDeletionSheet(model: model) }
     .confirmationDialog("ログアウトしますか？", isPresented: $confirmingLogout, titleVisibility: .visible) {
       Button("ログアウト", role: .destructive) { Task { await app.signOut() } }

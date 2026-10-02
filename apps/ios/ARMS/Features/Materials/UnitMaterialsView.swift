@@ -65,12 +65,23 @@ private struct UnitMaterialsScreen: View {
         Spacer()
         if material.required { StatusTag(label: "必須", tone: .info) }
       }
-      Text(material.kind.labelJa).font(.caption).foregroundStyle(ARMSColor.muted)
+      HStack(spacing: 8) {
+        Text(material.kind.labelJa).font(.caption).foregroundStyle(ARMSColor.muted)
+        if let status = model.learnerStatusText(material) {
+          Text("・\(status)").font(.caption).foregroundStyle(ARMSColor.muted)
+        }
+      }
+      if !material.description.isEmpty {
+        Text(material.description).font(.subheadline).foregroundStyle(ARMSColor.text)
+      }
+      if model.isStudent, material.kind == .assignment, let feedback = material.learnerStatus?.feedback, !feedback.isEmpty {
+        Text("講師コメント：\(feedback)").font(.subheadline).foregroundStyle(ARMSColor.text)
+      }
       switch material.kind {
       case .pdf, .video, .image, .link:
         HStack {
           if model.isStudent {
-            if model.receivedIds.contains(material.id) {
+            if model.isConfirmed(material) {
               Label("確認済み", systemImage: "checkmark.circle.fill")
                 .font(.subheadline)
                 .foregroundStyle(ARMSColor.success)
@@ -129,6 +140,7 @@ private struct UnitMaterialsScreen: View {
     openError = nil
     openingId = material.id
     defer { openingId = nil }
+    // link → its https URL (from the DTO); pdf/video/image → fresh 5-minute URL from /download.
     guard let download = await model.downloadURL(for: material), let url = URL(string: download.url) else { return }
     switch material.kind {
     case .video:

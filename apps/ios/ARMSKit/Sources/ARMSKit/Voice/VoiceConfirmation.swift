@@ -12,23 +12,33 @@ extension VoiceTool {
   }
 }
 
-/// Confirmation card prepared by the server (`prepare_reservation` / `prepare_cancellation`).
-/// The server stores only a hash of the 256-bit action token and binds it to user/session/intent;
-/// the card expires 120 seconds after preparation.
+/// Confirmation card prepared by the server (`prepare_reservation` / `prepare_cancellation`):
+/// `data: { action_token, expires_at, confirmation_ja, card: {...}, checked_at }` where `card` is the
+/// executor's slot summary (reserve) or reservation summary (cancel). The server stores only a hash
+/// of the 256-bit action token, binds it to user/session/intent and expires it after 120 seconds.
 public struct VoiceConfirmationCard: Sendable, Equatable, Identifiable {
   public static let defaultLifetime: TimeInterval = 120
 
   public let intent: VoiceIntent
   public let actionToken: String
   public let expiresAt: Date
-  /// Sentence read to the user, e.g. 「10月5日（月）14時からのIT基礎を予約申請します。申請してよろしいですか？」.
+  /// The server's `confirmation_ja`, e.g.
+  /// 「10月5日（月）14時から、田中講師のIT基礎を予約申請します。申請してよろしいですか？」.
   public let prompt: String
   public let lessonTitle: String?
-  public let startsAt: Date?
-  public let endsAt: Date?
+  /// 「10月5日（月）」 (`card.date_ja`).
+  public let dateLabel: String?
+  /// 「14:00」 / 「15:30」 in the organisation timezone (`card.start` / `card.end`).
+  public let startTime: String?
+  public let endTime: String?
   public let teacherName: String?
   public let classroomName: String?
   public let studentName: String?
+  /// Current reservation status label of a cancellation target (`card.status_ja`).
+  public let statusLabel: String?
+  /// Remaining seats of a reservation target (`card.remaining`).
+  public let remainingSeats: Int?
+  public let cancelDeadline: Date?
   public let reservationId: String?
   public let slotId: String?
 
@@ -36,68 +46,75 @@ public struct VoiceConfirmationCard: Sendable, Equatable, Identifiable {
 
   public init(
     intent: VoiceIntent, actionToken: String, expiresAt: Date, prompt: String, lessonTitle: String? = nil,
-    startsAt: Date? = nil, endsAt: Date? = nil, teacherName: String? = nil, classroomName: String? = nil,
-    studentName: String? = nil, reservationId: String? = nil, slotId: String? = nil
+    dateLabel: String? = nil, startTime: String? = nil, endTime: String? = nil, teacherName: String? = nil,
+    classroomName: String? = nil, studentName: String? = nil, statusLabel: String? = nil, remainingSeats: Int? = nil,
+    cancelDeadline: Date? = nil, reservationId: String? = nil, slotId: String? = nil
   ) {
     self.intent = intent
     self.actionToken = actionToken
     self.expiresAt = expiresAt
     self.prompt = prompt
     self.lessonTitle = lessonTitle
-    self.startsAt = startsAt
-    self.endsAt = endsAt
+    self.dateLabel = dateLabel
+    self.startTime = startTime
+    self.endTime = endTime
     self.teacherName = teacherName
     self.classroomName = classroomName
     self.studentName = studentName
+    self.statusLabel = statusLabel
+    self.remainingSeats = remainingSeats
+    self.cancelDeadline = cancelDeadline
     self.reservationId = reservationId
     self.slotId = slotId
   }
 
-  /// Parses the `data` object of a successful prepare tool call. Accepted shape (keys optional
-  /// except `action_token`):
-  /// `{ action_token, expires_at, summary_ja | confirmation_ja | message_ja,
-  ///    slot: {id, title, starts_at, ends_at, teacher_name, classroom_name},
-  ///    reservation: {id, slot_title, starts_at, ends_at, teacher_name, classroom_name, student_name},
-  ///    student_name }`
+  /// 「10月5日（月） 14:00–15:30」.
+  public var scheduleLabel: String? {
+    guard let dateLabel else { return nil }
+    guard let startTime else { return dateLabel }
+    return "\(dateLabel) \(startTime)–\(endTime ?? "")"
+  }
+
+  /// Parses the `data` of a successful prepare tool call (see the type comment). Returns nil when
+  /// the action token is missing/too short or the card is not an object (nothing can be committed).
   public static func parse(data: JSONValue?, intent: VoiceIntent, receivedAt: Date, calendar: OrgCalendar)
     -> VoiceConfirmationCard?
   {
     guard let data, let token = data["action_token"]?.stringValue, token.count >= 32 else { return nil }
+    guard let card = data["card"], card.objectValue != nil else { return nil }
     let maxExpiry = receivedAt.addingTimeInterval(defaultLifetime)
     let serverExpiry = data["expires_at"]?.stringValue.flatMap(ISO8601.parse)
     // Never extend beyond 120 s locally even if the server clock says otherwise.
     let expiresAt = min(serverExpiry ?? maxExpiry, maxExpiry)
-    let target = data["slot"] ?? data["reservation"] ?? data
-    func str(_ v: JSONValue?, _ keys: String...) -> String? {
-      for k in keys { if let s = v?[k]?.stringValue, !s.isEmpty { return s } }
-      return nil
+    func str(_ key: String) -> String? {
+      guard let s = card[key]?.stringValue, !s.isEmpty else { return nil }
+      return s
     }
-    let title = str(target, "title", "slot_title")
-    let startsAt = str(target, "starts_at").flatMap(ISO8601.parse)
-    let endsAt = str(target, "ends_at").flatMap(ISO8601.parse)
-    let teacher = str(target, "teacher_name") ?? str(data, "teacher_name")
-    let classroom = str(target, "classroom_name") ?? str(data, "classroom_name")
-    let student = str(data, "student_name") ?? str(target, "student_name")
+    let title = str("title")
+    let dateLabel = str("date_ja")
+    let start = str("start")
+    let teacher = str("teacher_name")
     let prompt =
-      str(data, "summary_ja", "confirmation_ja", "message_ja")
-      ?? defaultPrompt(intent: intent, title: title, startsAt: startsAt, teacher: teacher, calendar: calendar)
+      data["confirmation_ja"]?.stringValue.flatMap { $0.isEmpty ? nil : $0 }
+      ?? defaultPrompt(intent: intent, title: title, dateLabel: dateLabel, start: start, teacher: teacher)
     return VoiceConfirmationCard(
       intent: intent, actionToken: token, expiresAt: expiresAt, prompt: prompt, lessonTitle: title,
-      startsAt: startsAt, endsAt: endsAt, teacherName: teacher, classroomName: classroom, studentName: student,
-      reservationId: intent == .cancel ? (str(data["reservation"], "id") ?? str(data, "reservation_id")) : nil,
-      slotId: str(data["slot"], "id") ?? str(data, "slot_id"))
+      dateLabel: dateLabel, startTime: start, endTime: str("end"), teacherName: teacher,
+      classroomName: str("classroom_name"), studentName: str("student_name"),
+      statusLabel: intent == .cancel ? str("status_ja") : nil,
+      remainingSeats: intent == .reserve ? card["remaining"]?.intValue : nil,
+      cancelDeadline: str("cancel_deadline").flatMap(ISO8601.parse),
+      reservationId: str("reservation_id"), slotId: str("slot_id"))
   }
 
-  static func defaultPrompt(intent: VoiceIntent, title: String?, startsAt: Date?, teacher: String?, calendar: OrgCalendar)
+  /// Used only if the server omitted `confirmation_ja`.
+  static func defaultPrompt(intent: VoiceIntent, title: String?, dateLabel: String?, start: String?, teacher: String?)
     -> String
   {
     var subject = ""
-    if let startsAt {
-      let p = calendar.parts(of: startsAt)
-      let minute = p.minute == 0 ? "" : "\(p.minute)分"
-      subject += "\(JaFormat.instantDate(startsAt, calendar: calendar, withYear: false))\(p.hour)時\(minute)から"
-    }
-    if let teacher { subject += "、\(JaFormat.familyName(teacher))講師" }
+    if let dateLabel { subject += dateLabel }
+    if let start { subject += "\(start)から" }
+    if let teacher { subject += (subject.isEmpty ? "" : "、") + "\(JaFormat.familyName(teacher))講師" }
     if let title { subject += (subject.isEmpty ? "" : "の") + title }
     if subject.isEmpty { subject = "選択した授業" }
     switch intent {

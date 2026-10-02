@@ -32,7 +32,8 @@ public enum API {
       method: .post, path: "/me/account-deletion", body: Endpoint<ActionResult>.encodeBody(input), idempotencyKey: key)
   }
 
-  /// `POST /auth/password-reset` (public; same answer whether or not the account exists).
+  /// `POST /auth/password-reset` (public; the server chooses the redirect and answers identically
+  /// whether or not the account exists; `data.message_ja` carries the text to show).
   public static func passwordReset(email: String) -> Endpoint<ActionResult> {
     Endpoint(
       method: .post, path: "/auth/password-reset",
@@ -41,6 +42,7 @@ public enum API {
 
   // MARK: Students / progress (teacher scope and self)
 
+  /// `GET /students/{id}/progress` — a bare `Progress` object (not wrapped in `data`).
   public static func progress(studentId: String) -> Endpoint<StudentProgress> {
     Endpoint(method: .get, path: "/students/\(id(studentId))/progress")
   }
@@ -67,19 +69,29 @@ public enum API {
     Endpoint(method: .get, path: "/lesson-slots", query: query.items)
   }
 
+  /// `GET /lesson-slots/{id}` (out-of-scope → 404; ETag = row_version).
+  public static func lessonSlot(id slotId: String) -> Endpoint<DataEnvelope<LessonSlot>> {
+    Endpoint(method: .get, path: "/lesson-slots/\(id(slotId))")
+  }
+
+  /// `GET /today-lessons` (organisation-timezone today). Only `cursor`/`limit` are honoured.
   public static func todayLessons(_ query: ListQuery = ListQuery()) -> Endpoint<Page<LessonSlot>> {
     Endpoint(method: .get, path: "/today-lessons", query: query.items)
   }
 
+  /// `GET /reservations` — `status` is comma separated, `removed` only when requested explicitly,
+  /// `slot_id`, `sort`, and `idempotency_key` (the caller's own request) are supported.
   public static func reservations(_ query: ListQuery) -> Endpoint<Page<Reservation>> {
     Endpoint(method: .get, path: "/reservations", query: query.items)
   }
 
+  /// `GET /reservations/{id}` — a bare `Reservation` with `history`.
   public static func reservation(id reservationId: String) -> Endpoint<Reservation> {
     Endpoint(method: .get, path: "/reservations/\(id(reservationId))")
   }
 
-  /// `POST /reservations` → `201` with the created (pending) reservation.
+  /// `POST /reservations` → `201` with the created (pending) bare reservation. The Idempotency-Key is
+  /// also the database idempotency key: the same key + slot returns the same reservation.
   public static func createReservation(slotId: String, key: IdempotencyKey) -> Endpoint<Reservation> {
     Endpoint(
       method: .post, path: "/reservations", body: Endpoint<Reservation>.encodeBody(ReservationInput(slotId: slotId)),
@@ -104,6 +116,7 @@ public enum API {
     decision("cancel", reservationId, DecisionInput(expectedVersion: expectedVersion, reason: reason), key)
   }
 
+  /// Decisions answer with the bare updated `Reservation` (200).
   static func decision(_ verb: String, _ reservationId: String, _ input: DecisionInput, _ key: IdempotencyKey)
     -> Endpoint<Reservation>
   {
@@ -112,7 +125,13 @@ public enum API {
       idempotencyKey: key)
   }
 
-  /// `POST /lesson-slots/{id}/attendance` (teacher of the lesson).
+  /// `GET /lesson-slots/{id}/attendance` — roster (approved reservations + existing records).
+  public static func attendanceRoster(slotId: String) -> Endpoint<DataEnvelope<AttendanceRoster>> {
+    Endpoint(method: .get, path: "/lesson-slots/\(id(slotId))/attendance")
+  }
+
+  /// `POST /lesson-slots/{id}/attendance` (teacher of the lesson). `409 ATTENDANCE_NOT_OPEN` before
+  /// 30 minutes ahead of the start, `409 SLOT_CANCELLED` for cancelled slots.
   public static func recordAttendance(slotId: String, input: AttendanceInput, key: IdempotencyKey)
     -> Endpoint<ResourceResult>
   {
@@ -127,10 +146,16 @@ public enum API {
     Endpoint(method: .get, path: "/units/\(id(unitId))/materials", query: query.items)
   }
 
+  /// `GET /materials/{id}` (students: assigned, published, scanned materials only; others 404).
+  public static func material(id materialId: String) -> Endpoint<DataEnvelope<Material>> {
+    Endpoint(method: .get, path: "/materials/\(id(materialId))")
+  }
+
   public static func materialDownload(id materialId: String) -> Endpoint<DataEnvelope<MaterialDownload>> {
     Endpoint(method: .get, path: "/materials/\(id(materialId))/download")
   }
 
+  /// `POST /materials/{id}/receipt` → `data: {material_id, confirmed_at, unit_state}`.
   public static func materialReceipt(id materialId: String, key: IdempotencyKey) -> Endpoint<ActionResult> {
     Endpoint(method: .post, path: "/materials/\(id(materialId))/receipt", idempotencyKey: key)
   }
@@ -155,6 +180,7 @@ public enum API {
       body: Endpoint<DataEnvelope<Submission>>.encodeBody(input), idempotencyKey: key)
   }
 
+  /// `POST /submissions/{id}/review` with `expected_version` (409 VERSION_CONFLICT when stale).
   public static func reviewSubmission(id submissionId: String, input: ReviewInput, key: IdempotencyKey)
     -> Endpoint<DataEnvelope<Submission>>
   {
@@ -163,16 +189,39 @@ public enum API {
       body: Endpoint<DataEnvelope<Submission>>.encodeBody(input), idempotencyKey: key)
   }
 
-  /// `GET /submissions` — teacher review queue (latest submission per student and material).
-  /// Not part of the base handoff contract: it is added by the learning-area contract extension.
-  /// Callers filter the result by `student_id`/`state` themselves so that the screen stays correct
-  /// even if the server ignores a query parameter.
+  /// `GET /submissions` — teacher review queue: the latest submission per student × assignment,
+  /// newest first; filters `state`, `student_id`, `classroom_id`, `material_id` (teachers: own students).
   public static func submissions(_ query: ListQuery) -> Endpoint<Page<Submission>> {
     Endpoint(method: .get, path: "/submissions", query: query.items)
   }
 
+  /// `GET /submissions/{id}/file` — 5-minute URL of the scanned file (`attachment`).
+  public static func submissionFile(id submissionId: String) -> Endpoint<DataEnvelope<MaterialDownload>> {
+    Endpoint(method: .get, path: "/submissions/\(id(submissionId))/file")
+  }
+
+  // MARK: Uploads
+
+  /// `POST /uploads` → 15-minute presigned PUT into quarantine.
+  public static func createUpload(_ input: UploadInput, key: IdempotencyKey) -> Endpoint<DataEnvelope<UploadTicket>> {
+    Endpoint(
+      method: .post, path: "/uploads", body: Endpoint<DataEnvelope<UploadTicket>>.encodeBody(input), idempotencyKey: key)
+  }
+
+  /// `POST /uploads/{id}/complete` → size + content verification, then the scanner. Naturally
+  /// idempotent on the server (an already-verified upload answers its current state); a key is sent
+  /// so the request is retried after transport failures.
+  public static func completeUpload(id uploadId: String, key: IdempotencyKey) -> Endpoint<ActionResult> {
+    Endpoint(method: .post, path: "/uploads/\(id(uploadId))/complete", idempotencyKey: key)
+  }
+
+  public static func upload(id uploadId: String) -> Endpoint<DataEnvelope<UploadStatus>> {
+    Endpoint(method: .get, path: "/uploads/\(id(uploadId))")
+  }
+
   // MARK: Notifications / devices
 
+  /// `GET /notifications` — `status` = all / unread / read; newest first.
   public static func notifications(_ query: ListQuery = ListQuery()) -> Endpoint<Page<AppNotification>> {
     Endpoint(method: .get, path: "/notifications", query: query.items)
   }
@@ -181,8 +230,20 @@ public enum API {
     Endpoint(method: .post, path: "/notifications/\(id(notificationId))/read")
   }
 
+  /// `POST /notifications/read-all` → `data: {updated}`.
+  public static func markAllNotificationsRead() -> Endpoint<ActionResult> {
+    Endpoint(method: .post, path: "/notifications/read-all")
+  }
+
+  /// `POST /devices` → `data: {token_hash, environment}` (503 NOT_CONFIGURED without APNs keys).
   public static func registerDevice(_ input: DeviceInput, key: IdempotencyKey) -> Endpoint<ActionResult> {
     Endpoint(method: .post, path: "/devices", body: Endpoint<ActionResult>.encodeBody(input), idempotencyKey: key)
+  }
+
+  /// `DELETE /devices/{token_hash}` (sign-out; idempotent, no If-Match).
+  public static func unregisterDevice(tokenHash: String) -> Endpoint<ActionResult> {
+    let hash = tokenHash.lowercased().filter { $0.isHexDigit }
+    return Endpoint(method: .delete, path: "/devices/\(hash)")
   }
 
   // MARK: Voice
@@ -192,11 +253,18 @@ public enum API {
     Endpoint(method: .post, path: "/voice/sessions", idempotencyKey: key)
   }
 
+  /// `POST /voice/sessions/{id}/end` → `data: {session_id, consumed_seconds}` (idempotent).
   public static func endVoiceSession(id sessionId: String) -> Endpoint<ActionResult> {
     Endpoint(method: .post, path: "/voice/sessions/\(id(sessionId))/end")
   }
 
+  /// `POST /voice/tool-calls` — business failures are `200 success:false data:{error_code, message_ja}`.
   public static func voiceToolCall(_ input: VoiceToolInput, key: IdempotencyKey) -> Endpoint<ActionResult> {
     Endpoint(method: .post, path: "/voice/tool-calls", body: Endpoint<ActionResult>.encodeBody(input), idempotencyKey: key)
+  }
+
+  /// `GET /voice/quota` — today's usage (Settings and the voice screen).
+  public static func voiceQuota() -> Endpoint<DataEnvelope<VoiceQuota>> {
+    Endpoint(method: .get, path: "/voice/quota")
   }
 }

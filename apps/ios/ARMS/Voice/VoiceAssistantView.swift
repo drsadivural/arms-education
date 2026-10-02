@@ -67,6 +67,7 @@ private struct VoiceAssistantScreen: View {
       controls
     }
     .armsScreen()
+    .task { if !voice.isRunning { await voice.refreshQuota() } }
     .sheet(item: confirmationBinding) { card in
       VoiceConfirmationView(voice: voice, cardId: card.id)
         .interactiveDismissDisabled(voice.conversation?.confirmation.state.isAwaitingUser ?? false)
@@ -188,6 +189,11 @@ private struct VoiceAssistantScreen: View {
         }
         if !app.context.isOnline {
           Text("オフラインのため音声機能を利用できません。").font(.footnote).foregroundStyle(ARMSColor.danger)
+        } else if let quota = voice.quota {
+          // GET /voice/quota: today's remaining time (the server refuses a session below 30 seconds).
+          Text(quota.isExhausted ? "本日の音声利用上限に達しました。画面から操作してください。" : quota.remainingLabelJa)
+            .font(.footnote)
+            .foregroundStyle(quota.isExhausted ? ARMSColor.danger : ARMSColor.muted)
         }
       }
     }
@@ -273,13 +279,13 @@ private struct TranscriptBubble: View {
   }
 }
 
-/// Inline structured result (e.g. 「本日の授業」) built from the API's tool output.
+/// Inline structured result (e.g. 「本日の授業」) built from the API's tool output (the executor's
+/// summaries: dates/times are already formatted in the organisation timezone by the server).
 private struct ResultCardView: View {
   @Environment(AppModel.self) private var app
   let card: VoiceResultCard
 
   var body: some View {
-    let calendar = app.context.calendar
     ARMSCard {
       switch card {
       case .lessons(let title, let slots):
@@ -290,33 +296,46 @@ private struct ResultCardView: View {
         ForEach(slots) { slot in
           VStack(alignment: .leading, spacing: 4) {
             Text(slot.title).font(.subheadline.weight(.semibold)).foregroundStyle(ARMSColor.text)
-            Text("\(JaFormat.dateTimeRange(slot.startsAt, slot.endsAt, calendar: calendar)) / \(slot.teacherName)")
+            Text("\(slot.dateJa) \(slot.start)–\(slot.end) / \(slot.teacherName) / \(JaFormat.remainingSeats(slot.remaining))")
               .font(.caption)
               .foregroundStyle(ARMSColor.muted)
-            if let mine = slot.myReservation {
-              StatusTag(label: mine.status.labelJa, tone: mine.status.tone)
+            if let status = slot.myReservationStatus {
+              StatusTag(label: slot.myReservationStatusJa ?? status.labelJa, tone: status.tone)
             }
           }
         }
       case .reservations(let reservations):
         Text("予約の状況").font(.headline).foregroundStyle(ARMSColor.text)
+        if reservations.isEmpty {
+          Text("該当する予約はありません").font(.subheadline).foregroundStyle(ARMSColor.muted)
+        }
         ForEach(reservations) { r in
           HStack {
             VStack(alignment: .leading, spacing: 2) {
-              Text(r.slotTitle ?? "授業").font(.subheadline.weight(.semibold)).foregroundStyle(ARMSColor.text)
-              Text(JaFormat.dateTimeRange(r.startsAt, r.endsAt, calendar: calendar)).font(.caption)
-                .foregroundStyle(ARMSColor.muted)
+              Text(r.title.isEmpty ? "授業" : r.title).font(.subheadline.weight(.semibold)).foregroundStyle(ARMSColor.text)
+              Text("\(r.dateJa) \(r.start)–\(r.end) / \(r.teacherName)").font(.caption).foregroundStyle(ARMSColor.muted)
             }
             Spacer()
-            let status = ReservationRules.effectiveStatus(r, now: app.context.now())
-            StatusTag(label: status.labelJa, tone: status.tone)
+            StatusTag(label: r.statusJa, tone: r.status.tone)
           }
         }
       case .progress(let progress):
-        let summary = ProgressSummary(progress: progress)
-        Text("研修の進捗").font(.headline).foregroundStyle(ARMSColor.text)
-        LinearProgressBar(fraction: summary.fraction, label: summary.percentText)
-        Text(summary.requiredText).font(.caption).foregroundStyle(ARMSColor.muted)
+        Text(progress.studentName.isEmpty ? "研修の進捗" : "\(progress.studentName)さんの研修の進捗")
+          .font(.headline)
+          .foregroundStyle(ARMSColor.text)
+        LinearProgressBar(
+          fraction: progress.progressPercent.map { Double(min(100, max(0, $0))) / 100 }, label: progress.progressJa)
+        Text(
+          progress.requiredTotal > 0
+            ? "必須単元 \(progress.requiredCompleted) / \(progress.requiredTotal) 完了" : "必須単元はまだ割り当てられていません"
+        )
+        .font(.caption)
+        .foregroundStyle(ARMSColor.muted)
+        ForEach(progress.programs, id: \.programName) { program in
+          Text("\(program.programName)：期限 \(program.dueJa)\(program.overdue ? "（期限超過）" : "")")
+            .font(.caption)
+            .foregroundStyle(program.overdue ? ARMSColor.danger : ARMSColor.muted)
+        }
       }
     }
   }

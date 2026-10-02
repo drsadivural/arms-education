@@ -27,16 +27,41 @@ final class ProgressRulesTests: XCTestCase {
   func testCompletedHeadline() {
     let json = Fixtures.progressJSON(
       percent: "100",
-      units: #"[{"id":"u1","title":"A","state":"completed","weight":1,"score":90,"requires_review":false,"feedback":null}]"#
+      units: "[" + Fixtures.unitJSON(id: "u1", title: "A", state: "completed", score: "90", quizPassed: "true") + "]"
     ).replacingOccurrences(of: #""required_completed":6"#, with: #""required_completed":8"#)
     XCTAssertEqual(ProgressSummary(progress: progress(json)).headline, "すべての必須単元を完了しました")
   }
 
-  func testUnitDetailNeverInventsPercentages() {
+  func testOverdueHeadlineAndEnrollmentPresentation() {
+    let p = progress(Fixtures.progressJSON(overdue: true))
+    XCTAssertEqual(ProgressSummary(progress: p).headline, "期限を過ぎている研修プログラムがあります")
+    let e = p.enrollments[0]
+    XCTAssertEqual(EnrollmentPresentation.title(e), "新入社員基礎研修（第2版）")
+    XCTAssertEqual(EnrollmentPresentation.dueText(e), "期限：2026年12月25日（金）")
+    XCTAssertEqual(EnrollmentPresentation.requiredText(e), "必須単元 6 / 8 完了")
+    XCTAssertEqual(EnrollmentPresentation.status(e).label, "期限超過")
+    let onTime = progress(Fixtures.progressJSON()).enrollments[0]
+    XCTAssertEqual(EnrollmentPresentation.status(onTime).label, "受講中")
+    XCTAssertEqual(ProgressSummary(progress: p).dueText, "期限超過：12月25日（金）（新入社員基礎研修）")
+    XCTAssertEqual(ProgressSummary(progress: progress(Fixtures.progressJSON())).dueText, "次の期限：12月25日（金）（新入社員基礎研修）")
+    let none = StudentProgress(
+      studentId: "s", progressPercent: nil, requiredTotal: 0, requiredCompleted: 0, units: [], checkedAt: fixedNow)
+    XCTAssertNil(ProgressSummary(progress: none).dueText)
+  }
+
+  func testUnitDetailUsesServerBreakdownOnly() {
     let units = progress(Fixtures.progressJSON()).units
-    XCTAssertEqual(UnitPresentation.detail(units[0]), "完了条件を満たしました・テスト92点・講師評価済み")
-    XCTAssertEqual(UnitPresentation.detail(units[2]), "提出済み・講師の評価を待っています")
-    XCTAssertEqual(UnitPresentation.detail(units[3]), "まだ始めていません")
+    XCTAssertEqual(UnitPresentation.detail(units[0]), "教材確認 2/2・テスト92点（合格）・課題 講師評価済み")
+    XCTAssertEqual(UnitPresentation.detail(units[1]), "テスト88点（合格）")
+    XCTAssertEqual(UnitPresentation.detail(units[2]), "課題提出済み・講師の評価待ち")
+    XCTAssertEqual(UnitPresentation.detail(units[3]), "教材確認 0/1")
+    let bare = UnitProgress(id: "x", title: "x", state: .notStarted, weight: 1, score: nil, requiresReview: false, feedback: nil)
+    XCTAssertEqual(UnitPresentation.detail(bare), "まだ始めていません")
+    let attendance = UnitProgress(
+      id: "y", title: "y", state: .inProgress, weight: 1, score: nil, requiresReview: false, feedback: nil, quizPassed: false,
+      attendanceRequired: true)
+    XCTAssertEqual(UnitPresentation.detail(attendance), "テスト未受験・授業への出席が必要")
+    XCTAssertEqual(UnitPresentation.completedLabel(units[0], calendar: .tokyo), "完了日：10月1日（木）")
     XCTAssertEqual(UnitPresentation.fraction(units[0]), 1)
     XCTAssertNil(UnitPresentation.fraction(units[2]))
     XCTAssertEqual(UnitPresentation.formatScore(88.5), "88.5")
@@ -192,6 +217,19 @@ final class DeepLinkTests: XCTestCase {
     XCTAssertEqual(DeepLink.parse("arms://reservations"), .reservations)
     XCTAssertEqual(DeepLink.parse("arms://progress"), .progress)
     XCTAssertEqual(DeepLink.parse("arms://units/\(Fixtures.unitId)/materials"), .unitMaterials(unitId: Fixtures.unitId))
+    // Server DEEP_LINKS (services/api/src/domain/notifications/rules.ts).
+    XCTAssertEqual(DeepLink.parse("arms://lesson-slots/\(Fixtures.slotId)"), .lessonSlot(id: Fixtures.slotId))
+    XCTAssertNil(DeepLink.parse("arms://lesson-slots/x"))
+    XCTAssertNil(DeepLink.parse("arms://settings/users"), "admin-only Web destination")
+  }
+
+  func testPushPayloadKey() {
+    let userInfo: [AnyHashable: Any] = [
+      "aps": ["alert": ["title": "予約が承認されました", "body": "…"], "sound": "default"],
+      "deep_link": "arms://reservations/\(Fixtures.reservationId)",
+    ]
+    XCTAssertEqual(DeepLink.fromPush(userInfo: userInfo), .reservation(id: Fixtures.reservationId))
+    XCTAssertNil(DeepLink.fromPush(userInfo: ["aps": [:]]))
   }
 
   func testParsesRelativePaths() {
@@ -209,7 +247,10 @@ final class DeepLinkTests: XCTestCase {
   }
 
   func testRoundTripAndLabels() {
-    for link in [DeepLink.reservation(id: Fixtures.reservationId), .todayLessons, .notifications, .progress, .reservations] {
+    for link in [
+      DeepLink.reservation(id: Fixtures.reservationId), .todayLessons, .notifications, .progress, .reservations,
+      .lessonSlot(id: Fixtures.slotId),
+    ] {
       XCTAssertEqual(DeepLink.parse(link.url.absoluteString), link)
     }
     XCTAssertEqual(DeepLink.reservation(id: "x").actionLabel, "予約内容を確認")
@@ -218,15 +259,17 @@ final class DeepLinkTests: XCTestCase {
 }
 
 final class LearningDraftTests: XCTestCase {
-  func testAttendanceDraftFromApprovedReservationsOfSlot() {
-    let approvedA = Fixtures.reservation(
-      Fixtures.reservationJSON(id: "a1", status: "approved", studentId: "sa", studentName: "鈴木 大輔"))
-    let approvedB = Fixtures.reservation(
-      Fixtures.reservationJSON(id: "b1", status: "approved", studentId: "sb", studentName: "和田 一夫"))
-    let pending = Fixtures.reservation(Fixtures.reservationJSON(id: "c1", status: "pending", studentId: "sc"))
-    let other = Fixtures.reservation(Fixtures.reservationJSON(id: "d1", status: "approved", slotId: "other", studentId: "sd"))
-    var draft = AttendanceDraft(reservations: [approvedA, pending, approvedB, other], slotId: Fixtures.slotId)
-    XCTAssertEqual(Set(draft.rows.map(\.studentId)), ["sa", "sb"])
+  func testAttendanceDraftFromRoster() {
+    func item(_ id: String, _ name: String, state: AttendanceState? = nil) -> AttendanceRoster.Item {
+      .init(
+        studentId: id, studentName: name, employeeNumber: "E-\(id)", reservationId: "r-\(id)", reservationStatus: .approved,
+        attendanceState: state, note: "", recordedByName: state == nil ? nil : "田中 祥司", recordedAt: state == nil ? nil : fixedNow)
+    }
+    let roster = AttendanceRoster(
+      slotId: Fixtures.slotId, slotTitle: "IT基礎", startsAt: fixedNow, endsAt: fixedNow.addingTimeInterval(5400), state: .open,
+      editable: true, items: [item("sa", "鈴木 大輔"), item("sb", "和田 一夫"), item("sa", "重複")])
+    var draft = AttendanceDraft(roster: roster)
+    XCTAssertEqual(draft.rows.map(\.studentId), ["sa", "sb"], "roster order, duplicates dropped")
     XCTAssertTrue(draft.rows.allSatisfy { $0.state == .present })
     draft.setState(.late, for: "sa")
     draft.setNote("  電車遅延  ", for: "sa")
@@ -266,6 +309,19 @@ final class LearningDraftTests: XCTestCase {
     XCTAssertNil(AssignmentRules.validate("業務改善の提案"))
     XCTAssertNotNil(AssignmentRules.validate(String(repeating: "あ", count: 10_001)))
     XCTAssertEqual(AssignmentRules.validateFeedback(""), "講師コメントを入力してください。")
+    // A file alone is a valid submission (server: body or object_key).
+    XCTAssertNil(AssignmentRules.validate("", hasAttachment: true))
+    XCTAssertNil(AssignmentRules.validateAttachment(filename: "報告書.pdf", contentType: "application/pdf", sizeBytes: 1200))
+    XCTAssertNil(AssignmentRules.validateAttachment(filename: "photo.JPG", contentType: "image/jpeg", sizeBytes: 1200))
+    XCTAssertEqual(
+      AssignmentRules.validateAttachment(filename: "a.docx", contentType: "application/msword", sizeBytes: 10),
+      "添付できるファイルはPDF・PNG・JPEGです。")
+    XCTAssertEqual(
+      AssignmentRules.validateAttachment(filename: "a.png", contentType: "application/pdf", sizeBytes: 10),
+      "ファイルの拡張子が形式と一致しません。")
+    XCTAssertEqual(
+      AssignmentRules.validateAttachment(filename: "a.pdf", contentType: "application/pdf", sizeBytes: 21 * 1024 * 1024),
+      "ファイルサイズは20MB以下にしてください。")
   }
 
   func testActionKeysReuseUntilComplete() {

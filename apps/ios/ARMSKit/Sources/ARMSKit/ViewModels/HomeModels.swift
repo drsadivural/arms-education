@@ -68,7 +68,8 @@ public final class TeacherHomeModel {
 
   nonisolated static func fetchCounts(api: APIClient, now: Date) async throws -> Counts {
     let students = try await api.collectAll(query: ListQuery(limit: 100), API.students)
-    let pending = try await api.collectAll(query: ListQuery(limit: 100, status: "pending"), API.reservations)
+    let pending = try await api.collectAll(
+      query: ListQuery(limit: 100, status: ReservationStatus.pending.rawValue), API.reservations)
     var reviews: Int? = nil
     switch await reviewQueueCount(api: api) {
     case .success(let count): reviews = count
@@ -84,7 +85,8 @@ public final class TeacherHomeModel {
 
   nonisolated static func reviewQueueCount(api: APIClient) async -> Result<Int, ARMSError> {
     do {
-      let subs = try await api.collectAll(query: ListQuery(limit: 100, status: "submitted"), API.submissions)
+      let subs = try await api.collectAll(
+        query: ListQuery(limit: 100, state: SubmissionState.submitted.rawValue), API.submissions)
       return .success(subs.items.filter { $0.state == .submitted }.count)
     } catch {
       return .failure((error as? ARMSError) ?? .offline)

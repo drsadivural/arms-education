@@ -136,12 +136,18 @@ public final class SessionStore {
       return .failure(.validation(["email": "メールアドレスの形式が正しくありません。"]))
     }
     do {
-      _ = try await context.api.send(API.passwordReset(email: email))
-      return .success(SessionStore.passwordResetSentMessage)
+      // The server picks the e-mail link target (Web /auth/callback, which then sends students back
+      // to the app); the client never supplies a redirect.
+      let result = try await context.api.send(API.passwordReset(email: email)).value
+      let server = result.data?["message_ja"]?.stringValue
+      return .success(server.flatMap { $0.isEmpty ? nil : $0 } ?? SessionStore.passwordResetSentMessage)
     } catch {
       return .failure(error)
     }
   }
+
+  /// Password policy enforced by `POST /auth/password` (shown next to the reset form).
+  public static let passwordPolicyMessage = "パスワードは10文字以上で、英字と数字を含めてください。"
 
   // MARK: Sign-out
 

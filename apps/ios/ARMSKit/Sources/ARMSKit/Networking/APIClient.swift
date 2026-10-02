@@ -80,13 +80,57 @@ public final class APIClient: Sendable {
         await onSessionExpired()
         throw failure
       }
-      if RetryPolicy.retryableStatuses.contains(response.status), attempt < retryPolicy.maxAttempts {
+      if RetryPolicy.retryableStatuses.contains(response.status), attempt < retryPolicy.maxAttempts,
+        !RetryPolicy.permanentCodes.contains(failure.code)
+      {
         try await pause(attempt: attempt, retryAfter: RetryPolicy.parseRetryAfter(response.header("Retry-After")))
         continue
       }
       throw failure
     }
   }
+
+  /// Uploads bytes to the presigned quarantine URL of `POST /uploads`. The URL itself is the
+  /// credential (no Authorization / organisation headers); `required_headers` (Content-Type) are
+  /// signed and must be sent unchanged, and the body length must equal the declared size.
+  /// Transport failures are retried (a PUT of the same bytes to the same key is idempotent).
+  public func putObject(_ ticket: UploadTicket, body: Data, timeout: TimeInterval = 120) async throws(ARMSError) {
+    // https only; plain http is accepted solely for a loopback development stack.
+    guard let url = URL(string: ticket.uploadUrl), let scheme = url.scheme?.lowercased(),
+      scheme == "https" || (scheme == "http" && ["127.0.0.1", "localhost"].contains(url.host ?? ""))
+    else {
+      throw .local(code: "UPLOAD_FAILED", messageJa: APIClient.uploadFailedMessage)
+    }
+    // Content-Length (also signed) is set by the URL loading system from the body.
+    let request = HTTPRequest(url: url, method: .put, headers: ticket.requiredHeaders, body: body, timeout: timeout)
+    var attempt = 0
+    while true {
+      attempt += 1
+      if Task.isCancelled { throw .cancelled }
+      let response: HTTPResponse
+      do {
+        response = try await transport.send(request)
+      } catch {
+        let mapped = Self.map(error)
+        if mapped == .cancelled { throw .cancelled }
+        if error != .offline, attempt < retryPolicy.maxAttempts {
+          try await pause(attempt: attempt, retryAfter: nil)
+          continue
+        }
+        throw mapped
+      }
+      if (200..<300).contains(response.status) { return }
+      if RetryPolicy.retryableStatuses.contains(response.status) || response.status >= 500, attempt < retryPolicy.maxAttempts {
+        try await pause(attempt: attempt, retryAfter: RetryPolicy.parseRetryAfter(response.header("Retry-After")))
+        continue
+      }
+      // 403 from object storage = the 15-minute signature expired (or the bytes did not match it).
+      if response.status == 403 { throw .local(code: "UPLOAD_EXPIRED", messageJa: ErrorCatalog.message(for: "UPLOAD_EXPIRED")) }
+      throw .local(code: "UPLOAD_FAILED", messageJa: APIClient.uploadFailedMessage)
+    }
+  }
+
+  static let uploadFailedMessage = "ファイルをアップロードできませんでした。通信環境を確認して、もう一度お試しください。"
 
   // MARK: - Request building
 

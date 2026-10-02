@@ -61,6 +61,13 @@ final class RouterTests: XCTestCase {
     XCTAssertEqual(router.bookingSegment, .mine)
     router.open(.notifications, role: .student)
     XCTAssertEqual(router.homePath, [.notifications])
+    // arms://lesson-slots/<id> (e.g. 「担当授業が取り消されました」).
+    router.open(.lessonSlot(id: "55555555-5555-4555-8555-555555555555"), role: .teacher)
+    XCTAssertEqual(router.tab, .home)
+    XCTAssertEqual(router.homePath, [.lessonSlot(id: "55555555-5555-4555-8555-555555555555")])
+    router.open(.lessonSlot(id: "55555555-5555-4555-8555-555555555555"), role: .student)
+    XCTAssertEqual(router.tab, .booking)
+    XCTAssertEqual(router.bookingPath, [.lessonSlot(id: "55555555-5555-4555-8555-555555555555")])
     router.reset()
     XCTAssertEqual(router.tab, .home)
     XCTAssertTrue(router.homePath.isEmpty && router.bookingPath.isEmpty)

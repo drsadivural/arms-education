@@ -24,6 +24,10 @@ enum Route: Hashable {
   case studentDetail(id: String)
   case attendance(LessonSlot)
   case teacherReservations
+  /// A lesson slot opened by id (deep link `arms://lesson-slots/<id>`).
+  case lessonSlot(id: String)
+  /// 課題の評価待ち (teacher).
+  case reviewQueue
 }
 
 /// Tab selection, per-tab navigation paths and deep-link handling.
@@ -83,6 +87,15 @@ final class Router {
     case .todayLessons:
       tab = .home
       homePath = [.todayLessons]
+    case .lessonSlot(let id):
+      // Teachers: their lesson (attendance, cancellation notice); students: booking context.
+      if role == .teacher {
+        tab = .home
+        homePath = [.lessonSlot(id: id)]
+      } else {
+        tab = .booking
+        bookingPath = [.lessonSlot(id: id)]
+      }
     case .notifications:
       tab = .home
       homePath = [.notifications]

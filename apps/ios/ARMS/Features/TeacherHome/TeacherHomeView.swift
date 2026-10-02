@@ -63,7 +63,7 @@ private struct TeacherHomeScreen: View {
           ARMSCard {
             Text("対応が必要な項目").font(.headline).foregroundStyle(ARMSColor.text)
             if let reviews = counts.pendingReviews {
-              ActionRow(title: "課題の評価待ち", value: "\(reviews)件") { app.router.tab = .progress }
+              ActionRow(title: "課題の評価待ち", value: "\(reviews)件") { app.router.push(.reviewQueue) }
               Divider().overlay(ARMSColor.border)
             }
             ActionRow(title: "予約の承認待ち", value: "\(counts.pendingReservations)件") { app.router.tab = .booking }
