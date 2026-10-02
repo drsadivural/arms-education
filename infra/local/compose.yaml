@@ -41,6 +41,7 @@ services:
     image: supabase/gotrue:v2.180.0
     depends_on:
       postgres: { condition: service_healthy }
+      templates: { condition: service_started }
     env_file: [.env.local]
     environment:
       GOTRUE_API_HOST: 0.0.0.0
@@ -66,10 +67,19 @@ services:
       GOTRUE_SMTP_SENDER_NAME: ARMS 新入社員研修システム
       GOTRUE_MAILER_SUBJECTS_INVITE: ARMSへの招待
       GOTRUE_MAILER_SUBJECTS_RECOVERY: ARMSパスワード再設定のご案内
+      GOTRUE_MAILER_TEMPLATES_INVITE: http://templates/invite.html
+      GOTRUE_MAILER_TEMPLATES_RECOVERY: http://templates/recovery.html
       GOTRUE_MAILER_URLPATHS_INVITE: /verify
       GOTRUE_MAILER_URLPATHS_RECOVERY: /verify
       GOTRUE_LOG_LEVEL: warn
+      # Local only: E2E runs invite many users per minute (the hosted default is far lower — keep it there).
+      GOTRUE_RATE_LIMIT_EMAIL_SENT: "10000"
     ports: ["127.0.0.1:9999:9999"]
+
+  # Serves the Japanese Auth e-mail templates (infra/supabase/templates) to GoTrue inside the compose network.
+  templates:
+    image: nginx:1.27-alpine
+    volumes: ["../supabase/templates:/usr/share/nginx/html:ro"]
 
   minio:
     image: quay.io/minio/minio:RELEASE.2025-04-22T22-12-26Z
