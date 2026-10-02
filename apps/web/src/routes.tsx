@@ -4,6 +4,7 @@ import { RequireAuth } from "./components/RequireAuth";
 import { ThemeSync } from "./lib/preferences";
 import { LoginPage } from "./pages/LoginPage";
 import { AuthCallbackPage } from "./pages/AuthCallbackPage";
+import { RouteErrorPage } from "./pages/RouteErrorPage";
 import { NotFoundPage } from "./pages/NotFoundPage";
 import { LoadingRows } from "./components/ui/Feedback";
 
@@ -19,10 +20,11 @@ function RouteFallback() {
 const page = (load: () => Promise<{ Component: React.ComponentType }>): Pick<RouteObject, "lazy"> => ({ lazy: load });
 
 export const routes: RouteObject[] = [
-  { path: "/login", element: <LoginPage /> },
-  { path: "/auth/callback", element: <AuthCallbackPage /> },
+  { path: "/login", element: <LoginPage />, errorElement: <RouteErrorPage /> },
+  { path: "/auth/callback", element: <AuthCallbackPage />, errorElement: <RouteErrorPage /> },
   {
     hydrateFallbackElement: <RouteFallback />,
+    errorElement: <RouteErrorPage />,
     element: (
       <RequireAuth>
         <ThemeSync />

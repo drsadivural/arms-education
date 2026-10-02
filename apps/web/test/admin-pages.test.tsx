@@ -344,7 +344,7 @@ describe("設定（WEB-16/18/19）", () => {
     const user = userEvent.setup();
     const { router } = renderPage(<SettingsPage />, { path: "/settings/:tab?", url: "/settings/users" });
     expect(await screen.findByRole("heading", { level: 1, name: "ユーザー管理" })).toBeInTheDocument();
-    expect((await screen.findAllByRole("tab")).map((t) => t.textContent)).toEqual(["システム設定", "ユーザー管理", "ログ・イベント", "個人設定"]);
+    expect((await screen.findAllByRole("tab")).map((t) => t.textContent)).toEqual(["システム設定", "データ移植", "ユーザー管理", "ログ・イベント", "個人設定"]);
     expect(await screen.findByText("削除の申請はありません")).toBeInTheDocument();
     await user.click(screen.getByRole("tab", { name: "ログ・イベント" }));
     await waitFor(() => expect(router.state.location.pathname).toBe("/settings/events"));
