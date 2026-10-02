@@ -1,0 +1,75 @@
+# Local development stack: PostgreSQL 17, Supabase Auth (GoTrue, ES256 asymmetric JWT), MinIO (S3-compatible
+# stand-in for private R2 presigned URLs) and Mailpit (captures Auth invitation/reset e-mail).
+# Run `node infra/local/setup.mjs` once to generate infra/local/.env.local and services/api/.dev.vars.
+name: arms
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: arms_dev_pw
+      POSTGRES_DB: arms
+    ports: ["127.0.0.1:55433:5432"]
+    volumes: ["arms-pg:/var/lib/postgresql/data", "./initdb:/docker-entrypoint-initdb.d:ro"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d arms"]
+      interval: 2s
+      retries: 30
+
+  auth:
+    image: supabase/gotrue:v2.180.0
+    depends_on:
+      postgres: { condition: service_healthy }
+    env_file: [.env.local]
+    environment:
+      GOTRUE_API_HOST: 0.0.0.0
+      PORT: "9999"
+      API_EXTERNAL_URL: http://localhost:9999
+      GOTRUE_DB_DRIVER: postgres
+      DB_NAMESPACE: auth
+      DATABASE_URL: postgres://postgres:arms_dev_pw@postgres:5432/arms?search_path=auth
+      GOTRUE_SITE_URL: http://localhost:5173
+      GOTRUE_URI_ALLOW_LIST: http://localhost:5173/**,arms://**
+      GOTRUE_DISABLE_SIGNUP: "true"
+      GOTRUE_EXTERNAL_EMAIL_ENABLED: "true"
+      GOTRUE_MAILER_AUTOCONFIRM: "false"
+      GOTRUE_JWT_EXP: "3600"
+      GOTRUE_JWT_AUD: authenticated
+      GOTRUE_JWT_ISSUER: http://localhost:9999
+      GOTRUE_JWT_ADMIN_ROLES: service_role
+      GOTRUE_MFA_TOTP_ENROLL_ENABLED: "true"
+      GOTRUE_MFA_TOTP_VERIFY_ENABLED: "true"
+      GOTRUE_SMTP_HOST: mailpit
+      GOTRUE_SMTP_PORT: "1025"
+      GOTRUE_SMTP_ADMIN_EMAIL: noreply@arms.local
+      GOTRUE_SMTP_SENDER_NAME: ARMS 新入社員研修システム
+      GOTRUE_MAILER_SUBJECTS_INVITE: ARMSへの招待
+      GOTRUE_MAILER_SUBJECTS_RECOVERY: ARMSパスワード再設定のご案内
+      GOTRUE_MAILER_URLPATHS_INVITE: /verify
+      GOTRUE_MAILER_URLPATHS_RECOVERY: /verify
+      GOTRUE_LOG_LEVEL: warn
+    ports: ["127.0.0.1:9999:9999"]
+
+  minio:
+    image: quay.io/minio/minio:RELEASE.2025-04-22T22-12-26Z
+    command: server /data --console-address :9001
+    environment:
+      MINIO_ROOT_USER: arms-minio
+      MINIO_ROOT_PASSWORD: arms-minio-dev-pw
+    ports: ["127.0.0.1:9100:9000", "127.0.0.1:9101:9001"]
+    volumes: ["arms-minio:/data"]
+
+  minio-init:
+    image: quay.io/minio/mc:RELEASE.2025-04-16T18-13-26Z
+    depends_on: [minio]
+    entrypoint: >
+      /bin/sh -c "until mc alias set local http://minio:9000 arms-minio arms-minio-dev-pw; do sleep 1; done;
+      mc mb --ignore-existing local/arms-materials; mc anonymous set none local/arms-materials"
+
+  mailpit:
+    image: axllent/mailpit:v1.27
+    ports: ["127.0.0.1:8025:8025", "127.0.0.1:1025:1025"]
+
+volumes:
+  arms-pg: {}
+  arms-minio: {}

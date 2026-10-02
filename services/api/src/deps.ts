@@ -1,0 +1,33 @@
+import type { Bindings } from "./env";
+import { loadConfig } from "./env";
+import type { Deps } from "./context";
+import { hyperdriveSource } from "./db/client";
+import { createJwtVerifier, remoteKeySet } from "./auth/jwt";
+import { createSupabaseAuth } from "./integrations/supabase-auth";
+import { createIntegrations } from "./integrations";
+
+let cached: { env: Bindings; deps: Deps } | null = null;
+
+/** Builds Worker dependencies once per isolate (config is validated fail-fast here). */
+export function workerDeps(env: Bindings): Deps {
+  if (cached && cached.env === env) return cached.deps;
+  const config = loadConfig(env);
+  const connectionString = env.HYPERDRIVE?.connectionString ?? env.DATABASE_URL;
+  if (!connectionString) throw new Error("HYPERDRIVE binding (or DATABASE_URL for local development) is required");
+  const deps: Deps = {
+    config,
+    connections: hyperdriveSource(connectionString),
+    jwt: createJwtVerifier({ keySet: remoteKeySet(config.supabase.authUrl), issuer: config.supabase.issuer, audience: config.supabase.audience }),
+    auth: createSupabaseAuth({
+      authUrl: config.supabase.authUrl,
+      publishableKey: config.supabase.publishableKey,
+      adminSecret: config.supabase.adminSecret,
+      redirectUrl: config.supabase.redirectUrl,
+    }),
+    integrations: createIntegrations(env, config),
+    now: () => new Date(),
+    log: (event) => console.info(JSON.stringify({ ts: new Date().toISOString(), ...event })),
+  };
+  cached = { env, deps };
+  return deps;
+}
