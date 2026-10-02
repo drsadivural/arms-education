@@ -14,7 +14,7 @@ export function ProgressBar({ value, label, className }: { value: number | null 
         aria-label={label ?? "進捗"}
         className="h-1.5 w-24 overflow-hidden rounded-full bg-neutral-soft"
       >
-        <div className="h-full rounded-full bg-primary" style={{ width: `${v}%` }} />
+        <div className="h-full rounded-full bg-brand" style={{ width: `${v}%` }} />
       </div>
       <span className="text-xs font-bold tabular-nums">{v}%</span>
     </div>

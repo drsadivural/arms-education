@@ -25,6 +25,7 @@ coverage/
 
 # Test evidence is generated per run (commit selected evidence explicitly)
 tests/results/*
+!tests/results/evidence/
 !tests/results/README.md
 playwright-report/
 test-results/

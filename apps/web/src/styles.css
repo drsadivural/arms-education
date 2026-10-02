@@ -7,8 +7,10 @@
 
 /* Design tokens (docs/10_DESIGN_SYSTEM_JA.md). Components use these via Tailwind colour utilities. */
 :root {
-  --arms-primary: #0076d1;
-  --arms-primary-strong: #005ea8;
+  /* Brand blue for filled buttons/bars (white text 4.6:1); text/link blue is darker to keep ≥4.5:1 on pale surfaces. */
+  --arms-brand: #0076d1;
+  --arms-primary: #0068ba;
+  --arms-primary-strong: #005497;
   --arms-primary-soft: #e9f4ff;
   --arms-navy: #15365d;
   --arms-bg: #f4f7fb;
@@ -29,8 +31,9 @@
 }
 
 .dark {
-  --arms-primary: #62b5ff;
-  --arms-primary-strong: #8cc8ff;
+  --arms-brand: #62b5ff;
+  --arms-primary: #7cc1ff;
+  --arms-primary-strong: #a6d4ff;
   --arms-primary-soft: #233e61;
   --arms-navy: #cfe3ff;
   --arms-bg: #101d30;
@@ -51,6 +54,7 @@
 }
 
 @theme inline {
+  --color-brand: var(--arms-brand);
   --color-primary: var(--arms-primary);
   --color-primary-strong: var(--arms-primary-strong);
   --color-primary-soft: var(--arms-primary-soft);
