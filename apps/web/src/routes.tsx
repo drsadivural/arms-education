@@ -3,6 +3,7 @@ import { AppShell } from "./components/layout/AppShell";
 import { RequireAuth } from "./components/RequireAuth";
 import { ThemeSync } from "./lib/preferences";
 import { LoginPage } from "./pages/LoginPage";
+import { AuthCallbackPage } from "./pages/AuthCallbackPage";
 import { NotFoundPage } from "./pages/NotFoundPage";
 import { LoadingRows } from "./components/ui/Feedback";
 
@@ -19,6 +20,7 @@ const page = (load: () => Promise<{ Component: React.ComponentType }>): Pick<Rou
 
 export const routes: RouteObject[] = [
   { path: "/login", element: <LoginPage /> },
+  { path: "/auth/callback", element: <AuthCallbackPage /> },
   {
     hydrateFallbackElement: <RouteFallback />,
     element: (

@@ -135,6 +135,14 @@ export class TestAuthProvider implements AuthProvider {
     return { userId: u.userId };
   }
 
+  readonly passwordUpdates: { userId: string; password: string }[] = [];
+  async updatePassword(accessToken: string, password: string) {
+    const u = await this.userFromAccessToken(accessToken);
+    if (password === u.password) throw new ApiError("VALIDATION_FAILED", { field_errors: { password: "以前と異なるパスワードを入力してください。" } });
+    u.password = password;
+    this.passwordUpdates.push({ userId: u.userId, password });
+  }
+
   async adminSetBanned(userId: string, banned: boolean) {
     const u = this.byId(userId);
     if (u) u.banned = banned;

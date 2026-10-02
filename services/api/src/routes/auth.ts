@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import { deleteCookie, setCookie } from "hono/cookie";
-import { LoginInput, MfaVerifyInput, PasswordResetInput } from "@arms/contracts";
+import { LoginInput, MfaVerifyInput, PasswordResetInput, PasswordSetInput } from "@arms/contracts";
 import type { AppContext, AppEnv } from "../context";
 import { sql } from "../db/sql";
 import { json } from "../db/client";
@@ -120,6 +120,41 @@ authRoutes.post("/auth/password-reset", async (c) => {
   await rateLimit(c, "login", `reset:${c.req.header("CF-Connecting-IP") ?? "local"}:${input.email.toLowerCase()}`);
   await c.get("deps").auth.sendPasswordReset(input.email);
   return action(c, { message_ja: "登録済みのメールアドレスの場合、再設定の案内を送信しました。" });
+});
+
+/**
+ * Sets the password after following an invitation or password-reset e-mail link. The link's short-lived access token
+ * (from the URL fragment, never sent to our logs) is verified against the Auth provider's keys; the account must have
+ * an organisation membership. Students are told to sign in from the iOS app, staff from the Web login.
+ */
+authRoutes.post("/auth/password", async (c) => {
+  const input = await readBody(c, PasswordSetInput);
+  await rateLimit(c, "login", `password:${c.req.header("CF-Connecting-IP") ?? "local"}`);
+  const deps = c.get("deps");
+  let verified;
+  try {
+    verified = await deps.jwt.verify(input.access_token);
+  } catch (e) {
+    if (e instanceof InvalidTokenError) fail("SESSION_EXPIRED", { message_ja: "リンクの有効期限が切れています。もう一度メールのリンクからお試しください。" });
+    throw e;
+  }
+  const memberships = await c.get("db").tx({ authUserId: verified.userId }, (tx) => membershipsOf(tx, verified.userId));
+  const active = memberships.filter((m) => m.active);
+  if (active.length === 0) fail(memberships.length ? "ACCOUNT_DISABLED" : "FORBIDDEN");
+  await deps.auth.updatePassword(input.access_token, input.password);
+  const first = active[0] as MembershipRow;
+  await c.get("db").tx({ orgId: first.org_id, userId: verified.userId }, (tx) =>
+    tx.exec(sql`INSERT INTO app.audit_events(org_id, actor_id, event_type, entity_id, payload)
+      VALUES (${first.org_id}, ${verified.userId}, 'auth.password_set', ${verified.userId}, '{}'::jsonb)`),
+  );
+  const roles = [...new Set(active.map((m) => m.role))];
+  return action(c, {
+    roles,
+    sign_in: roles.some((r) => r !== "student") ? "web" : "ios",
+    message_ja: roles.some((r) => r !== "student")
+      ? "パスワードを設定しました。ログイン画面からログインしてください。"
+      : "パスワードを設定しました。iOSアプリからログインしてください。",
+  });
 });
 
 /** Session-management endpoints exist only for the Web BFF cookie session. */

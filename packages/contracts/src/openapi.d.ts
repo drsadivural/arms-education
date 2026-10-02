@@ -1560,6 +1560,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/auth/password": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * 招待・再設定リンクからのパスワード設定
+         * @description 許可ロール: 公開（メールリンクの短期アクセストークンをAuthの公開鍵で検証）。組織メンバーシップが必要。受講者はiOS、管理者・講師はWebでログインするよう案内する。
+         */
+        post: operations["post_auth_password"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/events/deliveries": {
         parameters: {
             query?: never;
@@ -3044,6 +3064,11 @@ export interface components {
             data: components["schemas"]["Me"];
             /** Format: date-time */
             checked_at: string;
+        };
+        PasswordSetInput: {
+            access_token: string;
+            /** @description 英字と数字を両方含む10文字以上。 */
+            password: string;
         };
         TeacherCreateResponse: {
             data: components["schemas"]["Teacher"];
@@ -6681,6 +6706,35 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SessionInfoResponse"];
+                };
+            };
+            401: components["responses"]["Error"];
+            403: components["responses"]["Error"];
+            422: components["responses"]["Error"];
+            429: components["responses"]["Error"];
+            503: components["responses"]["Error"];
+        };
+    };
+    post_auth_password: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PasswordSetInput"];
+            };
+        };
+        responses: {
+            /** @description 成功 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ActionResult"];
                 };
             };
             401: components["responses"]["Error"];

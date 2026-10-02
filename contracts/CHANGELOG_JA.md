@@ -9,6 +9,7 @@
 | 対象 | 種別 | 理由 |
 |---|---|---|
 | POST /auth/password-reset | 追加 | WEB-01/IOS-01「ログイン失敗・reset」。Auth providerの再設定メールを送信。列挙防止のため常に同じ応答。 |
+| POST /auth/password, PasswordSetInput | 追加 | 招待メール・パスワード再設定メールのリンク（`/auth/callback`）でパスワードを設定する手段が原本になかったため。リンクの短期トークンをサーバーで検証し、Authへ設定する。 |
 | POST /auth/mfa/enroll, /auth/mfa/verify | 追加 | WEB-01/WEB-18「管理者MFA」。BFF方式のためサーバー経由でTOTP登録・検証する。 |
 | POST /auth/login, LoginInput | 修正 | securityを空に（公開）。応答SessionInfoにmfa_required等を追加。複数組織所属者向けに任意の organization_id を追加。 |
 | GET /me | 修正 | 応答をUserからMe（組織・個人設定・受講者所属・MFA状態）へ拡張。iOSの利用区分照合用ヘッダー X-ARMS-Selected-Role、複数組織用 X-ARMS-Org を追加。 |
