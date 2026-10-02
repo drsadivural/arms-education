@@ -83,7 +83,7 @@ open ARMS.xcodeproj
 
 | xcconfig キー | 内容 |
 |---|---|
-| `API_BASE_URL` | ARMS Workers API の origin（https。パス無しなら `/api/v1` を付加） |
+| `API_BASE_URL` | ARMS Workers API の origin（https。パス無しなら `/api/v1` を付加）。既定値は本番 `https://arms.ayonix.com`（`Base.xcconfig`）。別環境は `Local.xcconfig` で上書き |
 | `TERMS_URL` / `PRIVACY_POLICY_URL` | 設定画面の利用規約・プライバシーポリシー |
 | `BUNDLE_ID` / `DEVELOPMENT_TEAM` | 顧客所有の Bundle ID と Apple Team |
 

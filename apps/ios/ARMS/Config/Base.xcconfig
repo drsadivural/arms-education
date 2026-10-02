@@ -1,16 +1,16 @@
 // ARMS iOS build settings shared by Debug and Release.
 //
-// Connection values are customer inputs (templates/config-inputs.json) and are NOT committed.
-// Put them in ARMS/Config/Local.xcconfig (git-ignored; copy Local.xcconfig.example) or pass them
-// as xcodebuild build settings in CI. In .xcconfig files "//" starts a comment, so write URLs as
-// https:/$()/example.com
+// API_BASE_URL defaults to the production API (https://arms.ayonix.com, public URL). Other values and
+// overrides (e.g. a local API for development) go in ARMS/Config/Local.xcconfig (git-ignored; copy
+// Local.xcconfig.example) or are passed as xcodebuild build settings. In .xcconfig files "//" starts a
+// comment, so write URLs as https:/$()/example.com
 //
 // API_BASE_URL              ARMS Workers API origin (https; "/api/v1" is appended when no path is given).
 //                           Sign-in also uses this API (POST /auth/tokens); there is no separate auth service.
 // TERMS_URL / PRIVACY_POLICY_URL  Pages shown from 設定 > サポート
 // BUNDLE_ID / DEVELOPMENT_TEAM    Customer-owned Apple identifiers
 
-API_BASE_URL =
+API_BASE_URL = https:/$()/arms.ayonix.com
 TERMS_URL =
 PRIVACY_POLICY_URL =
 
