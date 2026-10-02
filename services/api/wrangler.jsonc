@@ -96,9 +96,9 @@
         "BOOKING_PENDING_TTL_SECONDS": "86400",
         "BOOKING_CANCEL_BEFORE_SECONDS": "86400"
       },
-      // No production database exists yet (docs/BLOCKERS_JA.md). Until it does, the API answers 503 NOT_CONFIGURED
-      // and scheduled jobs are skipped. Once created (wrangler hyperdrive create arms-production … --caching-disabled), add:
-      //   "hyperdrive": [{ "binding": "HYPERDRIVE", "id": "<production hyperdrive id>" }],
+      // PostgreSQL on the ARMS host, reached through the Workers VPC service "arms-production-db" over the Cloudflare
+      // Tunnel "arms-production" (infra/production/README_JA.md). Caching disabled: every read must be current.
+      "hyperdrive": [{ "binding": "HYPERDRIVE", "id": "b25480f13d16428cbad8fee3af1a7e76" }],
       "r2_buckets": [{ "binding": "R2_MATERIALS", "bucket_name": "arms-materials-production" }],
       "queues": {
         "producers": [{ "binding": "NOTIFICATION_QUEUE", "queue": "arms-notifications-production" }],

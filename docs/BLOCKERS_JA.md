@@ -20,7 +20,7 @@
 ## 2. PostgreSQL（データベース・認証情報）
 | 項目 | 影響 | 現状 |
 |---|---|---|
-| PostgreSQL 15以上のホスト | 全機能（ログインを含む） | ユーザー指定（2026-10-03）により ARMS ホスト上の PostgreSQL 17 を Cloudflare Tunnel＋Workers VPC 経由で使用（`infra/production/README_JA.md`）。DB・ロール・マイグレーション・初期管理者・バックアップは設定済み。**Hyperdrive 接続のための公開CA証明書（`arms-db.ayonix.com`）の取得が未了**（権限上ユーザー実行。手順は同README） |
+| PostgreSQL 15以上のホスト | 全機能（ログインを含む） | ユーザー指定（2026-10-03）により ARMS ホスト上の PostgreSQL 17 を Cloudflare Tunnel＋Workers VPC 経由で使用（`infra/production/README_JA.md`）。DB・ロール・マイグレーション・初期管理者・バックアップ・Hyperdrive 接続まで完了（2026-10-03、本番 `/api/v1/health` が `database: ok`） |
 | マイグレーション用ロールと実行ロール `arms_app`（NOSUPERUSER NOBYPASSRLS）、`db/grants.sql` 適用 | DB境界 | 手順は `scripts/db/migrate.mjs`。本番未適用 |
 | 初期管理者 | 最初のログイン | `sadi@ayonix.com`（組織「H&A研修センター」）を本番DBに作成済み。メール設定後に「パスワードをお忘れですか？」でパスワード設定 |
 | バックアップ・復元演習（RPO 24h / RTO 4h） | 障害復旧 | 毎日03:30 JSTに R2 `arms-backups-production` へ pg_dump（30日保持、初回取得を確認済み）。復元演習は未実施 |

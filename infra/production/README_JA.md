@@ -20,21 +20,23 @@
 | Tunnel | `/etc/cloudflared/arms-production.yml`・`.json`、systemd `cloudflared-arms-production.service` |
 | バックアップ | 毎日 03:30 JST `backup.sh`（cron, ubuntu）→ R2 `arms-backups-production/db/`（30日で自動削除）、ローカル7日 |
 
-Cloudflare 側: Worker `arms-production`、Hyperdrive `arms-production`、Workers VPC サービス `arms-production-db`
+Cloudflare 側: Worker `arms-production`、Hyperdrive `arms-production`（`b25480f13d16428cbad8fee3af1a7e76`、キャッシュ無効）、Workers VPC サービス `arms-production-db`（TCP 127.0.0.1:55532）
 （`01a0fef6-cb6e-7340-9a2b-23a5bd11d494`）、Tunnel `arms-production`（`acb306ce-3f90-44ee-a2be-79a96dd35190`）、
 R2 `arms-materials-production`（CORS `infra/cloudflare/r2-cors.production.json`、PDFフォント配置済み）・`arms-backups-production`、
 Queue `arms-notifications-production`(+`-dlq`)、Secrets `WEB_SESSION_ENCRYPTION_KEY` `DEVICE_TOKEN_ENCRYPTION_KEY` `MALWARE_SCAN_API_KEY`。
 
 ## 残りの作業（2026-10-03 時点）
-1. **PostgreSQL の公開CA証明書**（Hyperdrive は DB の証明書を公開CAで検証するため。自己署名・独自CAは Workers VPC 経由では不可）。ホストで:
+1. ~~PostgreSQL の公開CA証明書~~ **完了**（2026-10-03。Hyperdrive 接続・`/api/v1/health` の `database: ok` を確認）。
+   Hyperdrive は Workers VPC 経由でも DB の証明書を公開CAで検証する（自己署名・独自CAは不可）ため、Let's Encrypt の
+   `arms-db.ayonix.com` 証明書を PostgreSQL に使う。新しいホストで構築し直す場合の手順:
    ```bash
    sudo install -m 755 -o root -g root infra/production/pg-cert-deploy.sh /opt/arms-production/pg-cert-deploy.sh
    sudo certbot certonly --standalone --preferred-challenges http --http-01-port 8089 -d arms-db.ayonix.com --non-interactive --agree-tos --register-unsafely-without-email --deploy-hook /opt/arms-production/pg-cert-deploy.sh
    echo "127.0.0.1 arms-db.ayonix.com" | sudo tee -a /etc/hosts
    ```
    `arms-db.ayonix.com` は Tunnel 上で ACME の検証パス（`/.well-known/acme-challenge/`）だけを公開し、DB自体は公開しない。
-   その後: VPC サービスをホスト名 `arms-db.ayonix.com`（リゾルバー `127.0.0.53`）に更新 → `wrangler hyperdrive create arms-production --service-id … --caching-disabled`
-   → `services/api/wrangler.jsonc` の production に `hyperdrive` バインディングを追加 → デプロイ。
+   その後: `wrangler hyperdrive create arms-production --service-id <VPCサービスID> --database arms --user arms_app --password … --caching-disabled`
+   → `services/api/wrangler.jsonc` の production の `hyperdrive` を新しいIDにする → デプロイ。
 2. **Resend**: アカウント作成 → ドメイン `ayonix.com` を追加し、表示されるDNSレコード（TXT/MX）を Cloudflare に追加 → APIキー作成 →
    `npx wrangler secret put MAIL_PROVIDER_API_KEY --env production`（`services/api` で実行）。送信元は `noreply@ayonix.com`（`MAIL_FROM`）。
 3. **R2 の S3 APIキー**: Cloudflare ダッシュボード → R2 → 「Manage API tokens」→ Object Read & Write（対象 `arms-materials-production` のみ）→
