@@ -94,3 +94,13 @@ export const VOICE_STATE_LABELS = {
 export type VoiceUiState = keyof typeof VOICE_STATE_LABELS;
 
 export const THEME_LABELS = { light: "ライト", dark: "ダーク", system: "端末の設定に合わせる" } as const;
+
+// ---- area: admin (append below) ----
+
+// ---- area: learning (append below) ----
+
+// ---- area: booking & notifications (append below) ----
+
+// ---- area: voice (append below) ----
+
+// ---- area: imports & exports (append below) ----

@@ -346,3 +346,13 @@ export type SlotInputT = z.infer<typeof SlotInput>;
 export type DecisionInputT = z.infer<typeof DecisionInput>;
 export type SettingsInputT = z.infer<typeof SettingsInput>;
 export type ProgressRecordInputT = z.infer<typeof ProgressRecordInput>;
+
+// ---- area: admin (append below) ----
+
+// ---- area: learning (append below) ----
+
+// ---- area: booking & notifications (append below) ----
+
+// ---- area: voice (append below) ----
+
+// ---- area: imports & exports (append below) ----

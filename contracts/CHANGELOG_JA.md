@@ -17,3 +17,23 @@
 | Error | 修正 | 任意の details（例: 期限切れ時の最新状態）を追加。 |
 | LessonSlot | 修正 | 原本は meeting_url と unit_id を必須の文字列としていたが、API_NOTES「受講者用lesson DTOからmeeting_urlを除く」と矛盾するため null 許容に変更。has_meeting_url, pending_count, approved_count, my_reservation（任意）を追加。 |
 | Reservation | 修正 | 一覧・詳細表示に必要な氏名・授業名・講師・クラス・承認済み時のみの meeting_url・取消期限・履歴（任意）を追加。reason を null 許容に。 |
+
+## 10-admin.json（講師・新入社員・クラス・設定・ユーザー・ログ・ダッシュボード）
+| 対象 | 種別 | 理由 |
+|---|---|---|
+
+## 20-learning.json（プログラム・教材・進捗・出力）
+| 対象 | 種別 | 理由 |
+|---|---|---|
+
+## 30-booking.json（授業枠・予約・出欠・通知）
+| 対象 | 種別 | 理由 |
+|---|---|---|
+
+## 40-voice.json（音声）
+| 対象 | 種別 | 理由 |
+|---|---|---|
+
+## 50-imports.json（データ移植）
+| 対象 | 種別 | 理由 |
+|---|---|---|

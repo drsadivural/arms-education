@@ -71,6 +71,16 @@ export const ERROR_CATALOG = {
   STORAGE_UNAVAILABLE: { status: 503, message_ja: "ファイル保管サービスに接続できません。" },
   VOICE_UNAVAILABLE: { status: 503, message_ja: "現在、音声機能を利用できません。画面から操作してください。" },
   NOT_CONFIGURED: { status: 503, message_ja: "この機能は必要な外部サービスが未設定のため利用できません。管理者にお問い合わせください。" },
+
+  // ---- area: admin (append new codes directly below this line) ----
+
+  // ---- area: learning (append new codes directly below this line) ----
+
+  // ---- area: booking & notifications (append new codes directly below this line) ----
+
+  // ---- area: voice (append new codes directly below this line) ----
+
+  // ---- area: imports & exports (append new codes directly below this line) ----
 } as const satisfies Record<string, { status: number; message_ja: string }>;
 
 export type ErrorCode = keyof typeof ERROR_CATALOG;
