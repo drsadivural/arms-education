@@ -58,6 +58,11 @@
 ## 40-voice.json（音声）
 | 対象 | 種別 | 理由 |
 |---|---|---|
+| POST /voice/sessions | 修正 | 原本にrequestBody・応答の詳細がなかったため、quota超過(429)・音声停止(503)を明記。応答 VoiceSession に client_secret_expires_at, max_seconds, tools, quota_remaining_seconds（任意）を追加。短期秘密は冪等ストアに保存しない。 |
+| POST /voice/sessions/{id}/end | 修正 | 本人のみ・冪等を明記。 |
+| POST /voice/tool-calls | 修正 | 業務エラーを success:false + data.error_code/message_ja で返すこと、action tokenの扱いを明記。 |
+| GET /voice/quota | 追加 | IOS-18/IOS-13で本日の残り利用時間を表示するため。 |
+| VoiceQuota, VoiceQuotaResponse | 追加 | 同上。 |
 
 ## 50-imports.json（データ移植）
 | 対象 | 種別 | 理由 |

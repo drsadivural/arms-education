@@ -93,6 +93,7 @@ export const ERROR_CATALOG = {
   PROGRAM_NOT_ASSIGNED: { status: 403, message_ja: "この授業の教育プログラムが割り当てられていないため申請できません。" },
 
   // ---- area: voice (append new codes directly below this line) ----
+  VOICE_SESSION_ENDED: { status: 409, message_ja: "音声セッションは終了しました。もう一度開始してください。" },
 
   // ---- area: imports & exports (append new codes directly below this line) ----
 } as const satisfies Record<string, { status: number; message_ja: string }>;

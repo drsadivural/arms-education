@@ -1315,7 +1315,7 @@ export interface paths {
         put?: never;
         /**
          * OpenAI短期資格情報発行
-         * @description 許可ロール: teacher/student。組織・本人・担当範囲は認証情報とDBから決定する。
+         * @description 許可ロール: teacher/student。日次上限（組織設定 voice_daily_quota_seconds）と1回の上限（voice_max_session_seconds）を超える場合は429 VOICE_QUOTA_EXCEEDED。短期秘密はこの応答でのみ返し保存しない。新しいセッションは同じ利用者の未終了セッションを終了させる。
          */
         post: operations["post_voice_sessions"];
         delete?: never;
@@ -1335,7 +1335,7 @@ export interface paths {
         put?: never;
         /**
          * 音声終了・quota確定
-         * @description 許可ロール: teacher/student。組織・本人・担当範囲は認証情報とDBから決定する。
+         * @description 許可ロール: teacher/student（本人のセッションのみ）。冪等。
          */
         post: operations["post_voice_sessions_id_end"];
         delete?: never;
@@ -1355,7 +1355,7 @@ export interface paths {
         put?: never;
         /**
          * 許可音声ツール実行
-         * @description 許可ロール: teacher/student。組織・本人・担当範囲は認証情報とDBから決定する。
+         * @description 許可ロール: teacher/student。セッション所有・有効期限・ロール別allowlist・引数schema・call_id冪等をサーバーで検証し、REST APIと同じドメインサービスで実行する。業務上の失敗は success:false と data.error_code / data.message_ja で返す（モデルへ渡すため）。予約の申請・取消は prepare_* が返す action_token（120秒・本人/セッション/目的に紐付け、ハッシュのみ保存）を commit_* に渡した場合のみ成立し、トークンの消費と予約の変更は同一トランザクション。
          */
         post: operations["post_voice_tool_calls"];
         delete?: never;
@@ -1684,6 +1684,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/voice/quota": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * 本日の音声利用状況
+         * @description 許可ロール: teacher/student。組織タイムゾーンの当日分。未終了セッションは予約秒数で計上。
+         */
+        get: operations["get_voice_quota"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -1891,11 +1911,23 @@ export interface components {
         VoiceSession: {
             /** Format: uuid */
             session_id: string;
+            /** @description OpenAI短期クライアント秘密。メモリ内でのみ使用し保存・記録しない。 */
             client_secret: string;
-            /** Format: date-time */
+            /**
+             * Format: date-time
+             * @description このセッションの最大終了時刻（quota予約）。
+             */
             expires_at: string;
+            /**
+             * Format: date-time
+             * @description WebRTC接続開始に使える期限。
+             */
+            client_secret_expires_at?: string;
             model: string;
             voice: string;
+            max_seconds?: number;
+            tools?: string[];
+            quota_remaining_seconds?: number;
         };
         VoiceToolInput: {
             /** Format: uuid */
@@ -2884,6 +2916,17 @@ export interface components {
         };
         AttendanceRosterResponse: {
             data: components["schemas"]["AttendanceRoster"];
+            /** Format: date-time */
+            checked_at: string;
+        };
+        VoiceQuota: {
+            daily_quota_seconds: number;
+            max_session_seconds: number;
+            used_seconds: number;
+            remaining_seconds: number;
+        };
+        VoiceQuotaResponse: {
+            data: components["schemas"]["VoiceQuota"];
             /** Format: date-time */
             checked_at: string;
         };
@@ -5759,7 +5802,7 @@ export interface operations {
             query?: never;
             header: {
                 "Idempotency-Key": string;
-                /** @description cookie認証の場合必須。Bearer専用iOSには不要。 */
+                /** @description cookie認証の場合必須。 */
                 "X-CSRF-Token"?: string;
             };
             path?: never;
@@ -5779,9 +5822,6 @@ export interface operations {
             400: components["responses"]["Error"];
             401: components["responses"]["Error"];
             403: components["responses"]["Error"];
-            404: components["responses"]["Error"];
-            409: components["responses"]["Error"];
-            422: components["responses"]["Error"];
             429: components["responses"]["Error"];
             503: components["responses"]["Error"];
         };
@@ -5790,7 +5830,6 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
-                /** @description cookie認証の場合必須。Bearer専用iOSには不要。 */
                 "X-CSRF-Token"?: string;
             };
             path: {
@@ -5809,14 +5848,9 @@ export interface operations {
                     "application/json": components["schemas"]["ActionResult"];
                 };
             };
-            400: components["responses"]["Error"];
             401: components["responses"]["Error"];
             403: components["responses"]["Error"];
             404: components["responses"]["Error"];
-            409: components["responses"]["Error"];
-            422: components["responses"]["Error"];
-            429: components["responses"]["Error"];
-            503: components["responses"]["Error"];
         };
     };
     post_voice_tool_calls: {
@@ -5824,7 +5858,6 @@ export interface operations {
             query?: never;
             header: {
                 "Idempotency-Key": string;
-                /** @description cookie認証の場合必須。Bearer専用iOSには不要。 */
                 "X-CSRF-Token"?: string;
             };
             path?: never;
@@ -5836,7 +5869,7 @@ export interface operations {
             };
         };
         responses: {
-            /** @description 成功 */
+            /** @description 成功（業務エラーは success:false） */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -5852,7 +5885,6 @@ export interface operations {
             409: components["responses"]["Error"];
             422: components["responses"]["Error"];
             429: components["responses"]["Error"];
-            503: components["responses"]["Error"];
         };
     };
     patch_me_preferences: {
@@ -6361,6 +6393,28 @@ export interface operations {
             404: components["responses"]["Error"];
             429: components["responses"]["Error"];
             503: components["responses"]["Error"];
+        };
+    };
+    get_voice_quota: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 成功 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VoiceQuotaResponse"];
+                };
+            };
+            401: components["responses"]["Error"];
+            403: components["responses"]["Error"];
         };
     };
 }
