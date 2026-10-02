@@ -16,6 +16,25 @@ services:
       interval: 2s
       retries: 30
 
+  # Transaction-mode pooler in front of PostgreSQL for the Worker (wrangler dev), mirroring Hyperdrive's pooling.
+  # The API sets tenant context with set_config(..., true) inside each transaction, so transaction pooling is safe.
+  pooler:
+    image: edoburu/pgbouncer:latest
+    depends_on:
+      postgres: { condition: service_healthy }
+    environment:
+      DB_HOST: postgres
+      DB_PORT: "5432"
+      DB_NAME: arms
+      DB_USER: arms_app
+      DB_PASSWORD: arms_app_dev_pw
+      AUTH_TYPE: scram-sha-256
+      POOL_MODE: transaction
+      MAX_CLIENT_CONN: "2000"
+      DEFAULT_POOL_SIZE: "40"
+      IGNORE_STARTUP_PARAMETERS: extra_float_digits,options
+    ports: ["127.0.0.1:55434:5432"]
+
   auth:
     image: supabase/gotrue:v2.180.0
     depends_on:
