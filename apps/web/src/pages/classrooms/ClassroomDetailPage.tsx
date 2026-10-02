@@ -58,7 +58,11 @@ export function ClassroomDetailPage() {
   );
 }
 
-/** Published versions offered for linking (GET /programs → published_version_id; version numbers per version). */
+/**
+ * Published versions offered for linking: GET /programs?status=published (one published version per program —
+ * publishing archives the previous one). The version number comes from latest_version when that is the published
+ * version, otherwise from GET /program-versions/{id}.
+ */
 function useProgramVersionOptions(enabled: boolean) {
   const programs = useQuery({
     queryKey: adminKeys.programs,
@@ -66,7 +70,7 @@ function useProgramVersionOptions(enabled: boolean) {
       const out: Program[] = [];
       let cursor: string | null = null;
       for (let i = 0; i < 10; i++) {
-        const page: Page<Program> = await api.get<Page<Program>>("/programs", { query: { limit: 100, cursor: cursor ?? undefined }, signal });
+        const page: Page<Program> = await api.get<Page<Program>>("/programs", { query: { status: "published", limit: 100, cursor: cursor ?? undefined }, signal });
         out.push(...page.items);
         cursor = page.next_cursor;
         if (!cursor) break;
@@ -77,8 +81,9 @@ function useProgramVersionOptions(enabled: boolean) {
     staleTime: 60_000,
   });
   const published = (programs.data ?? []).filter((p) => !p.archived && p.published_version_id);
+  const unknown = published.filter((p) => p.latest_version?.id !== p.published_version_id);
   const versions = useQueries({
-    queries: published.map((p) => ({
+    queries: unknown.map((p) => ({
       queryKey: adminKeys.programVersion(p.published_version_id as string),
       queryFn: ({ signal }: { signal: AbortSignal }) => api.get<DataResponse<ProgramVersion>>(`/program-versions/${p.published_version_id}`, { signal }),
       staleTime: 60_000,
@@ -86,6 +91,7 @@ function useProgramVersionOptions(enabled: boolean) {
     })),
   });
   const versionNumber = new Map<string, number>();
+  for (const p of published) if (p.latest_version && p.latest_version.id === p.published_version_id) versionNumber.set(p.latest_version.id, p.latest_version.version_number);
   versions.forEach((v) => {
     if (v.data) versionNumber.set(v.data.data.id, v.data.data.version_number);
   });

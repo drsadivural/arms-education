@@ -64,11 +64,11 @@ export function WeekdayPicker({ legend, value, onChange, error, required, disabl
               <input
                 type="checkbox"
                 className="sr-only"
+                aria-label={`${WEEKDAY_LABELS[d]}曜日`}
                 checked={checked}
                 onChange={(e) => onChange(e.target.checked ? [...value, d].sort((a, b) => a - b) : value.filter((x) => x !== d))}
               />
-              {WEEKDAY_LABELS[d]}
-              <span className="sr-only">曜日</span>
+              <span aria-hidden>{WEEKDAY_LABELS[d]}</span>
             </label>
           );
         })}

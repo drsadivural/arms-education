@@ -84,7 +84,7 @@ export function StudentsPage() {
         id: "actions",
         header: "操作",
         cell: ({ row }) => (
-          <Link to={`/students/${row.original.id}`} className={smallLinkClass} aria-label={`${row.original.display_name}さんの詳細を見る`}>
+          <Link to={`/students/${row.original.id}`} className={smallLinkClass} aria-label={`${row.original.display_name}さんの${user.isAdmin ? "詳細・編集" : "詳細を見る"}`}>
             {user.isAdmin ? "詳細・編集" : "詳細を見る"}
           </Link>
         ),

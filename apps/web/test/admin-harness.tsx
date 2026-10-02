@@ -60,9 +60,28 @@ function Gate({ children }: { children: ReactNode }) {
   return state.status === "authenticated" ? <>{children}</> : <p>セッション確認中</p>;
 }
 
+/**
+ * react-router's data router builds a `Request` for every navigation with an AbortSignal from jsdom, which Node's
+ * native Request (undici) rejects ("Expected signal to be an instance of AbortSignal"), so navigations silently fail
+ * under jsdom. The test Request drops a foreign signal; nothing in these pages aborts navigations.
+ */
+function installJsdomSafeRequest() {
+  const NativeRequest = globalThis.Request;
+  class JsdomSafeRequest extends NativeRequest {
+    constructor(input: RequestInfo | URL, init?: RequestInit) {
+      if (init?.signal) {
+        const { signal: _signal, ...rest } = init;
+        super(input, rest);
+      } else super(input, init);
+    }
+  }
+  vi.stubGlobal("Request", JsdomSafeRequest);
+}
+
 /** Renders `element` at `url` (route pattern `path`) inside the app providers. */
 export function renderPage(element: ReactNode, { path, url }: { path: string; url: string }) {
   installJapaneseErrors();
+  installJsdomSafeRequest();
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
   const router = createMemoryRouter(
     [
