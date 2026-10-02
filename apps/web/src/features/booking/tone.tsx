@@ -1,13 +1,8 @@
-/**
- * Danger tone for small text on the booking screens. The shared light token --arms-danger (#c93843) is 4.46:1 on
- * --arms-danger-soft (#fdecee), just under WCAG AA for the 10.5 px badge text, so light mode uses #b8303b
- * (5.22:1 on danger-soft, 5.96:1 on white) here. Dark mode keeps the shared token. Remove once the shared token is
- * darkened (requested in the booking report).
- */
-import { RESERVATION_STATUS_LABELS } from "@arms/contracts";
+/** Danger tone helpers for the booking screens (shared --arms-danger meets AA for small text on danger-soft). */
+import type { RESERVATION_STATUS_LABELS } from "@arms/contracts";
 import { ReservationStatusBadge } from "../../components/ui/Badge";
 
-export const DANGER_TEXT = "text-[#b8303b] dark:text-danger";
+export const DANGER_TEXT = "text-danger";
 
 const dangerChip = `inline-flex items-center rounded-md bg-danger-soft px-2 py-0.5 text-xs font-medium whitespace-nowrap ${DANGER_TEXT}`;
 
@@ -15,9 +10,8 @@ export function DangerChip({ children }: { children: string }) {
   return <span className={dangerChip}>{children}</span>;
 }
 
-/** Shared ReservationStatusBadge, except 却下 which uses the compliant danger text. */
+/** Reservation status badge (shared component). */
 export function BookingStatusBadge({ status }: { status: keyof typeof RESERVATION_STATUS_LABELS }) {
-  if (status === "rejected") return <DangerChip>{RESERVATION_STATUS_LABELS.rejected}</DangerChip>;
   return <ReservationStatusBadge status={status} />;
 }
 

@@ -23,8 +23,9 @@
   --arms-success-soft: #e5f6f0;
   --arms-warning: #8a5d00;
   --arms-warning-soft: #fff4d6;
-  --arms-danger: #c93843;
-  --arms-danger-strong: #a82a34;
+  /* #b8303b: ≥5.2:1 on danger-soft and white (small badge text), white text on it 6:1. */
+  --arms-danger: #b8303b;
+  --arms-danger-strong: #9c2630;
   --arms-danger-soft: #fdecee;
   --arms-neutral-soft: #eef2f7;
   --arms-focus: #0076d1;
