@@ -75,10 +75,14 @@ export async function insertUpload(
   const quarantineKey = `quarantine/${orgId}/${crypto.randomUUID()}`;
   const objectKey = state === "clean" ? finalKey : quarantineKey;
   const scanState = state === "clean" ? "clean" : state === "blocked" ? "blocked" : "pending";
+  // A scanning upload is recorded as already submitted (scan_reference) so the learning area's background scan poller,
+  // which runs across all organisations of the shared test database, only polls it instead of re-submitting a file
+  // that exists in this test's in-memory storage only.
   await w.ctx.admin.query(
     `INSERT INTO app.upload_jobs(org_id, id, user_id, purpose, object_key, quarantine_key, filename, content_type, expected_size, scan_state, state,
-       expires_at, size_bytes, reject_code)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, 'text/csv', $8, $9, $10, now() + ($11 || ' minutes')::interval, $8, $12)`,
+       expires_at, size_bytes, reject_code, scan_reference, scan_submitted_at)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, 'text/csv', $8, $9, $10, now() + ($11 || ' minutes')::interval, $8, $12,
+       CASE WHEN $10 = 'scanning' THEN 'import-test-pending-scan' END, CASE WHEN $10 = 'scanning' THEN now() END)`,
     [orgId, id, userId, opts.purpose ?? "import", objectKey, quarantineKey, opts.filename ?? "legacy.csv", Math.max(bytes.length, 1), scanState, state, opts.expired ? "-5" : "60", opts.rejectCode ?? null],
   );
   if (state === "clean") w.storage.clientPut(finalKey, bytes, "text/csv");

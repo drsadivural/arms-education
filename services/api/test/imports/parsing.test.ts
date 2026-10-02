@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { CsvSyntaxError, csvLine, escapeFormula, parseCsv } from "../../src/domain/imports/csv";
 import { decodeImportFile } from "../../src/domain/imports/encoding";
 import { parseActive, parseCount, parseImportDate, parseProgressState } from "../../src/domain/imports/values";
-import { ApiError } from "../../src/http/errors";
+import type { ApiError } from "../../src/http/errors";
 import { cp932, utf8, withBom } from "../helpers/imports-fixtures";
 
 describe("parseCsv (RFC 4180)", () => {

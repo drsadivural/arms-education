@@ -671,7 +671,7 @@ async function planProgress(ctx: PlanContext, rows: SourceRow[]): Promise<Planne
   });
 }
 
-export async function planRows(entity: ImportEntity, ctx: PlanContext, rows: SourceRow[]): Promise<PlannedItem[]> {
+async function planEntity(entity: ImportEntity, ctx: PlanContext, rows: SourceRow[]): Promise<PlannedItem[]> {
   switch (entity) {
     case "teachers":
       return planTeachers(ctx, rows);
@@ -682,4 +682,26 @@ export async function planRows(entity: ImportEntity, ctx: PlanContext, rows: Sou
     case "progress":
       return planProgress(ctx, rows);
   }
+}
+
+/**
+ * Plans every row. Department names are kept as written (旧名称のsnapshot); when the organisation has a department
+ * list (設定 → 部署), a name outside it is a warning so the 部署 filters can be checked before committing.
+ */
+export async function planRows(entity: ImportEntity, ctx: PlanContext, rows: SourceRow[]): Promise<PlannedItem[]> {
+  const items = await planEntity(entity, ctx, rows);
+  if (entity === "classrooms") return items;
+  const org = await ctx.tx.maybeOne<{ departments: unknown }>(sql`SELECT settings->'departments' AS departments FROM app.organizations WHERE id = ${ctx.orgId}`);
+  const departments = Array.isArray(org?.departments) ? new Set(org.departments.filter((d): d is string => typeof d === "string")) : new Set<string>();
+  if (departments.size === 0) return items;
+  for (const item of items) {
+    const name = item.after?.department_name;
+    if (item.action === "error" || typeof name !== "string" || name === "" || departments.has(name)) continue;
+    item.warnings.push({
+      field: "department_name",
+      label_ja: fieldLabel(entity, "department_name"),
+      message_ja: `部署「${name}」は組織設定の部署一覧にありません。旧名称のまま記録します（部署での絞り込みに表示されない場合があります）。`,
+    });
+  }
+  return items;
 }

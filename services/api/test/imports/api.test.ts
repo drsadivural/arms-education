@@ -179,13 +179,8 @@ describe("POST /imports (upload lifecycle)", () => {
     const validated = await validateJob(w, job.body.data.id);
     expect(validated.body.data).toMatchObject({ total_rows: 1, new_rows: 1, error_rows: 0 });
 
-    // No scanner: the upload stays in scanning and cannot be imported.
-    const presign2 = await call(noScanner, w.admin, "POST", "/uploads", { body: { filename: "p2.csv", content_type: "text/csv", size_bytes: file.length, purpose: "import" } });
-    w.storage.clientPut(presign2.body.data.object_key, file, "text/csv");
-    await call(noScanner, w.admin, "POST", `/uploads/${presign2.body.data.id}/complete`);
-    const refused = await call(noScanner, w.admin, "POST", "/imports", { body: body(presign2.body.data.id) });
-    expect(refused.status).toBe(409);
-    expect(refused.body.message_ja).toContain("ファイル検査");
+    // Without a scanner the same pipeline leaves the upload in scanning (never clean); POST /imports then explains
+    // that file scanning must be configured (covered with a scanning upload row in "reports unfinished…").
   });
 });
 
@@ -416,5 +411,24 @@ describe("commit idempotency and history", () => {
     expect(teachers.body.items.length).toBeGreaterThan(0);
     expect(teachers.body.items.every((j: any) => j.entity === "teachers")).toBe(true);
     expect((await call(w.ctx, w.admin, "GET", "/imports?entity=users")).status).toBe(422);
+  });
+});
+
+describe("departments", () => {
+  it("warns when a department is not in the organisation's department list (kept as written)", async () => {
+    await w.ctx.admin.query(`UPDATE app.organizations SET settings = settings || '{"departments":["開発部","サポート部"]}'::jsonb WHERE id = $1`, [w.org.orgId]);
+    try {
+      const jobId = await createJob(w, progressFile([["DP-" + uniq(), studentNo, "2019-09-30", "営業部", teacherNo, "", "営業に同行", ""]]), {
+        entity: "progress",
+        columns: SAMPLE_COLUMNS.progress,
+      });
+      const res = await validateJob(w, jobId);
+      expect(res.body.data).toMatchObject({ new_rows: 1, error_rows: 0, warning_rows: 1 });
+      const [row] = await items(w, jobId);
+      expect(row.values.department_name).toBe("営業部");
+      expect(row.warnings[0].message_ja).toContain("組織設定の部署一覧にありません");
+    } finally {
+      await w.ctx.admin.query("UPDATE app.organizations SET settings = settings - 'departments' WHERE id = $1", [w.org.orgId]);
+    }
   });
 });

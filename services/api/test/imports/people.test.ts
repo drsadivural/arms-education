@@ -47,10 +47,10 @@ describe("teachers", () => {
     await validateJob(w, jobId);
     const original = w.ctx.auth.adminCreateUser.bind(w.ctx.auth);
     let calls = 0;
-    w.ctx.auth.adminCreateUser = async (email: string, metadata: Record<string, unknown>) => {
+    w.ctx.auth.adminCreateUser = async (email: string) => {
       calls++;
       if (calls === 2) throw new ApiError("AUTH_PROVIDER_UNAVAILABLE");
-      return original(email, metadata);
+      return original(email);
     };
     try {
       const failed = await commitJob(w, jobId);
