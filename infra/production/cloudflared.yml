@@ -1,0 +1,17 @@
+# Cloudflare Tunnel "arms-production" (installed as /etc/cloudflared/arms-production.yml).
+# - https://arms-scan.ayonix.com → scanner adapter on loopback (the adapter requires the Bearer scanner key)
+# - PostgreSQL is NOT a public hostname: Hyperdrive reaches it through the Workers VPC service "arms-production-db"
+#   (hostname arms-db.ayonix.com resolved by this host's resolver to 127.0.0.1, port 55532) bound to this tunnel.
+tunnel: __TUNNEL_ID__
+credentials-file: /etc/cloudflared/arms-production.json
+
+ingress:
+  - hostname: arms-scan.ayonix.com
+    service: http://127.0.0.1:9201
+  # Let's Encrypt HTTP-01 only (certbot standalone during issuance/renewal) for the PostgreSQL certificate of
+  # arms-db.ayonix.com. Hyperdrive verifies the database certificate against public CAs; on this host the name
+  # resolves to 127.0.0.1 (/etc/hosts), so the database itself is never exposed through this hostname.
+  - hostname: arms-db.ayonix.com
+    path: ^/\.well-known/acme-challenge/
+    service: http://127.0.0.1:8089
+  - service: http_status:404

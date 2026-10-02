@@ -2,7 +2,7 @@
 
 `docs/09_DEPLOYMENT_JA.md` の手順に加え、この実装で必要な作業。値は `templates/config-inputs.json` と
 `docs/BLOCKERS_JA.md` を参照し、Secretは `wrangler secret put <NAME> --env <staging|production>` で登録する。
-**Supabase は使わない**（ユーザー指示 2026-10-03、`docs/dev/SPEC_DEVIATIONS_JA.md`）。原本の Supabase 関連手順・設定値
+**Supabase は使わない**（ユーザー指示 2026-10-03、`docs/dev/SPEC_DEVIATIONS_JA.md`）。本番（arms.ayonix.com）の実際の構成・残作業・運用は `infra/production/README_JA.md`。原本の Supabase 関連手順・設定値
 （`SUPABASE_*`）は不要で、DB は任意の PostgreSQL、認証は API 自身が PostgreSQL で行う。
 Worker はログインごとに約170msのCPU（scrypt）を使うため、Cloudflare Workers の有料プランが必要。
 

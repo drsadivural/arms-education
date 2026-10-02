@@ -80,6 +80,15 @@
         "APP_ENV": "production",
         "APP_ORIGIN": "https://arms.ayonix.com",
         "DEFAULT_TIMEZONE": "Asia/Tokyo",
+        // Resend (invitation / password-reset / notification e-mail). The API key is the secret MAIL_PROVIDER_API_KEY;
+        // until it is set, e-mail is NOT_CONFIGURED. The sender domain must be verified in Resend.
+        "MAIL_PROVIDER_URL": "https://api.resend.com",
+        "MAIL_FROM": "ARMS 新入社員研修システム <noreply@ayonix.com>",
+        // ClamAV scanner adapter on the ARMS host via Cloudflare Tunnel (infra/production); key: MALWARE_SCAN_API_KEY.
+        "MALWARE_SCAN_URL": "https://arms-scan.ayonix.com",
+        // R2 S3 API for presigned uploads/downloads; keys: R2_ACCESS_KEY_ID / R2_SECRET_ACCESS_KEY (secrets).
+        "R2_S3_ENDPOINT": "https://8e1ad5d05c20ef6ebdcc8c0040a6dddc.r2.cloudflarestorage.com",
+        "R2_BUCKET_NAME": "arms-materials-production",
         "OPENAI_REALTIME_MODEL": "gpt-realtime-2.1",
         "OPENAI_REALTIME_VOICE": "marin",
         "VOICE_MAX_SESSION_SECONDS": "600",

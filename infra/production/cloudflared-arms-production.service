@@ -1,0 +1,14 @@
+[Unit]
+Description=cloudflared tunnel (arms-production) - Hyperdrive (Workers VPC) -> PostgreSQL 127.0.0.1:55532, arms-scan.ayonix.com -> scanner 127.0.0.1:9201
+After=network-online.target docker.service
+Wants=network-online.target
+
+[Service]
+Type=notify
+ExecStart=/usr/local/bin/cloudflared tunnel --no-autoupdate --config /etc/cloudflared/arms-production.yml run
+Restart=on-failure
+RestartSec=5
+TimeoutStartSec=0
+
+[Install]
+WantedBy=multi-user.target
