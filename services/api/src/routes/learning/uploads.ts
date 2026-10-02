@@ -102,6 +102,7 @@ uploadRoutes.post("/uploads/:id/scan-result", async (c) => {
     id,
     parsed.data.scan_id,
     mapScanStatus(parsed.data.status),
+    deps.log,
   );
   deps.log({ level: "info", msg: "scan_callback", upload_id: id, state: row.state });
   return action(c, { upload_id: id, state: row.state, scan_state: row.scan_state });

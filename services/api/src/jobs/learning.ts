@@ -20,7 +20,8 @@ import {
   submitToScanner,
   type UploadRow,
 } from "../domain/learning/uploads";
-import { EXPORT_COLUMNS, exportActor, generateExport, markExportFailed, type ExportJobRow } from "../domain/learning/exports";
+import { claimPendingExport, exportActor, loadExportRecords, markExportFailed, markExportReady, renderExport } from "../domain/learning/exports";
+import type { RecordFilters } from "../domain/learning/progress-records";
 
 const UPLOAD_BATCH = 50;
 const SCAN_BATCH = 20;
@@ -94,7 +95,7 @@ export async function pollScans(deps: Deps, db: RequestDb, orgId: string): Promi
         verdict = await scanner.status(row.scan_reference);
       }
       if (verdict === "pending") continue;
-      const applied = await db.tx({ orgId }, (tx) => applyVerdict(tx, storage, orgId, row.id, verdict as "clean" | "blocked"));
+      const applied = await applyVerdict((fn) => db.tx({ orgId }, fn), storage, orgId, row.id, verdict, deps.log);
       if (applied) resolved++;
     } catch (e) {
       logError(deps.log, "poll_scan", orgId, e);
@@ -103,43 +104,48 @@ export async function pollScans(deps: Deps, db: RequestDb, orgId: string): Promi
   return resolved;
 }
 
+/**
+ * Generates leased pending exports: rows are read in a short transaction (with the creator's current scope), the
+ * file is rendered and stored outside any transaction, and the job is marked ready in a second short transaction.
+ * Transient storage failures leave the job pending (retried when the lease expires, up to EXPORT_RETRIES attempts).
+ */
 export async function generateExports(deps: Deps, db: RequestDb, orgId: string): Promise<number> {
   const storage = deps.integrations.storage;
   if (!storage) return 0;
   let done = 0;
   for (let i = 0; i < EXPORTS_PER_RUN; i++) {
-    const outcome = await db.tx({ orgId }, async (tx) => {
-      const job = await tx.maybeOne<ExportJobRow>(sql`SELECT ${EXPORT_COLUMNS} FROM app.export_jobs
-        WHERE org_id = ${orgId} AND state = 'pending' AND filters->>'kind' = 'progress_records'
-        ORDER BY created_at LIMIT 1 FOR UPDATE SKIP LOCKED`);
+    const now = deps.now();
+    const claimed = await db.tx({ orgId }, async (tx) => {
+      const job = await claimPendingExport(tx, orgId);
       if (!job) return "empty" as const;
       const actor = await exportActor(tx, orgId, job.user_id);
       if (!actor) {
         await markExportFailed(tx, orgId, job.id, "FORBIDDEN");
         return "failed" as const;
       }
-      await tx.exec(sql`SELECT set_config('app.user_id', ${actor.userId}, true)`);
       try {
-        await generateExport(tx, storage, job, actor, deps.now());
-        return "ready" as const;
+        return { job, actor, records: await loadExportRecords(tx, actor, job.filters as RecordFilters, now) };
       } catch (e) {
-        const code = e instanceof ApiError ? e.code : "INTERNAL";
-        return { failed: job.id, code, attempts: job.attempts, error: e } as const;
+        if (!(e instanceof ApiError)) throw e;
+        await markExportFailed(tx, orgId, job.id, e.code);
+        return "failed" as const;
       }
     });
-    if (outcome === "empty") break;
-    if (typeof outcome === "object") {
-      logError(deps.log, "generate_export", orgId, outcome.error);
-      await db.tx({ orgId }, async (tx) => {
-        if (TRANSIENT.has(outcome.code) && outcome.attempts + 1 < EXPORT_RETRIES) {
-          await tx.exec(sql`UPDATE app.export_jobs SET attempts = attempts + 1 WHERE org_id = ${orgId} AND id = ${outcome.failed}`);
-        } else {
-          await markExportFailed(tx, orgId, outcome.failed, outcome.code);
-        }
-      });
-      continue;
+    if (claimed === "empty") break;
+    if (claimed === "failed") continue;
+    const { job, actor, records } = claimed;
+    try {
+      const file = await renderExport(storage, job, actor, records, now);
+      await db.tx({ orgId, userId: actor.userId }, (tx) => markExportReady(tx, actor, job, file));
+      done++;
+    } catch (e) {
+      logError(deps.log, "generate_export", orgId, e);
+      const code = e instanceof ApiError ? e.code : "INTERNAL";
+      // job.attempts already counts this attempt (claimPendingExport increments it).
+      if (!(TRANSIENT.has(code) && job.attempts < EXPORT_RETRIES)) {
+        await db.tx({ orgId }, (tx) => markExportFailed(tx, orgId, job.id, code));
+      }
     }
-    done++;
   }
   return done;
 }

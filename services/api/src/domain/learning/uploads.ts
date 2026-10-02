@@ -105,45 +105,66 @@ type VerifyOutcome =
   | { kind: "rejected"; code: "size_mismatch" | "content_mismatch"; message: string }
   | { kind: "expired" };
 
-/** Step 1 of completion (inside a transaction holding the upload row lock): size + content verification. */
-async function verifyUpload(tx: Tx, storage: ObjectStorage, actor: Actor, uploadId: string, now: Date): Promise<VerifyOutcome> {
-  const row = await tx.maybeOne<UploadRow>(sql`SELECT ${UPLOAD_COLUMNS} FROM app.upload_jobs WHERE org_id = ${actor.orgId} AND id = ${uploadId} FOR UPDATE`);
+const selectUpload = (orgId: string, uploadId: string, lock: boolean) =>
+  sql`SELECT ${UPLOAD_COLUMNS} FROM app.upload_jobs WHERE org_id = ${orgId} AND id = ${uploadId} ${lock ? sql`FOR UPDATE` : sql``}`;
+
+/**
+ * Step 1 of completion: size + content verification. Object-storage reads happen outside any transaction; the
+ * result is written in a short transaction that re-checks the upload is still awaiting completion.
+ */
+async function verifyUpload(runTx: RunTx, storage: ObjectStorage, actor: Actor, uploadId: string, now: Date): Promise<VerifyOutcome> {
+  const row = await runTx((tx) => tx.maybeOne<UploadRow>(selectUpload(actor.orgId, uploadId, false)));
   if (!row || row.user_id !== actor.userId) throw new ApiError("NOT_FOUND");
   if (row.state === "expired") return { kind: "expired" };
   if (row.state === "rejected") throw new ApiError("FILE_REJECTED");
   if (row.state !== "awaiting_upload") return { kind: "already", row };
   if (new Date(row.expires_at) <= now) {
-    await tx.exec(sql`UPDATE app.upload_jobs SET state = 'expired' WHERE org_id = ${actor.orgId} AND id = ${uploadId}`);
     await storage.delete(row.object_key);
+    await runTx((tx) => tx.exec(sql`UPDATE app.upload_jobs SET state = 'expired' WHERE org_id = ${actor.orgId} AND id = ${uploadId} AND state = 'awaiting_upload'`));
     return { kind: "expired" };
   }
+
   const head = await storage.head(row.object_key);
   if (!head) throw new ApiError("UPLOAD_NOT_RECEIVED");
-  const reject = async (code: "size_mismatch" | "content_mismatch", message: string): Promise<VerifyOutcome> => {
-    await storage.delete(row.object_key);
-    await tx.exec(sql`UPDATE app.upload_jobs SET state = 'rejected', reject_code = ${code}, size_bytes = ${head.size}, completed_at = ${now.toISOString()}
-      WHERE org_id = ${actor.orgId} AND id = ${uploadId}`);
-    await audit(tx, actor.orgId, actor.userId, "upload.rejected", uploadId, { code, declared_type: row.content_type, size_bytes: head.size });
-    return { kind: "rejected", code, message };
-  };
-  if (head.size !== num(row.expected_size)) return reject("size_mismatch", "アップロードされたファイルのサイズが申告と一致しません。");
-  const rule = CONTENT_TYPES[row.content_type];
+  let problem: { code: "size_mismatch" | "content_mismatch"; message: string } | null = null;
   let detected: string | null = null;
-  if (rule?.family === "csv") {
+  if (head.size !== num(row.expected_size)) {
+    problem = { code: "size_mismatch", message: "アップロードされたファイルのサイズが申告と一致しません。" };
+  } else if (CONTENT_TYPES[row.content_type]?.family === "csv") {
     const bytes = await storage.readRange(row.object_key, 0, head.size);
     detected = bytes && bytes.length === head.size && verifyTextFile(bytes) ? row.content_type : null;
-    if (!detected) return reject("content_mismatch", "CSVファイルはUTF-8またはShift_JIS(CP932)のテキストである必要があります。");
+    if (!detected) problem = { code: "content_mismatch", message: "CSVファイルはUTF-8またはShift_JIS(CP932)のテキストである必要があります。" };
   } else {
     const bytes = await storage.readRange(row.object_key, 0, SNIFF_BYTES);
     detected = bytes ? sniffContentType(row.content_type, bytes) : null;
-    if (!detected) return reject("content_mismatch", "ファイルの内容が選択した形式と一致しません。");
+    if (!detected) problem = { code: "content_mismatch", message: "ファイルの内容が選択した形式と一致しません。" };
   }
-  const updated = await tx.one<UploadRow>(sql`
-    UPDATE app.upload_jobs SET state = 'scanning', scan_state = 'pending', detected_type = ${detected}, size_bytes = ${head.size},
-      completed_at = ${now.toISOString()}
-    WHERE org_id = ${actor.orgId} AND id = ${uploadId} RETURNING ${UPLOAD_COLUMNS}`);
-  await audit(tx, actor.orgId, actor.userId, "upload.verified", uploadId, { detected_type: detected, size_bytes: head.size });
-  return { kind: "verified", row: updated };
+
+  if (problem) {
+    const rejected = problem;
+    // The bytes are never verified or scanned: remove them before recording the rejection.
+    await storage.delete(row.object_key);
+    await runTx(async (tx) => {
+      const locked = await tx.maybeOne<UploadRow>(selectUpload(actor.orgId, uploadId, true));
+      if (!locked || locked.state !== "awaiting_upload") return;
+      await tx.exec(sql`UPDATE app.upload_jobs SET state = 'rejected', reject_code = ${rejected.code}, size_bytes = ${head.size}, completed_at = ${now.toISOString()}
+        WHERE org_id = ${actor.orgId} AND id = ${uploadId}`);
+      await audit(tx, actor.orgId, actor.userId, "upload.rejected", uploadId, { code: rejected.code, declared_type: row.content_type, size_bytes: head.size });
+    });
+    return { kind: "rejected", ...rejected };
+  }
+
+  return runTx(async (tx): Promise<VerifyOutcome> => {
+    const locked = await tx.maybeOne<UploadRow>(selectUpload(actor.orgId, uploadId, true));
+    if (!locked) throw new ApiError("NOT_FOUND");
+    if (locked.state !== "awaiting_upload") return { kind: "already", row: locked };
+    const updated = await tx.one<UploadRow>(sql`
+      UPDATE app.upload_jobs SET state = 'scanning', scan_state = 'pending', detected_type = ${detected}, size_bytes = ${head.size},
+        completed_at = ${now.toISOString()}
+      WHERE org_id = ${actor.orgId} AND id = ${uploadId} RETURNING ${UPLOAD_COLUMNS}`);
+    await audit(tx, actor.orgId, actor.userId, "upload.verified", uploadId, { detected_type: detected, size_bytes: head.size });
+    return { kind: "verified", row: updated };
+  });
 }
 
 export function scanCallbackUrl(appOrigin: string, orgId: string, uploadId: string): string {
@@ -174,17 +195,28 @@ export async function recordScanSubmission(tx: Tx, orgId: string, uploadId: stri
     WHERE org_id = ${orgId} AND id = ${uploadId} AND state = 'scanning'`);
 }
 
+type Log = (e: Record<string, unknown>) => void;
+const noLog: Log = () => undefined;
+
 /**
- * Applies a final scanner verdict (idempotent: only an upload still in `scanning` changes). Clean files are copied
- * to their final prefix before the quarantine copy is removed; blocked files are deleted. Draft materials and
- * submissions that reference the upload follow the verdict.
+ * Applies a final scanner verdict (idempotent: only an upload still in `scanning` changes). Object-storage work is
+ * done outside transactions: a clean file is first copied to its final key (deterministic per upload, so a retry
+ * overwrites rather than orphaning a copy), then the DB rows are switched in a short transaction that re-checks
+ * the state, and only after the commit is the quarantine copy removed. A blocked file is deleted first and then
+ * recorded. Draft materials and submissions that reference the upload follow the verdict.
  */
-export async function applyVerdict(tx: Tx, storage: ObjectStorage, orgId: string, uploadId: string, verdict: Exclude<ScanVerdict, "pending">): Promise<UploadRow | null> {
-  const row = await tx.maybeOne<UploadRow>(sql`SELECT ${UPLOAD_COLUMNS} FROM app.upload_jobs WHERE org_id = ${orgId} AND id = ${uploadId} FOR UPDATE`);
+export async function applyVerdict(
+  runTx: RunTx,
+  storage: ObjectStorage,
+  orgId: string,
+  uploadId: string,
+  verdict: Exclude<ScanVerdict, "pending">,
+  log: Log = noLog,
+): Promise<UploadRow | null> {
+  const row = await runTx((tx) => tx.maybeOne<UploadRow>(selectUpload(orgId, uploadId, false)));
   if (!row || row.state !== "scanning") return null;
   const quarantine = quarantineKeyOf(row);
   if (verdict === "clean") {
-    // Deterministic per upload (a UUID, never the filename): a retried verdict overwrites instead of orphaning copies.
     const finalKey = `${STORED_PREFIX[row.purpose]}/${orgId}/${row.id}`;
     const size = num(row.size_bytes ?? row.expected_size);
     // A previous attempt may already have copied the file (and even removed the quarantine copy) before failing.
@@ -194,33 +226,49 @@ export async function applyVerdict(tx: Tx, storage: ObjectStorage, orgId: string
       copied = await storage.head(finalKey);
     }
     if (!copied || copied.size !== size) throw new ApiError("STORAGE_UNAVAILABLE");
-    const updated = await tx.one<UploadRow>(sql`
-      UPDATE app.upload_jobs SET state = 'clean', scan_state = 'clean', object_key = ${finalKey}, scanned_at = now()
-      WHERE org_id = ${orgId} AND id = ${uploadId} RETURNING ${UPLOAD_COLUMNS}`);
-    await tx.exec(sql`
-      UPDATE app.materials m SET scan_state = 'clean', object_key = ${finalKey}, size_bytes = ${num(updated.size_bytes)}, row_version = m.row_version + 1
-      FROM app.units u JOIN app.program_versions v ON v.org_id = u.org_id AND v.id = u.program_version_id
-      WHERE m.org_id = ${orgId} AND m.upload_id = ${uploadId} AND u.org_id = m.org_id AND u.id = m.unit_id AND v.state = 'draft'`);
-    await tx.exec(sql`UPDATE app.submissions SET scan_state = 'clean', object_key = ${finalKey}, row_version = row_version + 1
-      WHERE org_id = ${orgId} AND upload_id = ${uploadId}`);
-    await audit(tx, orgId, null, "upload.scan_clean", uploadId, { purpose: row.purpose });
-    await outbox(tx, orgId, "upload.scan_completed", uploadId, { upload_id: uploadId, user_id: row.user_id, verdict: "clean", purpose: row.purpose });
-    await storage.delete(quarantine);
+    const updated = await runTx(async (tx) => {
+      const locked = await tx.maybeOne<UploadRow>(selectUpload(orgId, uploadId, true));
+      if (!locked || locked.state !== "scanning") return null;
+      const done = await tx.one<UploadRow>(sql`
+        UPDATE app.upload_jobs SET state = 'clean', scan_state = 'clean', object_key = ${finalKey}, scanned_at = now()
+        WHERE org_id = ${orgId} AND id = ${uploadId} RETURNING ${UPLOAD_COLUMNS}`);
+      await tx.exec(sql`
+        UPDATE app.materials m SET scan_state = 'clean', object_key = ${finalKey}, size_bytes = ${size}, row_version = m.row_version + 1
+        FROM app.units u JOIN app.program_versions v ON v.org_id = u.org_id AND v.id = u.program_version_id
+        WHERE m.org_id = ${orgId} AND m.upload_id = ${uploadId} AND u.org_id = m.org_id AND u.id = m.unit_id AND v.state = 'draft'`);
+      await tx.exec(sql`UPDATE app.submissions SET scan_state = 'clean', object_key = ${finalKey}, row_version = row_version + 1
+        WHERE org_id = ${orgId} AND upload_id = ${uploadId}`);
+      await audit(tx, orgId, null, "upload.scan_clean", uploadId, { purpose: row.purpose });
+      await outbox(tx, orgId, "upload.scan_completed", uploadId, { upload_id: uploadId, user_id: row.user_id, verdict: "clean", purpose: row.purpose });
+      return done;
+    });
+    if (updated) {
+      try {
+        await storage.delete(quarantine);
+      } catch (e) {
+        // The clean copy is already in place; a leftover quarantine object is never served or referenced.
+        log({ level: "warn", msg: "quarantine_delete_failed", upload_id: uploadId, error_code: (e as { code?: string }).code });
+      }
+    }
     return updated;
   }
   await storage.delete(quarantine);
-  const updated = await tx.one<UploadRow>(sql`
-    UPDATE app.upload_jobs SET state = 'blocked', scan_state = 'blocked', scanned_at = now()
-    WHERE org_id = ${orgId} AND id = ${uploadId} RETURNING ${UPLOAD_COLUMNS}`);
-  await tx.exec(sql`
-    UPDATE app.materials m SET scan_state = 'blocked', object_key = NULL, row_version = m.row_version + 1
-    FROM app.units u JOIN app.program_versions v ON v.org_id = u.org_id AND v.id = u.program_version_id
-    WHERE m.org_id = ${orgId} AND m.upload_id = ${uploadId} AND u.org_id = m.org_id AND u.id = m.unit_id AND v.state = 'draft'`);
-  await tx.exec(sql`UPDATE app.submissions SET scan_state = 'blocked', object_key = NULL, row_version = row_version + 1
-    WHERE org_id = ${orgId} AND upload_id = ${uploadId}`);
-  await audit(tx, orgId, null, "upload.scan_blocked", uploadId, { purpose: row.purpose });
-  await outbox(tx, orgId, "upload.scan_completed", uploadId, { upload_id: uploadId, user_id: row.user_id, verdict: "blocked", purpose: row.purpose });
-  return updated;
+  return runTx(async (tx) => {
+    const locked = await tx.maybeOne<UploadRow>(selectUpload(orgId, uploadId, true));
+    if (!locked || locked.state !== "scanning") return null;
+    const updated = await tx.one<UploadRow>(sql`
+      UPDATE app.upload_jobs SET state = 'blocked', scan_state = 'blocked', scanned_at = now()
+      WHERE org_id = ${orgId} AND id = ${uploadId} RETURNING ${UPLOAD_COLUMNS}`);
+    await tx.exec(sql`
+      UPDATE app.materials m SET scan_state = 'blocked', object_key = NULL, row_version = m.row_version + 1
+      FROM app.units u JOIN app.program_versions v ON v.org_id = u.org_id AND v.id = u.program_version_id
+      WHERE m.org_id = ${orgId} AND m.upload_id = ${uploadId} AND u.org_id = m.org_id AND u.id = m.unit_id AND v.state = 'draft'`);
+    await tx.exec(sql`UPDATE app.submissions SET scan_state = 'blocked', object_key = NULL, row_version = row_version + 1
+      WHERE org_id = ${orgId} AND upload_id = ${uploadId}`);
+    await audit(tx, orgId, null, "upload.scan_blocked", uploadId, { purpose: row.purpose });
+    await outbox(tx, orgId, "upload.scan_completed", uploadId, { upload_id: uploadId, user_id: row.user_id, verdict: "blocked", purpose: row.purpose });
+    return updated;
+  });
 }
 
 export interface CompleteDeps {
@@ -228,12 +276,12 @@ export interface CompleteDeps {
   scanner: MalwareScanner | null;
   appOrigin: string;
   now: Date;
-  log: (e: Record<string, unknown>) => void;
+  log: Log;
 }
 
-/** POST /uploads/{id}/complete orchestration. Network calls to the scanner happen outside DB transactions. */
+/** POST /uploads/{id}/complete orchestration. Storage and scanner calls happen outside DB transactions. */
 export async function completeUpload(runTx: RunTx, deps: CompleteDeps, actor: Actor, uploadId: string): Promise<UploadRow> {
-  const outcome = await runTx((tx) => verifyUpload(tx, deps.storage, actor, uploadId, deps.now));
+  const outcome = await verifyUpload(runTx, deps.storage, actor, uploadId, deps.now);
   if (outcome.kind === "expired") throw new ApiError("UPLOAD_EXPIRED");
   if (outcome.kind === "rejected") {
     throw new ApiError("FILE_REJECTED", { message_ja: outcome.message, details: { reject_code: outcome.code } });
@@ -242,15 +290,9 @@ export async function completeUpload(runTx: RunTx, deps: CompleteDeps, actor: Ac
   if (row.state !== "scanning" || !deps.scanner || row.scan_reference) return row;
   const submitted = await submitToScanner(deps.storage, deps.scanner, row, scanCallbackUrl(deps.appOrigin, actor.orgId, row.id), deps.log);
   if (!submitted) return row;
-  const final = submitted.verdict;
-  row = await runTx(async (tx) => {
-    await recordScanSubmission(tx, actor.orgId, uploadId, submitted.scanId);
-    if (final !== "pending") {
-      const applied = await applyVerdict(tx, deps.storage, actor.orgId, uploadId, final);
-      if (applied) return applied;
-    }
-    return tx.one<UploadRow>(sql`SELECT ${UPLOAD_COLUMNS} FROM app.upload_jobs WHERE org_id = ${actor.orgId} AND id = ${uploadId}`);
-  });
+  await runTx((tx) => recordScanSubmission(tx, actor.orgId, uploadId, submitted.scanId));
+  if (submitted.verdict !== "pending") await applyVerdict(runTx, deps.storage, actor.orgId, uploadId, submitted.verdict, deps.log);
+  row = await runTx((tx) => tx.one<UploadRow>(selectUpload(actor.orgId, uploadId, false)));
   // The blocked verdict is committed (file deleted, audit recorded) before the client is told.
   if (row.state === "blocked") {
     throw new ApiError("FILE_REJECTED", {
@@ -273,23 +315,23 @@ export async function handleScanCallback(
   uploadId: string,
   scanId: string,
   verdict: ScanVerdict,
+  log: Log = noLog,
 ): Promise<UploadRow> {
-  return runTx(async (tx) => {
-    const row = await tx.maybeOne<UploadRow>(sql`SELECT ${UPLOAD_COLUMNS} FROM app.upload_jobs WHERE org_id = ${orgId} AND id = ${uploadId} FOR UPDATE`);
-    if (!row) throw new ApiError("NOT_FOUND");
-    if (row.scan_reference && row.scan_reference !== scanId) throw new ApiError("INVALID_STATE");
-    if (row.state !== "scanning") {
-      if (row.state === "clean" || row.state === "blocked") return row;
-      throw new ApiError("INVALID_STATE");
-    }
-    if (!row.scan_reference) {
+  const row = await runTx(async (tx) => {
+    const locked = await tx.maybeOne<UploadRow>(selectUpload(orgId, uploadId, true));
+    if (!locked) throw new ApiError("NOT_FOUND");
+    if (locked.scan_reference && locked.scan_reference !== scanId) throw new ApiError("INVALID_STATE");
+    if (locked.state === "clean" || locked.state === "blocked") return locked;
+    if (locked.state !== "scanning") throw new ApiError("INVALID_STATE");
+    if (!locked.scan_reference) {
       await tx.exec(sql`UPDATE app.upload_jobs SET scan_reference = ${scanId}, scan_submitted_at = coalesce(scan_submitted_at, now())
         WHERE org_id = ${orgId} AND id = ${uploadId}`);
     }
-    if (verdict === "pending") return { ...row, scan_reference: scanId };
-    const applied = await applyVerdict(tx, storage, orgId, uploadId, verdict);
-    return applied ?? row;
+    return { ...locked, scan_reference: scanId };
   });
+  if (row.state !== "scanning" || verdict === "pending") return row;
+  await applyVerdict(runTx, storage, orgId, uploadId, verdict, log);
+  return runTx((tx) => tx.one<UploadRow>(selectUpload(orgId, uploadId, false)));
 }
 
 /** Resolves a client-supplied object key (Upload.object_key) to an upload of this organisation. */

@@ -3,6 +3,7 @@
  * MalwareScanner) so the API code paths are identical; only the transport is in-memory.
  */
 import type { ObjectStorage } from "../../src/integrations/storage";
+import { ApiError } from "../../src/http/errors";
 import { verifyScanCallback, type MalwareScanner, type ScanSubmission, type ScanVerdict } from "../../src/integrations/scanner";
 
 export const TEST_STORAGE_HOST = "https://storage.test.invalid";
@@ -24,6 +25,9 @@ export class MemoryObjectStorage implements ObjectStorage {
   readonly presigned: { method: "GET" | "PUT"; key: string; expiresSeconds: number; contentType?: string; sizeBytes?: number; disposition?: string }[] = [];
   readonly deleted: string[] = [];
   failCopy = false;
+  /** Number of upcoming put/delete calls that fail (transient storage outage). */
+  failPuts = 0;
+  failDeletes = 0;
 
   async presignPut(key: string, contentType: string, sizeBytes: number, expiresSeconds: number) {
     this.presigned.push({ method: "PUT", key, expiresSeconds, contentType, sizeBytes });
@@ -59,6 +63,10 @@ export class MemoryObjectStorage implements ObjectStorage {
   }
 
   async put(key: string, body: ReadableStream<Uint8Array> | Uint8Array | string, contentType: string) {
+    if (this.failPuts > 0) {
+      this.failPuts--;
+      throw new ApiError("STORAGE_UNAVAILABLE");
+    }
     this.objects.set(key, { bytes: await toBytes(body), contentType });
   }
 
@@ -70,6 +78,10 @@ export class MemoryObjectStorage implements ObjectStorage {
   }
 
   async delete(key: string) {
+    if (this.failDeletes > 0) {
+      this.failDeletes--;
+      throw new Error("delete failed");
+    }
     this.deleted.push(key);
     this.objects.delete(key);
   }

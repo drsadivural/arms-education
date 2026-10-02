@@ -245,6 +245,33 @@ describe("POST /uploads/{id}/complete", () => {
     }
   });
 
+  it("keeps a committed clean verdict when removing the quarantine copy fails, and retries copies idempotently", async () => {
+    w.scanner.mode = "async";
+    const { id, key } = await upload(w.admin, "application/pdf", "retry.pdf", SAMPLE.pdf());
+    w.scanner.mode = "sync";
+    const ref = (await w.ctx.admin.query("SELECT scan_reference FROM app.upload_jobs WHERE id = $1", [id])).rows[0].scan_reference;
+    w.scanner.finish(ref);
+    const db = new RequestDb(w.ctx.deps.connections);
+    try {
+      // A failed copy leaves the upload scanning; the next poll copies again to the same deterministic key.
+      w.storage.failCopy = true;
+      expect(await pollScans(w.ctx.deps, db, w.org.orgId)).toBe(0);
+      expect((await w.ctx.admin.query("SELECT state FROM app.upload_jobs WHERE id = $1", [id])).rows[0].state).toBe("scanning");
+      w.storage.failCopy = false;
+      w.storage.failDeletes = 1;
+      expect(await pollScans(w.ctx.deps, db, w.org.orgId)).toBe(1);
+    } finally {
+      w.storage.failCopy = false;
+      w.storage.failDeletes = 0;
+      await db.close();
+    }
+    const row = (await w.ctx.admin.query("SELECT state, object_key FROM app.upload_jobs WHERE id = $1", [id])).rows[0];
+    expect(row).toEqual({ state: "clean", object_key: `materials/${w.org.orgId}/${id}` });
+    expect(w.storage.objects.has(row.object_key)).toBe(true);
+    expect(w.storage.objects.has(key)).toBe(true); // leftover quarantine copy (never served), logged
+    expect(w.ctx.logs.some((l) => l.msg === "quarantine_delete_failed" && l.upload_id === id)).toBe(true);
+  });
+
   it("expires uploads that were never completed and deletes their quarantine object", async () => {
     const res = await presign(w.admin, { filename: "late.pdf", content_type: "application/pdf", size_bytes: 10, purpose: "material" });
     w.storage.clientPut(res.body.data.object_key, "%PDF-1.4 xx", "application/pdf");

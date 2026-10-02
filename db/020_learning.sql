@@ -106,7 +106,10 @@ ALTER TABLE app.export_jobs
   ADD COLUMN IF NOT EXISTS error_code text,
   ADD COLUMN IF NOT EXISTS attempts int NOT NULL DEFAULT 0,
   ADD COLUMN IF NOT EXISTS filename text,
-  ADD COLUMN IF NOT EXISTS file_expires_at timestamptz;
+  ADD COLUMN IF NOT EXISTS file_expires_at timestamptz,
+  -- Generation lease: the file is rendered and stored outside DB transactions; the lease keeps two workers from
+  -- generating the same job and lets an interrupted generation be retried once it expires.
+  ADD COLUMN IF NOT EXISTS locked_until timestamptz;
 CREATE INDEX IF NOT EXISTS learning_export_jobs_state ON app.export_jobs (org_id, state, created_at);
 
 REVOKE EXECUTE ON ALL FUNCTIONS IN SCHEMA app FROM PUBLIC;

@@ -183,6 +183,34 @@ describe("GET /exports/{id} and background generation", () => {
     }
   });
 
+  it("leases jobs while generating and retries transient storage failures", async () => {
+    const org = await seedOrg(w.ctx.admin);
+    await w.ctx.admin.query(
+      `INSERT INTO app.progress_records(org_id, student_id, teacher_id, department_name, teacher_name_snapshot, due_date, content, state)
+       SELECT $1, $2, $3, '開発部', '田中 祥司', DATE '2026-10-01', '研修 ' || g, 'in_progress' FROM generate_series(1, 501) g`,
+      [org.orgId, org.student.userId, org.teacher.userId],
+    );
+    const admin = await cookieCaller(w.ctx, { userId: org.admin.userId, orgId: org.orgId, role: "admin" });
+    const res = await call(w.ctx, admin, "POST", "/exports/progress", { body: { format: "csv" } });
+    const id = res.body.data.id;
+    const db = new RequestDb(w.ctx.deps.connections);
+    try {
+      w.storage.failPuts = 1;
+      expect(await generateExports(w.ctx.deps, db, org.orgId)).toBe(0);
+      let row = (await w.ctx.admin.query("SELECT state, attempts, locked_until > now() AS leased FROM app.export_jobs WHERE id = $1", [id])).rows[0];
+      expect(row).toEqual({ state: "pending", attempts: 1, leased: true });
+      // While leased, another run does not pick the job up.
+      expect(await generateExports(w.ctx.deps, db, org.orgId)).toBe(0);
+      await w.ctx.admin.query("UPDATE app.export_jobs SET locked_until = now() - interval '1 second' WHERE id = $1", [id]);
+      expect(await generateExports(w.ctx.deps, db, org.orgId)).toBe(1);
+      row = (await w.ctx.admin.query("SELECT state, attempts, locked_until FROM app.export_jobs WHERE id = $1", [id])).rows[0];
+      expect(row).toEqual({ state: "ready", attempts: 2, locked_until: null });
+    } finally {
+      w.storage.failPuts = 0;
+      await db.close();
+    }
+  });
+
   it("refuses more than 10,000 rows", async () => {
     const huge = await seedOrg(w.ctx.admin);
     await w.ctx.admin.query(
@@ -197,7 +225,8 @@ describe("GET /exports/{id} and background generation", () => {
   });
 
   it("runs every learning job across organisations without failing", async () => {
+    const before = w.ctx.logs.length;
     await runLearningJobs(w.ctx.deps);
-    expect(w.ctx.logs.filter((l) => l.msg === "learning_job_failed")).toEqual([]);
+    expect(w.ctx.logs.slice(before).filter((l) => l.msg === "learning_job_failed")).toEqual([]);
   });
 });
