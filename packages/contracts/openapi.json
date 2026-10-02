@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "ARMS API",
-    "version": "1.0.0+arms.5",
+    "version": "1.0.0+arms.6",
     "description": "ARMS日本語研修システムのAPI契約。ID/権限/組織はサーバーから決定、typed DTOと日本語エラーを使用。"
   },
   "servers": [
@@ -6625,7 +6625,7 @@
       "post": {
         "operationId": "post_imports",
         "summary": "移行ジョブ登録",
-        "description": "許可ロール: admin。組織・本人・担当範囲は認証情報とDBから決定する。",
+        "description": "許可ロール: admin（講師・受講者は403、他組織のジョブは404）。upload_id は本人がアップロードした purpose=import の upload_jobs で、state=clean（ファイル検査済み）のもの。アップロード未完了・検査中は409 IMPORT_UPLOAD_NOT_READY（ファイル検査サービス未設定の場合は details.scanner_configured=false とその旨のメッセージ）、検査で検出・内容不一致は409 IMPORT_UPLOAD_REJECTED、期限切れは409 UPLOAD_EXPIRED、見つからない・用途違いは422。 columns は {CSVの見出し → 取り込み先項目}。取り込み先項目は entity ごとに決まり（packages/contracts IMPORT_FIELDS）、未知の項目・重複・必須項目の未対応は422 IMPORT_MAPPING_INVALID（field_errors）。生ファイルはアップロードのキーのまま非公開で保持し、URLは返さない。 状態は uploaded。",
         "tags": [
           "imports"
         ],
@@ -6635,6 +6635,25 @@
           },
           {
             "sessionCookie": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "schema": {
+              "type": "string"
+            },
+            "description": "cookie認証の場合必須。Bearer専用iOSには不要。"
           }
         ],
         "responses": {
@@ -6673,25 +6692,6 @@
             "$ref": "#/components/responses/Error"
           }
         },
-        "parameters": [
-          {
-            "name": "Idempotency-Key",
-            "in": "header",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            }
-          },
-          {
-            "name": "X-CSRF-Token",
-            "in": "header",
-            "schema": {
-              "type": "string"
-            },
-            "description": "cookie認証の場合必須。Bearer専用iOSには不要。"
-          }
-        ],
         "requestBody": {
           "required": true,
           "content": {
@@ -6702,13 +6702,91 @@
             }
           }
         }
+      },
+      "get": {
+        "operationId": "get_imports",
+        "summary": "移行ジョブ履歴",
+        "description": "許可ロール: admin（講師・受講者は403、他組織のジョブは404）。新しい順（created_at降順）。errors は空配列（行エラーは GET /imports/{id} または /items で取得）。",
+        "tags": [
+          "imports"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "cursor",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 30
+            }
+          },
+          {
+            "name": "entity",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "teachers",
+                "classrooms",
+                "students",
+                "progress"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImportJobPage"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
       }
     },
     "/imports/{id}/validate": {
       "post": {
         "operationId": "post_imports_id_validate",
         "summary": "移行dry run",
-        "description": "許可ロール: admin。組織・本人・担当範囲は認証情報とDBから決定する。",
+        "description": "許可ロール: admin（講師・受講者は403、他組織のジョブは404）。ファイルを ObjectStorage から読み、文字コード（UTF-8 / UTF-8 BOM / CP932）を判定して指定と食い違えば422 IMPORT_ENCODING_MISMATCH、RFC 4180 のCSVとして解析（引用符・CRLF・セル内改行。10MB・10,000行まで、超過は422 FILE_TOO_LARGE / IMPORT_TOO_MANY_ROWS）。全行を検証して行ごとの日本語エラーと計画（新規・更新・変更なし）を import_items に保存し validated にする。DBは変更しない。再実行すると前回の結果を置き換える。uploaded / validated のジョブのみ（確定開始後は409 INVALID_STATE）。ストレージ未設定は503 NOT_CONFIGURED。",
         "tags": [
           "imports"
         ],
@@ -6718,6 +6796,25 @@
           },
           {
             "sessionCookie": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "schema": {
+              "type": "string"
+            },
+            "description": "cookie認証の場合必須。Bearer専用iOSには不要。"
           }
         ],
         "responses": {
@@ -6755,33 +6852,14 @@
           "503": {
             "$ref": "#/components/responses/Error"
           }
-        },
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            }
-          },
-          {
-            "name": "X-CSRF-Token",
-            "in": "header",
-            "schema": {
-              "type": "string"
-            },
-            "description": "cookie認証の場合必須。Bearer専用iOSには不要。"
-          }
-        ]
+        }
       }
     },
     "/imports/{id}/commit": {
       "post": {
         "operationId": "post_imports_id_commit",
         "summary": "移行確定",
-        "description": "許可ロール: admin。組織・本人・担当範囲は認証情報とDBから決定する。",
+        "description": "許可ロール: admin（講師・受講者は403、他組織のジョブは404）。validated かつエラー0件のジョブのみ（エラー行があれば409 IMPORT_HAS_ERRORS。エラー行だけを除外して確定する指定はない）。backup_confirmed=true 必須。200行ずつのtransactionで反映し、各行の committed_version を記録するため、中断・失敗後に同じジョブへ再度送信すると未反映の行から再開する（同じIdempotency-Keyの再送は同じ結果、確定済みジョブへの別キーは409）。処理時間の上限に達した場合は state=committing のまま返すので、再送して続行する。ドライラン後に他の操作で変更された行は上書きせず conflict として報告する。想定外の失敗は state=failed と failure（失敗したバッチの行範囲）を返す。講師・新入社員は管理者招待saga（invitation_jobs）でアカウントを作成し、send_invitations=true のときだけ招待メールを送る（既定は送らず「招待メール送信待ち」。講師管理・ユーザー管理から送信）。パスワードは移行しない。",
         "tags": [
           "imports"
         ],
@@ -6791,6 +6869,34 @@
           },
           {
             "sessionCookie": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "schema": {
+              "type": "string"
+            },
+            "description": "cookie認証の場合必須。Bearer専用iOSには不要。"
           }
         ],
         "responses": {
@@ -6829,41 +6935,23 @@
             "$ref": "#/components/responses/Error"
           }
         },
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "format": "uuid"
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ImportCommitInput"
+              }
             }
-          },
-          {
-            "name": "Idempotency-Key",
-            "in": "header",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            }
-          },
-          {
-            "name": "X-CSRF-Token",
-            "in": "header",
-            "schema": {
-              "type": "string"
-            },
-            "description": "cookie認証の場合必須。Bearer専用iOSには不要。"
           }
-        ]
+        }
       }
     },
     "/imports/{id}/rollback": {
       "post": {
         "operationId": "post_imports_id_rollback",
         "summary": "移行rollback",
-        "description": "許可ロール: admin。組織・本人・担当範囲は認証情報とDBから決定する。",
+        "description": "許可ロール: admin（講師・受講者は403、他組織のジョブは404）。completed / failed（一部反映）のジョブを取り消す。import_items の before/after/committed_version を比較し、移行後に編集された行（row_versionが異なる）は上書きせず rollback_state=manual（手動照合が必要）として残す。移行で作成した進捗・クラスは削除、更新した行は移行前の値に戻す。講師・新入社員のアカウントは削除しない（ログイン済みの可能性があるため）：移行で作成したアカウントは停止（membership無効化・セッション失効・認証サービスのログイン停止）し、更新した項目は移行前の値に戻す。予約や主担当クラスがあり停止できない人は manual。状態は rolled_back（manual_review_rows > 0 なら一部手動照合）。処理時間の上限に達した場合は rollback_started=true・state は元のままで返すので、再送して続行する。取り消しを開始したジョブは確定できない。",
         "tags": [
           "imports"
         ],
@@ -6875,42 +6963,6 @@
             "sessionCookie": []
           }
         ],
-        "responses": {
-          "200": {
-            "description": "成功",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ImportJobResponse"
-                }
-              }
-            }
-          },
-          "400": {
-            "$ref": "#/components/responses/Error"
-          },
-          "401": {
-            "$ref": "#/components/responses/Error"
-          },
-          "403": {
-            "$ref": "#/components/responses/Error"
-          },
-          "404": {
-            "$ref": "#/components/responses/Error"
-          },
-          "409": {
-            "$ref": "#/components/responses/Error"
-          },
-          "422": {
-            "$ref": "#/components/responses/Error"
-          },
-          "429": {
-            "$ref": "#/components/responses/Error"
-          },
-          "503": {
-            "$ref": "#/components/responses/Error"
-          }
-        },
         "parameters": [
           {
             "name": "id",
@@ -6938,14 +6990,50 @@
             },
             "description": "cookie認証の場合必須。Bearer専用iOSには不要。"
           }
-        ]
+        ],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImportJobResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
       }
     },
     "/imports/{id}": {
       "get": {
         "operationId": "get_imports_id",
-        "summary": "移行進捗/結果",
-        "description": "許可ロール: admin。組織・本人・担当範囲は認証情報とDBから決定する。",
+        "summary": "移行ジョブの状態・集計・行エラー",
+        "description": "許可ロール: admin（講師・受講者は403、他組織のジョブは404）。集計（総数・新規・更新・変更なし・エラー・警告）、列ごとの空欄の意味と件数、文字コード判定、確定・取り消し結果を返す。errors は行エラーのページ（errors_cursor / errors_limit、既定50件）で、続きは errors_next_cursor。ETagはrow_version。",
         "tags": [
           "imports"
         ],
@@ -6955,6 +7043,111 @@
           },
           {
             "sessionCookie": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "errors_cursor",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "errors_limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 50
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImportJobResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "patch": {
+        "operationId": "patch_imports_id",
+        "summary": "列の対応付けの修正",
+        "description": "許可ロール: admin（講師・受講者は403、他組織のジョブは404）。「項目の対応を修正」。uploaded / validated のジョブだけ変更でき（それ以外は409 INVALID_STATE）、ドライラン結果を破棄して uploaded に戻す。upload_id は変更できない（別ファイルは新しいジョブで登録）。",
+        "tags": [
+          "imports"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "If-Match",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "現在のrow_version（ジョブのETag）。"
+          },
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "schema": {
+              "type": "string"
+            },
+            "description": "cookie認証の場合必須。Bearer専用iOSには不要。"
           }
         ],
         "responses": {
@@ -6993,17 +7186,16 @@
             "$ref": "#/components/responses/Error"
           }
         },
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "format": "uuid"
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ImportMapping"
+              }
             }
           }
-        ]
+        }
       }
     },
     "/notifications": {
@@ -9215,6 +9407,159 @@
             "$ref": "#/components/responses/Error"
           },
           "403": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/imports/{id}/items": {
+      "get": {
+        "operationId": "get_imports_id_items",
+        "summary": "ドライラン・確定結果の行一覧",
+        "description": "許可ロール: admin（講師・受講者は403、他組織のジョブは404）。行番号順。status で絞り込み（all / create / update / skip / error / warning / conflict / manual）。values は取り込み後の計画値、before は更新前の値。",
+        "tags": [
+          "imports"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 50
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "all",
+                "create",
+                "update",
+                "skip",
+                "error",
+                "warning",
+                "conflict",
+                "manual"
+              ],
+              "default": "all"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImportItemPage"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/imports/{id}/errors.csv": {
+      "get": {
+        "operationId": "get_imports_id_errors_csv",
+        "summary": "エラー明細CSV",
+        "description": "許可ロール: admin（講師・受講者は403、他組織のジョブは404）。結果明細のCSV（UTF-8 BOM付き、CRLF）：行番号・種別（エラー／警告／確定時の競合／手動照合が必要）・照合キー・項目・元の見出し・内容。セルが = + - @ TAB CR で始まる場合は先頭に ' を付けて表計算ソフトの数式実行を防ぐ。",
+        "tags": [
+          "imports"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "text/csv": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error"
+          },
+          "503": {
             "$ref": "#/components/responses/Error"
           }
         }
@@ -12753,6 +13098,7 @@
       },
       "ImportJob": {
         "type": "object",
+        "description": "移行ジョブ。valid_rows = total_rows - error_rows（新規＋更新＋変更なし）。",
         "properties": {
           "id": {
             "type": "string",
@@ -12769,6 +13115,68 @@
               "rolled_back"
             ]
           },
+          "entity": {
+            "type": "string",
+            "enum": [
+              "teachers",
+              "classrooms",
+              "students",
+              "progress"
+            ]
+          },
+          "source_system": {
+            "type": "string"
+          },
+          "encoding": {
+            "type": "string",
+            "enum": [
+              "utf-8",
+              "utf-8-bom",
+              "cp932"
+            ]
+          },
+          "detected_encoding": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "utf-8",
+              "utf-8-bom",
+              "cp932",
+              "ascii",
+              null
+            ]
+          },
+          "encoding_mismatch": {
+            "type": "boolean",
+            "description": "指定とファイルの文字コードが異なる（UTF-8とBOM付きの違いのみ。CP932との食い違いは422で検証を中止）。"
+          },
+          "upload_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "filename": {
+            "type": "string"
+          },
+          "mapping": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            }
+          },
+          "headers": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "columns": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ImportColumn"
+            }
+          },
           "total_rows": {
             "type": "integer"
           },
@@ -12777,6 +13185,113 @@
           },
           "error_rows": {
             "type": "integer"
+          },
+          "new_rows": {
+            "type": "integer"
+          },
+          "update_rows": {
+            "type": "integer"
+          },
+          "skip_rows": {
+            "type": "integer"
+          },
+          "warning_rows": {
+            "type": "integer"
+          },
+          "blank_rows": {
+            "type": "integer"
+          },
+          "committed_rows": {
+            "type": "integer"
+          },
+          "conflict_rows": {
+            "type": "integer"
+          },
+          "reverted_rows": {
+            "type": "integer"
+          },
+          "manual_review_rows": {
+            "type": "integer"
+          },
+          "options": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "properties": {
+              "send_invitations": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "send_invitations"
+            ],
+            "additionalProperties": false
+          },
+          "invitations": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "description": "講師・新入社員の確定結果。sent=送信済み、failed=送信失敗（再送可能）、not_sent=招待メール送信待ち。",
+            "properties": {
+              "sent": {
+                "type": "integer"
+              },
+              "failed": {
+                "type": "integer"
+              },
+              "not_sent": {
+                "type": "integer"
+              }
+            },
+            "required": [
+              "sent",
+              "failed",
+              "not_sent"
+            ],
+            "additionalProperties": false
+          },
+          "failure": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "description": "確定・取り消しが失敗したバッチ（再送で続きから再開）。",
+            "properties": {
+              "code": {
+                "type": "string"
+              },
+              "message_ja": {
+                "type": "string"
+              },
+              "from_row": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "to_row": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "row": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              }
+            },
+            "required": [
+              "code",
+              "message_ja",
+              "from_row",
+              "to_row",
+              "row"
+            ],
+            "additionalProperties": false
           },
           "errors": {
             "type": "array",
@@ -12789,6 +13304,15 @@
                 "field": {
                   "type": "string"
                 },
+                "label_ja": {
+                  "type": "string"
+                },
+                "header": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
                 "message_ja": {
                   "type": "string"
                 }
@@ -12796,25 +13320,99 @@
               "required": [
                 "row",
                 "field",
+                "label_ja",
+                "header",
                 "message_ja"
               ],
               "additionalProperties": false
             }
           },
+          "errors_next_cursor": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "created_by_name": {
+            "type": "string"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "validated_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "committed_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "rolled_back_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "rollback_started": {
+            "type": "boolean",
+            "description": "取り消しを開始済み（完了前は state が元の状態のまま。再送で続きを処理）。"
+          },
           "row_version": {
             "type": "integer"
           }
         },
+        "additionalProperties": false,
         "required": [
           "id",
           "state",
+          "entity",
+          "source_system",
+          "encoding",
+          "detected_encoding",
+          "encoding_mismatch",
+          "upload_id",
+          "filename",
+          "mapping",
+          "headers",
+          "columns",
           "total_rows",
           "valid_rows",
           "error_rows",
+          "new_rows",
+          "update_rows",
+          "skip_rows",
+          "warning_rows",
+          "blank_rows",
+          "committed_rows",
+          "conflict_rows",
+          "reverted_rows",
+          "manual_review_rows",
+          "options",
+          "invitations",
+          "failure",
           "errors",
+          "errors_next_cursor",
+          "created_by_name",
+          "created_at",
+          "updated_at",
+          "validated_at",
+          "committed_at",
+          "rolled_back_at",
+          "rollback_started",
           "row_version"
-        ],
-        "additionalProperties": false
+        ]
       },
       "ImportJobResponse": {
         "type": "object",
@@ -14889,6 +15487,270 @@
         "required": [
           "data",
           "checked_at"
+        ],
+        "additionalProperties": false
+      },
+      "ImportColumn": {
+        "type": "object",
+        "description": "取り込み先項目ごとの対応と空欄の意味（docs/08）。empty_count はドライラン後のみ。",
+        "properties": {
+          "field": {
+            "type": "string"
+          },
+          "label_ja": {
+            "type": "string"
+          },
+          "required": {
+            "type": "boolean"
+          },
+          "source_header": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "empty_meaning_ja": {
+            "type": "string"
+          },
+          "empty_count": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "error_count": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "field",
+          "label_ja",
+          "required",
+          "source_header",
+          "empty_meaning_ja",
+          "empty_count",
+          "error_count"
+        ],
+        "additionalProperties": false
+      },
+      "ImportItem": {
+        "type": "object",
+        "properties": {
+          "row": {
+            "type": "integer",
+            "description": "表計算ソフトの行番号（見出しが1行目）。"
+          },
+          "action": {
+            "type": "string",
+            "enum": [
+              "create",
+              "update",
+              "skip",
+              "error"
+            ]
+          },
+          "key": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "entity_kind": {
+            "type": "string",
+            "enum": [
+              "teacher",
+              "classroom",
+              "student",
+              "progress_record"
+            ]
+          },
+          "entity_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "values": {
+            "type": "object",
+            "additionalProperties": {
+              "type": [
+                "string",
+                "integer",
+                "boolean",
+                "null"
+              ]
+            }
+          },
+          "before": {
+            "anyOf": [
+              {
+                "type": "object",
+                "additionalProperties": {
+                  "type": [
+                    "string",
+                    "integer",
+                    "boolean",
+                    "null"
+                  ]
+                }
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "changed_fields": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "errors": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "field": {
+                  "type": "string"
+                },
+                "label_ja": {
+                  "type": "string"
+                },
+                "message_ja": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "field",
+                "label_ja",
+                "message_ja"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "warnings": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "field": {
+                  "type": "string"
+                },
+                "label_ja": {
+                  "type": "string"
+                },
+                "message_ja": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "field",
+                "label_ja",
+                "message_ja"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "commit_state": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "applied",
+              "conflict",
+              null
+            ]
+          },
+          "commit_message_ja": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "rollback_state": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "reverted",
+              "manual",
+              null
+            ]
+          },
+          "rollback_message_ja": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "row",
+          "action",
+          "key",
+          "entity_kind",
+          "entity_id",
+          "values",
+          "before",
+          "changed_fields",
+          "errors",
+          "warnings",
+          "commit_state",
+          "commit_message_ja",
+          "rollback_state",
+          "rollback_message_ja"
+        ],
+        "additionalProperties": false
+      },
+      "ImportItemPage": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ImportItem"
+            }
+          },
+          "next_cursor": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "checked_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "items",
+          "next_cursor",
+          "checked_at"
+        ],
+        "additionalProperties": false
+      },
+      "ImportCommitInput": {
+        "type": "object",
+        "properties": {
+          "backup_confirmed": {
+            "type": "boolean",
+            "const": true,
+            "description": "移行前にバックアップを取得したことの確認（必須）。"
+          },
+          "send_invitations": {
+            "type": "boolean",
+            "default": false,
+            "description": "講師・新入社員の新規アカウントに招待メールを送る。"
+          }
+        },
+        "required": [
+          "backup_confirmed"
         ],
         "additionalProperties": false
       }

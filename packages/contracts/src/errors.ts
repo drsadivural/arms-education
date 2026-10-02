@@ -112,6 +112,17 @@ export const ERROR_CATALOG = {
   VOICE_SESSION_ENDED: { status: 409, message_ja: "音声セッションは終了しました。もう一度開始してください。" },
 
   // ---- area: imports & exports (append new codes directly below this line) ----
+  IMPORT_UPLOAD_NOT_READY: { status: 409, message_ja: "アップロードしたファイルの検査が完了していません。しばらくしてから再度お試しください。" },
+  IMPORT_UPLOAD_REJECTED: { status: 409, message_ja: "アップロードしたファイルは検査で利用できないと判定されました。別のファイルをアップロードしてください。" },
+  IMPORT_FILE_MISSING: { status: 409, message_ja: "アップロードしたファイルが見つかりません。もう一度アップロードしてください。" },
+  IMPORT_ENCODING_MISMATCH: { status: 422, message_ja: "指定した文字コードとファイルの文字コードが一致しません。文字コードを選び直してください。" },
+  IMPORT_ENCODING_UNSUPPORTED: { status: 422, message_ja: "ファイルの文字コードを判別できません。UTF-8またはShift_JIS（CP932）のCSVを指定してください。" },
+  IMPORT_CSV_INVALID: { status: 422, message_ja: "CSVの形式が正しくありません。引用符（\"）の閉じ忘れなどを確認してください。" },
+  IMPORT_TOO_MANY_ROWS: { status: 422, message_ja: "行数が上限（10,000行）を超えています。ファイルを分割してください。" },
+  IMPORT_EMPTY: { status: 422, message_ja: "取り込むデータ行がありません。ヘッダー行とデータ行を確認してください。" },
+  IMPORT_MAPPING_INVALID: { status: 422, message_ja: "列の対応付けを確認してください。" },
+  IMPORT_HAS_ERRORS: { status: 409, message_ja: "エラーのある行があるため確定できません。元データまたは項目の対応を修正して、もう一度ドライランを実行してください。" },
+  IMPORT_IN_PROGRESS: { status: 409, message_ja: "この移行ジョブは処理中です。しばらくしてから状態を確認してください。" },
 } as const satisfies Record<string, { status: number; message_ja: string }>;
 
 export type ErrorCode = keyof typeof ERROR_CATALOG;

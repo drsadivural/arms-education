@@ -1163,11 +1163,15 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /**
+         * 移行ジョブ履歴
+         * @description 許可ロール: admin（講師・受講者は403、他組織のジョブは404）。新しい順（created_at降順）。errors は空配列（行エラーは GET /imports/{id} または /items で取得）。
+         */
+        get: operations["get_imports"];
         put?: never;
         /**
          * 移行ジョブ登録
-         * @description 許可ロール: admin。組織・本人・担当範囲は認証情報とDBから決定する。
+         * @description 許可ロール: admin（講師・受講者は403、他組織のジョブは404）。upload_id は本人がアップロードした purpose=import の upload_jobs で、state=clean（ファイル検査済み）のもの。アップロード未完了・検査中は409 IMPORT_UPLOAD_NOT_READY（ファイル検査サービス未設定の場合は details.scanner_configured=false とその旨のメッセージ）、検査で検出・内容不一致は409 IMPORT_UPLOAD_REJECTED、期限切れは409 UPLOAD_EXPIRED、見つからない・用途違いは422。 columns は {CSVの見出し → 取り込み先項目}。取り込み先項目は entity ごとに決まり（packages/contracts IMPORT_FIELDS）、未知の項目・重複・必須項目の未対応は422 IMPORT_MAPPING_INVALID（field_errors）。生ファイルはアップロードのキーのまま非公開で保持し、URLは返さない。 状態は uploaded。
          */
         post: operations["post_imports"];
         delete?: never;
@@ -1187,7 +1191,7 @@ export interface paths {
         put?: never;
         /**
          * 移行dry run
-         * @description 許可ロール: admin。組織・本人・担当範囲は認証情報とDBから決定する。
+         * @description 許可ロール: admin（講師・受講者は403、他組織のジョブは404）。ファイルを ObjectStorage から読み、文字コード（UTF-8 / UTF-8 BOM / CP932）を判定して指定と食い違えば422 IMPORT_ENCODING_MISMATCH、RFC 4180 のCSVとして解析（引用符・CRLF・セル内改行。10MB・10,000行まで、超過は422 FILE_TOO_LARGE / IMPORT_TOO_MANY_ROWS）。全行を検証して行ごとの日本語エラーと計画（新規・更新・変更なし）を import_items に保存し validated にする。DBは変更しない。再実行すると前回の結果を置き換える。uploaded / validated のジョブのみ（確定開始後は409 INVALID_STATE）。ストレージ未設定は503 NOT_CONFIGURED。
          */
         post: operations["post_imports_id_validate"];
         delete?: never;
@@ -1207,7 +1211,7 @@ export interface paths {
         put?: never;
         /**
          * 移行確定
-         * @description 許可ロール: admin。組織・本人・担当範囲は認証情報とDBから決定する。
+         * @description 許可ロール: admin（講師・受講者は403、他組織のジョブは404）。validated かつエラー0件のジョブのみ（エラー行があれば409 IMPORT_HAS_ERRORS。エラー行だけを除外して確定する指定はない）。backup_confirmed=true 必須。200行ずつのtransactionで反映し、各行の committed_version を記録するため、中断・失敗後に同じジョブへ再度送信すると未反映の行から再開する（同じIdempotency-Keyの再送は同じ結果、確定済みジョブへの別キーは409）。処理時間の上限に達した場合は state=committing のまま返すので、再送して続行する。ドライラン後に他の操作で変更された行は上書きせず conflict として報告する。想定外の失敗は state=failed と failure（失敗したバッチの行範囲）を返す。講師・新入社員は管理者招待saga（invitation_jobs）でアカウントを作成し、send_invitations=true のときだけ招待メールを送る（既定は送らず「招待メール送信待ち」。講師管理・ユーザー管理から送信）。パスワードは移行しない。
          */
         post: operations["post_imports_id_commit"];
         delete?: never;
@@ -1227,7 +1231,7 @@ export interface paths {
         put?: never;
         /**
          * 移行rollback
-         * @description 許可ロール: admin。組織・本人・担当範囲は認証情報とDBから決定する。
+         * @description 許可ロール: admin（講師・受講者は403、他組織のジョブは404）。completed / failed（一部反映）のジョブを取り消す。import_items の before/after/committed_version を比較し、移行後に編集された行（row_versionが異なる）は上書きせず rollback_state=manual（手動照合が必要）として残す。移行で作成した進捗・クラスは削除、更新した行は移行前の値に戻す。講師・新入社員のアカウントは削除しない（ログイン済みの可能性があるため）：移行で作成したアカウントは停止（membership無効化・セッション失効・認証サービスのログイン停止）し、更新した項目は移行前の値に戻す。予約や主担当クラスがあり停止できない人は manual。状態は rolled_back（manual_review_rows > 0 なら一部手動照合）。処理時間の上限に達した場合は rollback_started=true・state は元のままで返すので、再送して続行する。取り消しを開始したジョブは確定できない。
          */
         post: operations["post_imports_id_rollback"];
         delete?: never;
@@ -1244,8 +1248,8 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * 移行進捗/結果
-         * @description 許可ロール: admin。組織・本人・担当範囲は認証情報とDBから決定する。
+         * 移行ジョブの状態・集計・行エラー
+         * @description 許可ロール: admin（講師・受講者は403、他組織のジョブは404）。集計（総数・新規・更新・変更なし・エラー・警告）、列ごとの空欄の意味と件数、文字コード判定、確定・取り消し結果を返す。errors は行エラーのページ（errors_cursor / errors_limit、既定50件）で、続きは errors_next_cursor。ETagはrow_version。
          */
         get: operations["get_imports_id"];
         put?: never;
@@ -1253,7 +1257,11 @@ export interface paths {
         delete?: never;
         options?: never;
         head?: never;
-        patch?: never;
+        /**
+         * 列の対応付けの修正
+         * @description 許可ロール: admin（講師・受講者は403、他組織のジョブは404）。「項目の対応を修正」。uploaded / validated のジョブだけ変更でき（それ以外は409 INVALID_STATE）、ドライラン結果を破棄して uploaded に戻す。upload_id は変更できない（別ファイルは新しいジョブで登録）。
+         */
+        patch: operations["patch_imports_id"];
         trace?: never;
     };
     "/notifications": {
@@ -1852,6 +1860,46 @@ export interface paths {
          * @description 許可ロール: teacher/student。組織タイムゾーンの当日分。未終了セッションは予約秒数で計上。
          */
         get: operations["get_voice_quota"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/imports/{id}/items": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * ドライラン・確定結果の行一覧
+         * @description 許可ロール: admin（講師・受講者は403、他組織のジョブは404）。行番号順。status で絞り込み（all / create / update / skip / error / warning / conflict / manual）。values は取り込み後の計画値、before は更新前の値。
+         */
+        get: operations["get_imports_id_items"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/imports/{id}/errors.csv": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * エラー明細CSV
+         * @description 許可ロール: admin（講師・受講者は403、他組織のジョブは404）。結果明細のCSV（UTF-8 BOM付き、CRLF）：行番号・種別（エラー／警告／確定時の競合／手動照合が必要）・照合キー・項目・元の見出し・内容。セルが = + - @ TAB CR で始まる場合は先頭に ' を付けて表計算ソフトの数式実行を防ぐ。
+         */
+        get: operations["get_imports_id_errors_csv"];
         put?: never;
         post?: never;
         delete?: never;
@@ -2820,19 +2868,79 @@ export interface components {
             /** Format: date-time */
             checked_at: string;
         };
+        /** @description 移行ジョブ。valid_rows = total_rows - error_rows（新規＋更新＋変更なし）。 */
         ImportJob: {
             /** Format: uuid */
             id: string;
             /** @enum {string} */
             state: "uploaded" | "validated" | "committing" | "completed" | "failed" | "rolled_back";
+            /** @enum {string} */
+            entity: "teachers" | "classrooms" | "students" | "progress";
+            source_system: string;
+            /** @enum {string} */
+            encoding: "utf-8" | "utf-8-bom" | "cp932";
+            /** @enum {string|null} */
+            detected_encoding: "utf-8" | "utf-8-bom" | "cp932" | "ascii" | null;
+            /** @description 指定とファイルの文字コードが異なる（UTF-8とBOM付きの違いのみ。CP932との食い違いは422で検証を中止）。 */
+            encoding_mismatch: boolean;
+            /** Format: uuid */
+            upload_id: string;
+            filename: string;
+            mapping: {
+                [key: string]: string;
+            };
+            headers: string[];
+            columns: components["schemas"]["ImportColumn"][];
             total_rows: number;
             valid_rows: number;
             error_rows: number;
+            new_rows: number;
+            update_rows: number;
+            skip_rows: number;
+            warning_rows: number;
+            blank_rows: number;
+            committed_rows: number;
+            conflict_rows: number;
+            reverted_rows: number;
+            manual_review_rows: number;
+            options: {
+                send_invitations: boolean;
+            } | null;
+            /** @description 講師・新入社員の確定結果。sent=送信済み、failed=送信失敗（再送可能）、not_sent=招待メール送信待ち。 */
+            invitations: {
+                sent: number;
+                failed: number;
+                not_sent: number;
+            } | null;
+            /** @description 確定・取り消しが失敗したバッチ（再送で続きから再開）。 */
+            failure: {
+                code: string;
+                message_ja: string;
+                from_row: number | null;
+                to_row: number | null;
+                row: number | null;
+            } | null;
             errors: {
                 row: number;
                 field: string;
+                label_ja: string;
+                header: string | null;
                 message_ja: string;
             }[];
+            errors_next_cursor: string | null;
+            created_by_name: string;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            updated_at: string;
+            /** Format: date-time */
+            validated_at: string | null;
+            /** Format: date-time */
+            committed_at: string | null;
+            /** Format: date-time */
+            rolled_back_at: string | null;
+            /** @description 取り消しを開始済み（完了前は state が元の状態のまま。再送で続きを処理）。 */
+            rollback_started: boolean;
             row_version: number;
         };
         ImportJobResponse: {
@@ -3364,6 +3472,68 @@ export interface components {
             data: components["schemas"]["VoiceQuota"];
             /** Format: date-time */
             checked_at: string;
+        };
+        /** @description 取り込み先項目ごとの対応と空欄の意味（docs/08）。empty_count はドライラン後のみ。 */
+        ImportColumn: {
+            field: string;
+            label_ja: string;
+            required: boolean;
+            source_header: string | null;
+            empty_meaning_ja: string;
+            empty_count: number | null;
+            error_count: number | null;
+        };
+        ImportItem: {
+            /** @description 表計算ソフトの行番号（見出しが1行目）。 */
+            row: number;
+            /** @enum {string} */
+            action: "create" | "update" | "skip" | "error";
+            key: string | null;
+            /** @enum {string} */
+            entity_kind: "teacher" | "classroom" | "student" | "progress_record";
+            /** Format: uuid */
+            entity_id: string | null;
+            values: {
+                [key: string]: string | number | boolean | null;
+            };
+            before: {
+                [key: string]: string | number | boolean | null;
+            } | null;
+            changed_fields: string[];
+            errors: {
+                field: string;
+                label_ja: string;
+                message_ja: string;
+            }[];
+            warnings: {
+                field: string;
+                label_ja: string;
+                message_ja: string;
+            }[];
+            /** @enum {string|null} */
+            commit_state: "applied" | "conflict" | null;
+            commit_message_ja: string | null;
+            /** @enum {string|null} */
+            rollback_state: "reverted" | "manual" | null;
+            rollback_message_ja: string | null;
+        };
+        ImportItemPage: {
+            items: components["schemas"]["ImportItem"][];
+            next_cursor: string | null;
+            /** Format: date-time */
+            checked_at: string;
+        };
+        ImportCommitInput: {
+            /**
+             * @description 移行前にバックアップを取得したことの確認（必須）。
+             * @constant
+             */
+            backup_confirmed: true;
+            /**
+             * @description 講師・新入社員の新規アカウントに招待メールを送る。
+             * @default false
+             */
+            send_invitations: boolean;
         };
     };
     responses: {
@@ -6060,6 +6230,36 @@ export interface operations {
             503: components["responses"]["Error"];
         };
     };
+    get_imports: {
+        parameters: {
+            query?: {
+                cursor?: string;
+                limit?: number;
+                entity?: "teachers" | "classrooms" | "students" | "progress";
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 成功 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImportJobPage"];
+                };
+            };
+            400: components["responses"]["Error"];
+            401: components["responses"]["Error"];
+            403: components["responses"]["Error"];
+            422: components["responses"]["Error"];
+            429: components["responses"]["Error"];
+            503: components["responses"]["Error"];
+        };
+    };
     post_imports: {
         parameters: {
             query?: never;
@@ -6142,7 +6342,11 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ImportCommitInput"];
+            };
+        };
         responses: {
             /** @description 成功 */
             200: {
@@ -6199,7 +6403,10 @@ export interface operations {
     };
     get_imports_id: {
         parameters: {
-            query?: never;
+            query?: {
+                errors_cursor?: string;
+                errors_limit?: number;
+            };
             header?: never;
             path: {
                 id: string;
@@ -6207,6 +6414,44 @@ export interface operations {
             cookie?: never;
         };
         requestBody?: never;
+        responses: {
+            /** @description 成功 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImportJobResponse"];
+                };
+            };
+            400: components["responses"]["Error"];
+            401: components["responses"]["Error"];
+            403: components["responses"]["Error"];
+            404: components["responses"]["Error"];
+            422: components["responses"]["Error"];
+            429: components["responses"]["Error"];
+            503: components["responses"]["Error"];
+        };
+    };
+    patch_imports_id: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description 現在のrow_version（ジョブのETag）。 */
+                "If-Match": string;
+                /** @description cookie認証の場合必須。Bearer専用iOSには不要。 */
+                "X-CSRF-Token"?: string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ImportMapping"];
+            };
+        };
         responses: {
             /** @description 成功 */
             200: {
@@ -7206,6 +7451,66 @@ export interface operations {
             };
             401: components["responses"]["Error"];
             403: components["responses"]["Error"];
+        };
+    };
+    get_imports_id_items: {
+        parameters: {
+            query?: {
+                cursor?: string;
+                limit?: number;
+                status?: "all" | "create" | "update" | "skip" | "error" | "warning" | "conflict" | "manual";
+            };
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 成功 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImportItemPage"];
+                };
+            };
+            400: components["responses"]["Error"];
+            401: components["responses"]["Error"];
+            403: components["responses"]["Error"];
+            404: components["responses"]["Error"];
+            422: components["responses"]["Error"];
+            429: components["responses"]["Error"];
+            503: components["responses"]["Error"];
+        };
+    };
+    get_imports_id_errors_csv: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 成功 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/csv": string;
+                };
+            };
+            401: components["responses"]["Error"];
+            403: components["responses"]["Error"];
+            404: components["responses"]["Error"];
+            429: components["responses"]["Error"];
+            503: components["responses"]["Error"];
         };
     };
 }

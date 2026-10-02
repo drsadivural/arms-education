@@ -210,3 +210,111 @@ export const ATTENDANCE_OPENS_BEFORE_SECONDS = 30 * 60;
 // ---- area: voice (append below) ----
 
 // ---- area: imports & exports (append below) ----
+
+/** WEB-17 データ移植: entities in the recommended order (講師 → クラス → 新入社員 → 教育進捗). */
+export const IMPORT_ENTITIES = ["teachers", "classrooms", "students", "progress"] as const;
+export type ImportEntity = (typeof IMPORT_ENTITIES)[number];
+
+export const IMPORT_ENTITY_LABELS: Record<ImportEntity, string> = {
+  teachers: "講師",
+  classrooms: "クラス",
+  students: "新入社員",
+  progress: "社員教育進捗（旧システム）",
+};
+
+export const IMPORT_ENCODINGS = ["utf-8", "utf-8-bom", "cp932"] as const;
+export type ImportEncoding = (typeof IMPORT_ENCODINGS)[number];
+export const IMPORT_ENCODING_LABELS: Record<ImportEncoding | "ascii", string> = {
+  "utf-8": "UTF-8",
+  "utf-8-bom": "UTF-8（BOM付き）",
+  cp932: "Shift_JIS（CP932）",
+  ascii: "英数字のみ（どの文字コードでも同じ）",
+};
+
+/** docs/08 初期上限: CSV 10MB / 10,000 data rows. */
+export const IMPORT_LIMITS = { maxBytes: 10 * 1024 * 1024, maxRows: 10_000 } as const;
+
+/** Default 移行元システム名. Re-imports must use the same name (progress records are unique per source system + ID). */
+export const IMPORT_DEFAULT_SOURCE_SYSTEM = "旧社員教育進捗管理";
+
+export const IMPORT_ACTION_LABELS = { create: "新規", update: "更新", skip: "変更なし", error: "エラー" } as const;
+export type ImportAction = keyof typeof IMPORT_ACTION_LABELS;
+export const IMPORT_COMMIT_STATE_LABELS = { applied: "反映済み", conflict: "競合のため未反映" } as const;
+export const IMPORT_ROLLBACK_STATE_LABELS = { reverted: "取り消し済み", manual: "手動照合が必要" } as const;
+
+export interface ImportFieldDef {
+  field: string;
+  label: string;
+  required: boolean;
+  /** Meaning of an empty cell, shown on the mapping screen (docs/08 「空値/NULLの意味をmapping画面で表示」). */
+  empty: string;
+  /** Header names suggested automatically on the mapping screen (compared after NFKC + trim + lower-case). */
+  aliases: readonly string[];
+  /** Matching key of the record (people are matched by number only, never by name). */
+  key?: boolean;
+}
+
+/**
+ * Target fields per entity. Unmapped optional fields use the default for new records and leave existing records
+ * unchanged. Required fields must be mapped and filled in every row.
+ */
+export const IMPORT_FIELDS: Record<ImportEntity, readonly ImportFieldDef[]> = {
+  teachers: [
+    { field: "teacher_number", label: "講師番号", required: true, key: true, empty: "空欄不可（照合キー。同姓同名でも講師番号で区別）", aliases: ["講師番号", "講師ID", "講師コード"] },
+    { field: "display_name", label: "氏名", required: true, empty: "空欄不可", aliases: ["氏名", "講師名", "名前"] },
+    { field: "kana", label: "ふりがな", required: false, empty: "空欄＝ふりがななし", aliases: ["ふりがな", "フリガナ", "よみがな", "カナ"] },
+    { field: "email", label: "メール", required: true, empty: "空欄不可（ログインID・招待先。登録済み講師は変更不可）", aliases: ["メール", "メールアドレス", "email", "e-mail", "Eメール"] },
+    { field: "department_name", label: "部署", required: false, empty: "空欄＝部署なし", aliases: ["部署", "所属部署", "所属"] },
+    { field: "active", label: "状態", required: false, empty: "空欄＝有効（有効／無効で指定。登録済み講師の状態は変更しない）", aliases: ["状態", "ステータス", "有効"] },
+  ],
+  classrooms: [
+    { field: "classroom_code", label: "クラス番号", required: true, key: true, empty: "空欄不可（照合キー。新入社員のクラス番号と対応）", aliases: ["クラス番号", "クラスID", "クラスコード"] },
+    { field: "name", label: "名称", required: true, empty: "空欄不可", aliases: ["名称", "クラス名", "クラス名称"] },
+    { field: "capacity", label: "定員", required: true, empty: "空欄不可（1〜10,000の整数）", aliases: ["定員", "定員数"] },
+    { field: "starts_on", label: "開始日", required: true, empty: "空欄不可", aliases: ["開始日", "研修開始日", "期間開始"] },
+    { field: "ends_on", label: "終了日", required: true, empty: "空欄不可", aliases: ["終了日", "研修終了日", "期間終了"] },
+    { field: "primary_teacher_number", label: "主担当講師番号", required: true, empty: "空欄不可（講師管理の講師番号）", aliases: ["主担当講師番号", "主担当講師", "担当講師番号", "講師番号"] },
+  ],
+  students: [
+    { field: "employee_number", label: "社員番号", required: true, key: true, empty: "空欄不可（照合キー。同姓同名でも社員番号で区別）", aliases: ["社員番号", "社員ID", "従業員番号"] },
+    { field: "display_name", label: "氏名", required: true, empty: "空欄不可", aliases: ["氏名", "社員名", "名前"] },
+    { field: "kana", label: "ふりがな", required: false, empty: "空欄＝ふりがななし", aliases: ["ふりがな", "フリガナ", "よみがな", "カナ"] },
+    { field: "email", label: "メール", required: true, empty: "空欄不可（ログインID・招待先。登録済み社員は変更不可）", aliases: ["メール", "メールアドレス", "email", "e-mail", "Eメール"] },
+    { field: "company_name", label: "会社名", required: false, empty: "空欄＝会社名なし", aliases: ["会社名", "所属会社"] },
+    { field: "department_name", label: "部署", required: true, empty: "空欄不可", aliases: ["部署", "所属部署", "配属部署"] },
+    { field: "joined_on", label: "入社日", required: true, empty: "空欄不可", aliases: ["入社日", "入社年月日"] },
+    { field: "classroom_code", label: "クラス番号", required: true, empty: "空欄不可（クラスの移行で登録したクラス番号）", aliases: ["クラス番号", "クラスID", "クラスコード"] },
+    { field: "teacher_number", label: "担当講師番号", required: true, empty: "空欄不可（クラスの担当講師の講師番号）", aliases: ["担当講師番号", "講師番号", "担当講師"] },
+    { field: "training_starts_on", label: "研修開始日", required: false, empty: "空欄＝クラスの開始日", aliases: ["研修開始日"] },
+    { field: "training_due_on", label: "研修終了予定日", required: false, empty: "空欄＝クラスの終了日", aliases: ["研修終了予定日", "研修終了日"] },
+    { field: "active", label: "在籍状態", required: false, empty: "空欄＝在籍（在籍／在籍終了で指定。登録済み社員の状態は変更しない）", aliases: ["在籍状態", "状態", "在籍"] },
+  ],
+  progress: [
+    { field: "source_record_id", label: "旧システムのレコードID", required: true, key: true, empty: "空欄不可（再移行時の照合キー）", aliases: ["source_record_id", "レコードID", "旧システムID", "レコード番号", "ID"] },
+    { field: "employee_number", label: "社員番号", required: true, empty: "空欄不可（社員名ではなく社員番号で照合）", aliases: ["社員番号", "社員ID", "従業員番号"] },
+    { field: "student_name", label: "社員名", required: false, empty: "照合の確認にのみ使用（取り込みは社員番号で照合）", aliases: ["社員名", "氏名"] },
+    { field: "due_date", label: "終了予定日", required: true, empty: "空欄不可（元の年月日をそのまま保持）", aliases: ["終了予定日", "期限", "予定日"] },
+    { field: "department_name", label: "教育担当部署", required: true, empty: "空欄不可（旧名称をそのまま記録）", aliases: ["教育担当部署", "担当部署", "部署"] },
+    { field: "teacher_number", label: "教育担当講師番号", required: true, empty: "空欄不可（講師管理の講師番号。未登録はエラー）", aliases: ["教育担当講師番号", "講師番号", "担当講師番号"] },
+    { field: "teacher_name", label: "教育担当者", required: false, empty: "空欄＝講師管理の氏名を記録", aliases: ["教育担当者", "担当者", "講師名"] },
+    { field: "content", label: "内容", required: true, empty: "空欄不可（原文のまま保持）", aliases: ["内容", "教育内容", "研修内容"] },
+    { field: "notes", label: "備考", required: false, empty: "空欄＝備考なし", aliases: ["備考", "メモ"] },
+    { field: "state", label: "学習完了状態", required: false, empty: "空欄＝「未確認」（完了とは推定しない）", aliases: ["状態", "学習完了状態", "進捗状態", "完了状態"] },
+  ],
+};
+
+/** Header normalisation used for automatic mapping suggestions (NFKC, trimmed, lower-case). */
+export function normalizeImportHeader(header: string): string {
+  return header.normalize("NFKC").trim().toLowerCase();
+}
+
+/** Suggested {sourceHeader → targetField} mapping for the detected headers (each header and field used once). */
+export function suggestImportMapping(entity: ImportEntity, headers: readonly string[]): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const def of IMPORT_FIELDS[entity]) {
+    const aliases = def.aliases.map(normalizeImportHeader);
+    const header = headers.find((h) => !(h in out) && aliases.includes(normalizeImportHeader(h)));
+    if (header !== undefined) out[header] = def.field;
+  }
+  return out;
+}

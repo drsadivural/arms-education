@@ -365,7 +365,11 @@ export const UploadInput = z.strictObject({
 
 export const ImportMapping = z.strictObject({
   source_system: required(100),
-  columns: z.record(z.string(), z.string()),
+  /** {source CSV header → target field}; the target fields allowed per entity are IMPORT_FIELDS (labels.ts). */
+  columns: z
+    .record(z.string().min(1).max(200), z.string().min(1).max(50))
+    .refine((v) => Object.keys(v).length >= 1, { message: "列の対応付けを1つ以上指定してください。" })
+    .refine((v) => Object.keys(v).length <= 100, { message: "対応付けできる列は100列までです。" }),
   encoding: z.enum(["utf-8", "utf-8-bom", "cp932"]),
   entity: z.enum(["teachers", "classrooms", "students", "progress"]),
   upload_id: zId,
@@ -437,3 +441,15 @@ export const zDeviceTokenHash = z.string().regex(/^[0-9a-f]{64}$/, { message: "�
 // ---- area: voice (append below) ----
 
 // ---- area: imports & exports (append below) ----
+
+/** POST /imports/{id}/commit: the admin confirms a backup was taken; invitations are sent only when requested. */
+export const ImportCommitInput = z.strictObject({
+  backup_confirmed: z.literal(true, { message: "移行前にバックアップを取得したことを確認してください。" }),
+  send_invitations: z.boolean().optional(),
+});
+export type ImportCommitInputT = z.infer<typeof ImportCommitInput>;
+export type ImportMappingT = z.infer<typeof ImportMapping>;
+
+/** GET /imports/{id}/items status filter. */
+export const IMPORT_ITEM_FILTERS = ["all", "create", "update", "skip", "error", "warning", "conflict", "manual"] as const;
+export type ImportItemFilter = (typeof IMPORT_ITEM_FILTERS)[number];
