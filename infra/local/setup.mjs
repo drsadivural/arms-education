@@ -33,7 +33,7 @@ writeFileSync(
   devVars,
   [
     "APP_ENV=development",
-    "APP_ORIGIN=http://localhost:5173",
+    "APP_ORIGIN=http://localhost:5188",
     "DATABASE_URL=postgres://arms_app:arms_app_dev_pw@127.0.0.1:55433/arms",
     "SUPABASE_URL=http://localhost:9999",
     "SUPABASE_AUTH_URL=http://localhost:9999",
@@ -41,7 +41,7 @@ writeFileSync(
     "SUPABASE_AUTH_AUDIENCE=authenticated",
     "SUPABASE_PUBLISHABLE_KEY=local-dev",
     `SUPABASE_ADMIN_SECRET=${serviceRoleJwt}`,
-    "AUTH_REDIRECT_URL=http://localhost:5173/auth/callback",
+    "AUTH_REDIRECT_URL=http://localhost:5188/auth/callback",
     `WEB_SESSION_ENCRYPTION_KEY=${randomBytes(32).toString("base64")}`,
     `DEVICE_TOKEN_ENCRYPTION_KEY=${randomBytes(32).toString("base64")}`,
     "R2_S3_ENDPOINT=http://127.0.0.1:9100",

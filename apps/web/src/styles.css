@@ -1,0 +1,101 @@
+@import "tailwindcss";
+@import "@fontsource/noto-sans-jp/400.css";
+@import "@fontsource/noto-sans-jp/500.css";
+@import "@fontsource/noto-sans-jp/700.css";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* Design tokens (docs/10_DESIGN_SYSTEM_JA.md). Components use these via Tailwind colour utilities. */
+:root {
+  --arms-primary: #0076d1;
+  --arms-primary-strong: #005ea8;
+  --arms-primary-soft: #e9f4ff;
+  --arms-navy: #15365d;
+  --arms-bg: #f4f7fb;
+  --arms-surface: #ffffff;
+  --arms-surface-2: #f8fafd;
+  --arms-text: #16324f;
+  --arms-muted: #5b6b80;
+  --arms-border: #dfe7f1;
+  --arms-success: #0b7b61;
+  --arms-success-soft: #e5f6f0;
+  --arms-warning: #9a6700;
+  --arms-warning-soft: #fff4d6;
+  --arms-danger: #c93843;
+  --arms-danger-soft: #fdecee;
+  --arms-neutral-soft: #eef2f7;
+  --arms-focus: #0076d1;
+  color-scheme: light;
+}
+
+.dark {
+  --arms-primary: #62b5ff;
+  --arms-primary-strong: #8cc8ff;
+  --arms-primary-soft: #233e61;
+  --arms-navy: #cfe3ff;
+  --arms-bg: #101d30;
+  --arms-surface: #192a42;
+  --arms-surface-2: #1e324e;
+  --arms-text: #edf4ff;
+  --arms-muted: #a5b4c8;
+  --arms-border: #2b405e;
+  --arms-success: #5fd3b0;
+  --arms-success-soft: #173d3a;
+  --arms-warning: #f2c45a;
+  --arms-warning-soft: #3d3420;
+  --arms-danger: #ff8f97;
+  --arms-danger-soft: #45232b;
+  --arms-neutral-soft: #24395a;
+  --arms-focus: #8cc8ff;
+  color-scheme: dark;
+}
+
+@theme inline {
+  --color-primary: var(--arms-primary);
+  --color-primary-strong: var(--arms-primary-strong);
+  --color-primary-soft: var(--arms-primary-soft);
+  --color-navy: var(--arms-navy);
+  --color-bg: var(--arms-bg);
+  --color-surface: var(--arms-surface);
+  --color-surface-2: var(--arms-surface-2);
+  --color-fg: var(--arms-text);
+  --color-muted: var(--arms-muted);
+  --color-line: var(--arms-border);
+  --color-success: var(--arms-success);
+  --color-success-soft: var(--arms-success-soft);
+  --color-warning: var(--arms-warning);
+  --color-warning-soft: var(--arms-warning-soft);
+  --color-danger: var(--arms-danger);
+  --color-danger-soft: var(--arms-danger-soft);
+  --color-neutral-soft: var(--arms-neutral-soft);
+  --font-sans: "Noto Sans JP", "Hiragino Sans", "Yu Gothic UI", system-ui, sans-serif;
+  --radius-card: 16px;
+  --radius-control: 12px;
+}
+
+html {
+  font-size: 14px;
+}
+
+body {
+  margin: 0;
+  background: var(--arms-bg);
+  color: var(--arms-text);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Visible keyboard focus everywhere (WCAG 2.4.7 / 2.4.11). */
+:focus-visible {
+  outline: 2px solid var(--arms-focus);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}

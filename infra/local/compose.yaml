@@ -28,8 +28,8 @@ services:
       GOTRUE_DB_DRIVER: postgres
       DB_NAMESPACE: auth
       DATABASE_URL: postgres://postgres:arms_dev_pw@postgres:5432/arms?search_path=auth
-      GOTRUE_SITE_URL: http://localhost:5173
-      GOTRUE_URI_ALLOW_LIST: http://localhost:5173/**,arms://**
+      GOTRUE_SITE_URL: http://localhost:5188
+      GOTRUE_URI_ALLOW_LIST: http://localhost:5188/**,arms://**
       GOTRUE_DISABLE_SIGNUP: "true"
       GOTRUE_EXTERNAL_EMAIL_ENABLED: "true"
       GOTRUE_MAILER_AUTOCONFIRM: "false"

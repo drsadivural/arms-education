@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="robots" content="noindex, nofollow" />
+    <meta name="color-scheme" content="light dark" />
+    <link rel="icon" type="image/png" href="/logo.png" />
+    <title>ARMS 新入社員研修システム</title>
+    <script>
+      // Apply the stored theme before first paint to avoid a flash (no secrets are stored client-side).
+      try {
+        var t = localStorage.getItem("arms-theme") || "system";
+        var dark = t === "dark" || (t === "system" && window.matchMedia("(prefers-color-scheme: dark)").matches);
+        if (dark) document.documentElement.classList.add("dark");
+      } catch (e) {}
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <noscript>ARMSを利用するにはJavaScriptを有効にしてください。</noscript>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

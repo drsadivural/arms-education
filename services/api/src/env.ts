@@ -105,7 +105,7 @@ export function loadConfig(env: Bindings): Config {
   const authUrl = (env.SUPABASE_AUTH_URL ?? (supabaseUrl ? `${supabaseUrl}/auth/v1` : "")).replace(/\/$/, "");
   const sessionKey = env.WEB_SESSION_ENCRYPTION_KEY ?? "";
   if (sessionKey && base64Length(sessionKey) !== 32) throw new ConfigError("WEB_SESSION_ENCRYPTION_KEY must be 32 bytes (base64)");
-  const appOrigin = (env.APP_ORIGIN ?? "http://localhost:5173").replace(/\/$/, "");
+  const appOrigin = (env.APP_ORIGIN ?? "http://localhost:5188").replace(/\/$/, "");
   return {
     env: appEnv,
     appOrigin,

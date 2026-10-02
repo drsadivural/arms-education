@@ -53,3 +53,4 @@ apps/ios/ARMS.xcodeproj/
 # Swift Package Manager
 .build/
 .swiftpm/
+.playwright-mcp/
