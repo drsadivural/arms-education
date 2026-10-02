@@ -1,3 +1,5 @@
+import { mkdirSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { defineConfig, devices } from "@playwright/test";
 
 /**
@@ -6,6 +8,9 @@ import { defineConfig, devices } from "@playwright/test";
  */
 const webPort = Number(process.env.ARMS_WEB_PORT ?? 5188);
 const apiPort = Number(process.env.ARMS_API_PORT ?? 8787);
+// wrangler dev refuses to start when the Worker's static-assets directory (this app's build output) is missing, as on
+// a fresh checkout. The E2E tests use the Vite dev server for pages, so an empty directory is enough for the API.
+mkdirSync(fileURLToPath(new URL("./dist", import.meta.url)), { recursive: true });
 
 export default defineConfig({
   testDir: "./e2e",
