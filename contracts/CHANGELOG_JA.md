@@ -38,7 +38,7 @@
 | GET /notifications | 修正 | 汎用フィルタ群を本人通知に必要な cursor・limit・status（all/unread/read）に整理。 |
 | POST /notifications/read-all | 追加 | IOS-15のお知らせ一覧「すべて既読」。 |
 | DELETE /devices/{token_hash} | 追加 | IOS-18ログアウト時に端末のAPNs登録を解除する。端末登録はバージョン管理対象外のため If-Match 不要（冪等）。 |
-| エラーコード ALREADY_RESERVED / ATTENDANCE_NOT_OPEN / SLOT_CANCELLED | 追加 | 同一枠への重複申請（「この授業は既に申請済みです。」）、授業開始30分前より前の出欠記録、取消済み枠の編集・出欠を区別して表示するため。 |
+| エラーコード ALREADY_RESERVED / ATTENDANCE_NOT_OPEN / SLOT_CANCELLED / PROGRAM_NOT_ASSIGNED | 追加 | 同一枠への重複申請（「この授業は既に申請済みです。」）、授業開始30分前より前の出欠記録、取消済み枠の編集・出欠、単元付き授業で教育プログラム未割当の受講者の申請（docs/04「教材プログラム紐付け確認」）を区別して表示するため。 |
 
 ## 40-voice.json（音声）
 | 対象 | 種別 | 理由 |

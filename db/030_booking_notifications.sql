@@ -8,6 +8,8 @@ ALTER TABLE app.outbox
   ADD COLUMN last_error text CHECK (last_error IS NULL OR last_error ~ '^[A-Za-z0-9_.:-]{1,100}$'),
   ADD COLUMN delivered_at timestamptz;
 CREATE INDEX outbox_org_due ON app.outbox (org_id, next_attempt_at) WHERE state IN ('pending', 'processing');
+-- After-commit wake-up looks up the rows a transaction inserted (created_at = transaction timestamp).
+CREATE INDEX outbox_org_created ON app.outbox (org_id, created_at);
 
 -- One row per external delivery attempt target: (notification, channel, target) where target is 'email'
 -- for e-mail and the device token hash for APNs. A 'sent' row is never sent again, so outbox retries
