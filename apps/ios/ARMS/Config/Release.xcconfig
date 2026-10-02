@@ -1,0 +1,5 @@
+#include "Base.xcconfig"
+
+// Production APNs gateway for TestFlight / App Store builds.
+APS_ENVIRONMENT = production
+ARMS_APNS_ENVIRONMENT = production

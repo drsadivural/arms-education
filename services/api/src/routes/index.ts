@@ -13,10 +13,16 @@ import { importsRoutes } from "./imports";
 
 /** Endpoints reachable without credentials. Everything else is authenticated (default deny). */
 const PUBLIC_ENDPOINTS = new Set(["GET /api/v1/health", "POST /api/v1/auth/login", "POST /api/v1/auth/password-reset"]);
+/**
+ * Machine-to-machine callbacks authenticated by their own signature instead of a user session:
+ * the malware scanner's verdict callback (HMAC-SHA256 with the scanner key, ±300 s timestamp window).
+ */
+const PUBLIC_PATTERNS = [/^POST \/api\/v1\/uploads\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\/scan-result$/i];
 
 export function registerRoutes(api: Hono<AppEnv>): void {
   api.use("*", async (c, next) => {
-    if (PUBLIC_ENDPOINTS.has(`${c.req.method} ${c.req.path}`)) return next();
+    const key = `${c.req.method} ${c.req.path}`;
+    if (PUBLIC_ENDPOINTS.has(key) || PUBLIC_PATTERNS.some((re) => re.test(key))) return next();
     return authenticate(c, async () => {
       // Per-user ceiling across the whole API (Workers Rate Limiting binding; absent in tests/local).
       await rateLimit(c, "api", `user:${c.get("actor").userId}`);

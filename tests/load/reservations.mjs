@@ -98,7 +98,9 @@ const roomy = (
   )
 ).rows[0].id;
 
-const tokens = await Promise.all(students.map((s) => token(s.email)));
+// Setup (not measured): obtain tokens in small batches so the local Auth server is not the bottleneck.
+const tokens = [];
+for (let i = 0; i < students.length; i += 10) tokens.push(...(await Promise.all(students.slice(i, i + 10).map((s) => token(s.email)))));
 const teacherToken = await token(teacherEmail);
 const call = (tok, method, path, body, key) =>
   fetch(`${API}${path}`, {
@@ -117,10 +119,29 @@ const active = (await db.query("SELECT count(*)::int AS n FROM app.reservations 
 const reads = await Promise.all(tokens.map((t) => timed(() => call(t, "GET", "/lesson-slots"))));
 // 3) Concurrent reservation mutations with plenty of seats.
 const writes = await Promise.all(tokens.map((t) => timed(() => call(t, "POST", "/reservations", { slot_id: roomy }, crypto.randomUUID()))));
+// 3b) 100 concurrent users with natural spread: each user starts within 2 s and performs 5 reads in sequence.
+const steady = (
+  await Promise.all(
+    tokens.map(async (t) => {
+      await new Promise((r) => setTimeout(r, Math.random() * 2000));
+      const out = [];
+      for (const path of ["/lesson-slots", "/reservations", "/today-lessons", "/notifications", "/me"]) out.push(await timed(() => call(t, "GET", path)));
+      return out;
+    }),
+  )
+).flat();
 // 4) Teacher approvals (sequential decisions on N pending requests, measured individually).
 const pending = (await call(teacherToken, "GET", `/reservations?status=pending&limit=100`)).body?.items ?? [];
 const approvals = [];
 for (const r of pending.slice(0, 30)) approvals.push(await timed(() => call(teacherToken, "POST", `/reservations/${r.id}/approve`, { expected_version: r.row_version }, crypto.randomUUID())));
+
+const histogram = (results) =>
+  results.reduce((acc, r) => {
+    const k = `${r.res.status} ${r.res.body?.code ?? ""}`.trim();
+    acc[k] = (acc[k] ?? 0) + 1;
+    return acc;
+  }, {});
+const maxConnections = (await db.query("SHOW max_connections")).rows[0].max_connections;
 
 const summary = {
   when: new Date().toISOString(),
@@ -128,9 +149,11 @@ const summary = {
   os: `${os.type()} ${os.release()} ${os.cpus().length} vCPU`,
   api: API,
   students: N,
-  last_seat: { requests: N, created, slot_full: full, other: N - created - full, active_reservations_in_db: active, pass: created === 1 && active === 1 },
-  read_lesson_slots_ms: { p50: pct(reads.map((r) => r.ms), 50), p95: pct(reads.map((r) => r.ms), 95), errors: reads.filter((r) => r.res.status !== 200).length },
-  create_reservation_ms: { p50: pct(writes.map((r) => r.ms), 50), p95: pct(writes.map((r) => r.ms), 95), created: writes.filter((r) => r.res.status === 201).length },
+  postgres_max_connections: Number(maxConnections),
+  last_seat: { requests: N, created, slot_full: full, other: N - created - full, responses: histogram(lastSeatResults), active_reservations_in_db: active, pass: created === 1 && active === 1 },
+  burst_read_lesson_slots_ms: { p50: pct(reads.map((r) => r.ms), 50), p95: pct(reads.map((r) => r.ms), 95), errors: reads.filter((r) => r.res.status !== 200).length, responses: histogram(reads) },
+  steady_reads_ms: { requests: steady.length, p50: pct(steady.map((r) => r.ms), 50), p95: pct(steady.map((r) => r.ms), 95), responses: histogram(steady) },
+  burst_create_reservation_ms: { p50: pct(writes.map((r) => r.ms), 50), p95: pct(writes.map((r) => r.ms), 95), created: writes.filter((r) => r.res.status === 201).length, responses: histogram(writes) },
   approve_ms: approvals.length ? { p50: pct(approvals.map((r) => r.ms), 50), p95: pct(approvals.map((r) => r.ms), 95), ok: approvals.filter((r) => r.res.status === 200).length } : null,
   note: "Local single-host run (wrangler dev/workerd + local PostgreSQL); not a substitute for a same-region staging measurement.",
 };

@@ -26,12 +26,13 @@
     "BOOKING_PENDING_TTL_SECONDS": "86400",
     "BOOKING_CANCEL_BEFORE_SECONDS": "86400"
   },
-  // Local development: wrangler dev connects through this string (runtime role, RLS enforced).
+  // Local development: wrangler dev connects through the transaction-mode PgBouncer (infra/local, port 55434) as the
+  // runtime role (RLS enforced), mirroring Hyperdrive pooling.
   "hyperdrive": [
     {
       "binding": "HYPERDRIVE",
       "id": "00000000000000000000000000000000",
-      "localConnectionString": "postgres://arms_app:arms_app_dev_pw@127.0.0.1:55433/arms"
+      "localConnectionString": "postgres://arms_app:arms_app_dev_pw@127.0.0.1:55434/arms"
     }
   ],
   "r2_buckets": [{ "binding": "R2_MATERIALS", "bucket_name": "arms-materials-dev" }],
