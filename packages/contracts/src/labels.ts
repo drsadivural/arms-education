@@ -125,6 +125,7 @@ export const ADMIN_EVENT_LABELS = {
   "classroom.updated": "クラスの変更",
   "classroom.archived": "クラスのアーカイブ",
   "settings.updated": "設定の変更",
+  "user.invited": "管理者の招待",
   "invitation.sent": "招待メール送信",
   "invitation.failed": "招待メール送信失敗",
   "user.disabled": "アカウント停止",

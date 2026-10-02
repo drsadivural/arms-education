@@ -121,6 +121,19 @@ describe("POST /classrooms", () => {
     expectContract(dup, "post", "/classrooms");
   });
 
+  it("a teacher archived concurrently never ends up as primary teacher of an open classroom", async () => {
+    for (let i = 0; i < 5; i++) {
+      const t = await createTeacher(ctx.admin, org.orgId);
+      const [archived, created] = await Promise.all([
+        call(ctx, admin, "DELETE", `/teachers/${t.userId}`, { ifMatch: 1 }),
+        call(ctx, admin, "POST", "/classrooms", { body: classroomBody(t.userId) }),
+      ]);
+      expect([archived.status, created.status]).not.toEqual([200, 200]);
+      if (archived.status !== 200) expect(archived.body.code).toBe("TEACHER_IS_PRIMARY");
+      if (created.status !== 200) expect(created.body.field_errors.primary_teacher_id).toBe("停止中の講師は選択できません。");
+    }
+  });
+
   it("refuses draft program versions, unknown/inactive teachers and invalid input", async () => {
     const draft = await createProgramVersion(ctx.admin, org.orgId, { state: "draft" });
     const res = await call(ctx, admin, "POST", "/classrooms", { body: classroomBody(org.teacher.userId, { program_version_ids: [draft.versionId] }) });
@@ -203,6 +216,22 @@ describe("PATCH /classrooms/{id}", () => {
     expect(res.status).toBe(409);
     expect(res.body.code).toBe("CAPACITY_BELOW_ENROLLMENT");
     expect(res.body.message_ja).toBe("在籍人数より少ない定員には変更できません。");
+  });
+
+  it("validates the body with Japanese field errors and refuses unknown/inactive new teachers", async () => {
+    const c = await fresh(org.teacher.userId);
+    const res = await call(ctx, admin, "PATCH", `/classrooms/${c.id}`, { body: { name: "", capacity: "多い", starts_on: "2026/10/01", ends_on: c.ends_on }, ifMatch: c.row_version });
+    expect(res.status).toBe(422);
+    expectContract(res, "patch", "/classrooms/{id}");
+    expect(res.body.field_errors).toMatchObject({ name: "必須項目です。", capacity: "数値を入力してください。", primary_teacher_id: "必須項目です。" });
+    expect(res.body.field_errors.starts_on).toContain("日付");
+    const inactive = await createTeacher(ctx.admin, org.orgId, { active: false });
+    const t = await call(ctx, admin, "PATCH", `/classrooms/${c.id}`, {
+      body: { name: c.name, capacity: c.capacity, starts_on: c.starts_on, ends_on: c.ends_on, primary_teacher_id: org.teacher.userId, assistant_teacher_ids: [inactive.userId] },
+      ifMatch: c.row_version,
+    });
+    expect(t.status).toBe(422);
+    expect(t.body.field_errors.assistant_teacher_ids).toBe("停止中の講師は選択できません。");
   });
 
   it("teachers cannot edit; foreign classrooms are 404", async () => {

@@ -54,13 +54,18 @@ function normalize(input: ClassroomInputT): Normalized {
   };
 }
 
-/** Newly assigned teachers must be active teachers of the organisation (already assigned ones may stay). */
+/**
+ * The primary teacher and newly assigned assistants must be active teachers of the organisation; assistants that
+ * are already assigned may stay even if they were stopped meanwhile (their history references the pair).
+ */
 async function assertTeachersSelectable(tx: Tx, orgId: string, input: Normalized, alreadyAssigned: Set<string>): Promise<void> {
-  const wanted = [input.primary_teacher_id, ...input.assistant_teacher_ids].filter((t) => !alreadyAssigned.has(t));
+  const wanted = [input.primary_teacher_id, ...input.assistant_teacher_ids.filter((t) => !alreadyAssigned.has(t))];
   if (wanted.length === 0) return;
+  // FOR SHARE serialises with a concurrent teacher archive (which locks the membership FOR NO KEY UPDATE and then checks
+  // primary classrooms), so a stopped teacher can never become a primary teacher.
   const rows = await tx.query<{ id: string; active: boolean }>(sql`
     SELECT tp.id, m.active FROM app.teacher_profiles tp JOIN app.memberships m ON m.org_id = tp.org_id AND m.id = tp.id
-    WHERE tp.org_id = ${orgId} AND tp.id = ANY(${wanted}::uuid[])`);
+    WHERE tp.org_id = ${orgId} AND tp.id = ANY(${wanted}::uuid[]) ORDER BY tp.id FOR SHARE OF m`);
   const found = new Map(rows.map((r) => [r.id, r.active]));
   const field_errors: Record<string, string> = {};
   for (const t of wanted) {
@@ -192,7 +197,7 @@ interface ClassroomState {
 async function lockClassroom(tx: Tx, orgId: string, id: string): Promise<ClassroomState> {
   const row = await tx.maybeOne<ClassroomState>(sql`
     SELECT name, capacity, to_char(starts_on, 'YYYY-MM-DD') AS starts_on, to_char(ends_on, 'YYYY-MM-DD') AS ends_on, archived, row_version
-    FROM app.classrooms WHERE org_id = ${orgId} AND id = ${id} FOR UPDATE`);
+    FROM app.classrooms WHERE org_id = ${orgId} AND id = ${id} FOR NO KEY UPDATE`);
   if (!row) fail("NOT_FOUND");
   return row;
 }

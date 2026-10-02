@@ -123,7 +123,7 @@ async function lockTeacher(tx: Tx, orgId: string, id: string): Promise<TeacherSt
     JOIN app.memberships m ON m.org_id = tp.org_id AND m.id = tp.id
     JOIN app.users u ON u.id = tp.id
     WHERE tp.org_id = ${orgId} AND tp.id = ${id}
-    FOR UPDATE OF tp`);
+    FOR NO KEY UPDATE OF tp`);
   if (!row) fail("NOT_FOUND");
   return row;
 }

@@ -267,6 +267,16 @@ describe("PATCH /students/{id}", () => {
     expect(res.body.code).toBe("CLASSROOM_FULL");
   });
 
+  it("validates the body with Japanese field errors", async () => {
+    const res = await call(ctx, admin, "PATCH", `/students/${org.student.userId}`, {
+      body: { ...studentBody(org.classroomId, org.teacher.userId), employee_number: "", department_name: "", classroom_id: "x" },
+      ifMatch: 1,
+    });
+    expect(res.status).toBe(422);
+    expectContract(res, "patch", "/students/{id}");
+    expect(res.body.field_errors).toMatchObject({ employee_number: "必須項目です。", department_name: "必須項目です。", classroom_id: "選択肢から選んでください。" });
+  });
+
   it("teachers cannot edit; other organisations are 404", async () => {
     expect((await call(ctx, teacher, "PATCH", `/students/${org.student.userId}`, { body: studentBody(org.classroomId, org.teacher.userId), ifMatch: 1 })).status).toBe(403);
     const foreign = await call(ctx, admin, "PATCH", `/students/${other.student.userId}`, { body: studentBody(other.classroomId, other.teacher.userId), ifMatch: 1 });

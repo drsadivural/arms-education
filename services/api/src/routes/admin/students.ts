@@ -70,16 +70,17 @@ async function assertClassroomTeacher(tx: Tx, orgId: string, classroomId: string
  * The DB trigger remains the authoritative guarantee.
  */
 async function assertSeatAvailable(tx: Tx, orgId: string, classroomId: string, exceptJobId: string | null): Promise<void> {
-  const row = await tx.one<{ capacity: number; used: number; in_flight: number }>(sql`
-    WITH c AS (SELECT capacity FROM app.classrooms WHERE org_id = ${orgId} AND id = ${classroomId} FOR UPDATE)
-    SELECT c.capacity,
+  // The lock must be its own statement: under READ COMMITTED the counts below then use a snapshot taken after the
+  // lock was granted, so they include jobs/students committed by the request that held the lock before us.
+  const classroom = await tx.one<{ capacity: number }>(sql`SELECT capacity FROM app.classrooms WHERE org_id = ${orgId} AND id = ${classroomId} FOR NO KEY UPDATE`);
+  const row = await tx.one<{ used: number; in_flight: number }>(sql`
+    SELECT
       (SELECT count(*)::int FROM app.student_profiles WHERE org_id = ${orgId} AND classroom_id = ${classroomId} AND active) AS used,
       (SELECT count(*)::int FROM app.invitation_jobs j
         WHERE j.org_id = ${orgId} AND j.role = 'student' AND j.state IN ('pending', 'auth_created')
           AND j.locked_until > now() AND j.profile_payload->>'classroom_id' = ${classroomId}
-          AND (j.profile_payload->>'active')::boolean AND j.id IS DISTINCT FROM ${exceptJobId}::uuid) AS in_flight
-    FROM c`);
-  if (row.used + row.in_flight >= row.capacity) fail("CLASSROOM_FULL");
+          AND (j.profile_payload->>'active')::boolean AND j.id IS DISTINCT FROM ${exceptJobId}::uuid) AS in_flight`);
+  if (row.used + row.in_flight >= classroom.capacity) fail("CLASSROOM_FULL");
 }
 
 studentRoutes.get("/students", requireRole("admin", "teacher"), async (c) => {
@@ -167,7 +168,7 @@ async function lockStudent(tx: Tx, orgId: string, id: string): Promise<StudentSt
     JOIN app.memberships m ON m.org_id = sp.org_id AND m.id = sp.id
     JOIN app.users u ON u.id = sp.id
     WHERE sp.org_id = ${orgId} AND sp.id = ${id}
-    FOR UPDATE OF sp`);
+    FOR NO KEY UPDATE OF sp`);
   if (!row) fail("NOT_FOUND");
   return row;
 }

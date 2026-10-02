@@ -21,6 +21,20 @@
 ## 10-admin.json（講師・新入社員・クラス・設定・ユーザー・ログ・ダッシュボード）
 | 対象 | 種別 | 理由 |
 |---|---|---|
+| POST /teachers, POST /students | 修正 | 原本の応答は一覧（TeacherPage/StudentPage）で誤り。作成した1件と招待結果を返す `{data, invitation: InviteResult, checked_at}`（TeacherCreateResponse / StudentCreateResponse）に変更。招待はAuth provider作成→DBプロフィール→招待メールのsaga（invitation_jobs）。同じIdempotency-Keyの再送は同じジョブを再開し、Authユーザーを二重作成しない。メール送信失敗時もプロフィールは作成済みで invitation.state=failed（送信失敗・再送可能）。 |
+| Teacher | 修正 | 編集画面の初期値に必要な kana・availability、担当クラス名表示用の classrooms（id/name/is_primary）、招待状態 invitation_state を追加。classroom_ids は未アーカイブの担当クラス。student_count は担当講師として割り当てられた在籍中受講者数（SQL集計）。 |
+| TeacherInput | 修正 | availability を任意のオブジェクトから「稼働曜日 weekdays（0=日〜6=土）・start_time・end_time（HH:MM）」に限定（WEB-04 稼働時間）。各文字列に最大長を明記。email は登録後変更不可（Auth providerのログインIDのため。変更要求は422）。 |
+| Student | 修正 | 一覧表示用の classroom_name・teacher_name、招待状態 invitation_state を追加。progress_percent は app.enrollment_progress の受講者内平均（四捨五入、enrollmentなしはnull）。active は在籍状態（定員集計対象）。 |
+| Classroom | 修正 | 一覧・詳細表示用の primary_teacher_name、programs（版のid/program_id/name/version_number）、average_progress_percent を追加。student_count は毎回DB集計。 |
+| SettingsInput | 修正 | require_admin_mfa・default_theme・departments（部署リスト）・business_hours（営業時間: weekdays/start_time/end_time）を追加し、各数値の上限を明記。省略項目は変更しない。予約設定の変更は新規の授業枠・申請にのみ適用し既存予約は変更しない。 |
+| Settings（新規）, SettingsResponse | 追加/修正 | 原本の応答dataはSettingsInput（任意項目）だったため、既定値を解決した全項目＋timezone（読み取り専用）を返す Settings に変更。row_version は organizations.row_version（If-Match用、ETagにも設定）。 |
+| GET /dashboard | 修正 | WEB-02「部署・クラス絞込み」のため department / classroom_id クエリを追加。講師は担当範囲（担当受講者・自分の授業枠）のみ。progress_trend の算出式は services/api/src/routes/admin/dashboard.ts に記載（各月末時点で完了済みの必須単元重み÷必須単元重み×100を受講者ごと→受講者間で平均、四捨五入）。 |
+| GET /events, AuditEvent | 修正 | 検索条件を event_type（前方一致）・actor_id・entity_id・from/to（JSTの日付）・q（種別/操作者名）に整理。AuditEvent に actor_id を追加し、システム処理・対象なしのイベントがあるため actor_id / entity_id を null 許容に変更。details は秘密情報キー（token/secret/password/meeting_url/answer_key/transcript等）を除去。 |
+| GET /events/deliveries, POST /events/deliveries/{id}/retry, Delivery, DeliveryPage | 追加 | WEB-19「通知失敗/再送」。outboxの配信状況（読み取り専用）と、failedの配信を送信待ちに戻す手動再送（監査記録）。配信処理そのものは通知モジュールの責務。 |
+| GET /settings/users | 修正 | クエリを q（氏名・メール）・role・status（active/inactive/invite_failed）に整理。 |
+| POST /settings/users/invite | 修正 | 管理者アカウントのみ招待する。講師・受講者はプロフィール（講師番号／社員番号・クラス・担当講師）が必須のため講師管理・新入社員管理から登録（role=teacher/studentは422で案内）。 |
+| POST /settings/users/{id}/enable | 追加 | WEB-18 停止の取り消し（membership有効化＋Auth providerのログイン停止解除）。停止と対称のため追加。 |
+| GET /settings/account-deletion-requests, POST /settings/account-deletion-requests/{id}/complete, AccountDeletionRequest(Page) | 追加 | WEB-18「本人削除申請」。POST /me/account-deletion の申請一覧と対応完了（アカウント停止・監査記録。研修記録は保持）。 |
 
 ## 20-learning.json（プログラム・教材・進捗・出力）
 | 対象 | 種別 | 理由 |

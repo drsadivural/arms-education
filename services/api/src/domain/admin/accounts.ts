@@ -26,9 +26,9 @@ export async function lockMembership(tx: Tx, orgId: string, userId: string): Pro
   const peek = await tx.maybeOne<MembershipTarget>(sql`SELECT id, role, active FROM app.memberships WHERE org_id = ${orgId} AND id = ${userId}`);
   if (!peek) fail("NOT_FOUND");
   if (peek.role === "admin") {
-    await tx.query(sql`SELECT id FROM app.memberships WHERE org_id = ${orgId} AND role = 'admin' AND (active OR id = ${userId}) ORDER BY id FOR UPDATE`);
+    await tx.query(sql`SELECT id FROM app.memberships WHERE org_id = ${orgId} AND role = 'admin' AND (active OR id = ${userId}) ORDER BY id FOR NO KEY UPDATE`);
   } else {
-    await tx.query(sql`SELECT id FROM app.memberships WHERE org_id = ${orgId} AND id = ${userId} FOR UPDATE`);
+    await tx.query(sql`SELECT id FROM app.memberships WHERE org_id = ${orgId} AND id = ${userId} FOR NO KEY UPDATE`);
   }
   return tx.one<MembershipTarget>(sql`SELECT id, role, active FROM app.memberships WHERE org_id = ${orgId} AND id = ${userId}`);
 }

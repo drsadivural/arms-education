@@ -25,7 +25,7 @@ async function loadOrg(tx: Tx, orgId: string, forUpdate = false): Promise<OrgRow
   // organizations is outside tenant RLS: always restrict to the actor's organisation explicitly.
   return tx.one<OrgRow>(
     forUpdate
-      ? sql`SELECT name, timezone, settings, row_version FROM app.organizations WHERE id = ${orgId} FOR UPDATE`
+      ? sql`SELECT name, timezone, settings, row_version FROM app.organizations WHERE id = ${orgId} FOR NO KEY UPDATE`
       : sql`SELECT name, timezone, settings, row_version FROM app.organizations WHERE id = ${orgId}`,
   );
 }
