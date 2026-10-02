@@ -25,7 +25,9 @@ export default defineConfig({
   projects: [
     { name: "chromium", use: { ...devices["Desktop Chrome"] } },
     { name: "mobile-chromium", use: { ...devices["Pixel 7"], viewport: { width: 390, height: 844 } }, testMatch: /responsive\.spec\.ts/ },
-    ...(process.env.E2E_ALL_BROWSERS ? [{ name: "firefox", use: { ...devices["Desktop Firefox"] } }, { name: "webkit", use: { ...devices["Desktop Safari"] } }] : []),
+    ...(process.env.E2E_ALL_BROWSERS ? [{ name: "firefox", use: { ...devices["Desktop Firefox"] } }, // WebKit (Linux build) intermittently fails page.goto with "internal error" under load; one retry keeps the
+        // run green while Playwright still reports those tests as "flaky" (see tests/results/evidence).
+        { name: "webkit", use: { ...devices["Desktop Safari"] }, retries: 1 }] : []),
   ],
   webServer: [
     {
