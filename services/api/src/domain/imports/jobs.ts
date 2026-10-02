@@ -42,7 +42,7 @@ async function itemCounts(tx: Tx, orgId: string, jobIds: string[]): Promise<Map<
       count(*) FILTER (WHERE action = 'skip')::int AS skip,
       count(*) FILTER (WHERE action = 'error')::int AS error,
       count(*) FILTER (WHERE jsonb_array_length(warnings) > 0)::int AS warning,
-      count(*) FILTER (WHERE commit_state IN ('applied', 'pending_activation'))::int AS applied,
+      count(*) FILTER (WHERE commit_state = 'applied')::int AS applied,
       count(*) FILTER (WHERE commit_state = 'conflict')::int AS conflict,
       count(*) FILTER (WHERE rollback_state = 'reverted')::int AS reverted,
       count(*) FILTER (WHERE rollback_state = 'manual')::int AS manual
@@ -59,7 +59,7 @@ async function invitationCounts(tx: Tx, orgId: string, jobId: string): Promise<{
       SELECT (SELECT ij.state FROM app.invitation_jobs ij WHERE ij.org_id = i.org_id AND ij.auth_user_id = i.entity_id
               ORDER BY ij.created_at DESC, ij.id DESC LIMIT 1) AS s
       FROM app.import_items i
-      WHERE i.org_id = ${orgId} AND i.job_id = ${jobId} AND i.action = 'create' AND i.commit_state IN ('applied', 'pending_activation')
+      WHERE i.org_id = ${orgId} AND i.job_id = ${jobId} AND i.action = 'create' AND i.commit_state = 'applied'
         AND i.rollback_state IS NULL) x`);
   return row;
 }
@@ -154,6 +154,7 @@ export function toJobDto(
     validated_at: iso(job.validated_at),
     committed_at: iso(job.committed_at),
     rolled_back_at: iso(job.rolled_back_at),
+    rollback_started: job.rollback_key !== null,
     row_version: job.row_version,
   };
 }

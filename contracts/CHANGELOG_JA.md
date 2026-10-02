@@ -89,3 +89,22 @@
 ## 50-imports.json（データ移植）
 | 対象 | 種別 | 理由 |
 |---|---|---|
+| POST /imports | 修正 | 説明のみ。upload_id は本人の purpose=import で state=clean（ファイル検査済み）のアップロードに限定。未完了・検査中は409 IMPORT_UPLOAD_NOT_READY（検査サービス未設定時は details.scanner_configured=false と設定が必要な旨）、検出・内容不一致は409 IMPORT_UPLOAD_REJECTED、期限切れは409 UPLOAD_EXPIRED。生ファイルはアップロードのキーで非公開保持しURLを返さない。 |
+| ImportMapping | 修正 | columns を {CSVの見出し → 取り込み先項目}（1〜100列）と明記。取り込み先項目・必須・空欄の意味は entity ごとに `IMPORT_FIELDS`（packages/contracts labels.ts）で定義し、未知の項目・重複・必須未対応は422 IMPORT_MAPPING_INVALID（field_errors は `mapping.<項目>`）。 |
+| GET /imports | 追加 | WEB-17 のジョブ履歴（新しい順、entity 絞込み、カーソルページング）。 |
+| GET /imports/{id} | 修正 | 集計（新規・更新・変更なし・エラー・警告・空行）、列ごとの対応と空欄の意味・空欄数・エラー数（docs/08「空値/NULLの意味をmapping画面で表示」）、文字コード判定、確定・取り消し結果、招待メール送信状況、失敗したバッチの行範囲を返す。行エラーは errors_cursor / errors_limit でページング。 |
+| PATCH /imports/{id} | 追加 | 「項目の対応を修正」（If-Match）。確定前のジョブのみ。ドライラン結果を破棄して uploaded に戻す。ファイルは変更不可。 |
+| POST /imports/{id}/validate | 修正 | 説明のみ。ファイルを ObjectStorage から読み、UTF-8 / BOM / CP932 を判定（指定との食い違いは422 IMPORT_ENCODING_MISMATCH）、RFC 4180 で解析（10MB・10,000行）。全行の計画と日本語行エラーを import_items に保存（再実行で置換）。業務データは変更しない。 |
+| POST /imports/{id}/commit | 修正 | 本文 ImportCommitInput（backup_confirmed=true 必須、send_invitations 任意）を追加。エラー行が1件でもあれば409 IMPORT_HAS_ERRORS（エラー行だけ除外して確定する指定は設けない：元データの修正後にドライランをやり直す）。200行ずつのtransactionで反映し再送で続きから再開、ドライラン後に変更された行は上書きせず conflict。講師・新入社員は管理者招待saga経由で作成し、招待メールは send_invitations=true のときだけ送信。 |
+| POST /imports/{id}/rollback | 修正 | 説明のみ。committed_version と現在の row_version を比較し、移行後に編集された行は manual（手動照合が必要）。作成した進捗・クラスは削除、更新は元に戻す。講師・新入社員のアカウントは削除せず停止。 |
+| GET /imports/{id}/items | 追加 | ドライランの計画値・更新前の値・変更項目・エラー/警告と確定/取り消し結果の行一覧（status 絞込み、カーソルページング）。 |
+| GET /imports/{id}/errors.csv | 追加 | 結果明細CSV（エラー・警告・確定時の競合・手動照合）。UTF-8 BOM付き、全セル引用、= + - @ TAB CR 始まりのセルは ' を前置（CSV formula injection 対策）。 |
+| ImportJob | 修正 | 原本の id/state/total_rows/valid_rows/error_rows/errors/row_version に、entity・source_system・encoding・detected_encoding・encoding_mismatch・upload_id・filename・mapping・headers・columns・各件数・options・invitations・failure・errors_next_cursor・作成者・各日時・rollback_started を追加。errors の各要素に label_ja・header を追加。 |
+| ImportColumn, ImportItem, ImportItemPage, ImportCommitInput | 追加 | 上記の列対応、行一覧、確定入力のDTO。 |
+| エラーコード IMPORT_UPLOAD_NOT_READY / IMPORT_UPLOAD_REJECTED / IMPORT_FILE_MISSING / IMPORT_ENCODING_MISMATCH / IMPORT_ENCODING_UNSUPPORTED / IMPORT_CSV_INVALID / IMPORT_TOO_MANY_ROWS / IMPORT_EMPTY / IMPORT_MAPPING_INVALID / IMPORT_HAS_ERRORS / IMPORT_IN_PROGRESS | 追加 | ファイルの検査状態、文字コード、CSV構文、上限、対応付け、確定条件、処理中の競合を日本語で区別して表示するため。 |
+
+移植の動作仕様（API実装 services/api/src/domain/imports）:
+- 照合：講師は講師番号、新入社員は社員番号、教育進捗は（移行元システム名, source_record_id）、クラスはクラスの移行で記録したクラス番号（app.import_classroom_keys）。氏名だけでは照合せず、同姓同名は警告のうえ別人として登録。既存アカウントのメールアドレスとは自動で結合しない（エラー）。参照先（講師・クラス・社員）は登録済みであること（講師→クラス→新入社員→教育進捗の順に移行）。
+- 日付は YYYY-MM-DD・YYYY/M/D・2019年8月31日（曜日付きは曜日も照合）を厳密に解釈し、元の年をそのまま保持（2019年を置換しない）。存在しない日付はエラー。学習完了状態が空欄・未対応なら「未確認」で移行し完了とは推定しない。
+- 再移行：変更のない行は「変更なし」、差分は「更新」（前回の移行後にARMSで編集されていれば警告）。登録済みの人のメール・有効状態・クラス/担当講師は移行では変更しない（エラーで案内）。
+- 取り消し（講師・新入社員）：アカウントはログイン済みの可能性があるため削除しない。移行で作成したアカウントは停止（membership無効化・Webセッション失効・認証サービスのログイン停止、受講者は在籍終了）。予約・主担当クラス・今後の授業枠があり停止できない場合は「手動照合が必要」。パスワードは移行しない。

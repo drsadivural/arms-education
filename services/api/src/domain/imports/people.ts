@@ -3,14 +3,13 @@
  * (domain/admin/invitations.ts → app.invitation_jobs): Auth provider user → DB user + membership + profile
  * (one transaction) → invitation e-mail. External calls run outside DB transactions; every step is resumable.
  *
- * The saga reads the Idempotency-Key and route from the request, so each imported row runs it under its own
- * deterministic key (derived from job id + row number): a retried commit resumes the same invitation job and never
- * creates a second provider user.
+ * Each imported row runs the saga under its own deterministic Idempotency-Key (derived from job id + row number)
+ * and route, so a retried commit resumes the same invitation job and never creates a second provider user. The
+ * import item is marked applied inside the saga's profile transaction.
  *
- * Invitations are sent only when the admin ticked 「招待メールを送信」. Otherwise the account is created with an
- * inactive membership — the saga does not invite inactive accounts — and activated right afterwards
- * (item state `pending_activation` → `applied`); the invitation job stays at 「招待メール送信待ち」 (profile_created)
- * and is sent later from 講師管理 / ユーザー管理 (resend). Passwords are never imported.
+ * Invitations are sent only when the admin ticked 「招待メールを送信」 (saga option `send`). Otherwise the invitation
+ * job stays at 「招待メール送信待ち」 (profile_created) and is sent later from 講師管理 / ユーザー管理 (resend).
+ * Passwords are never imported.
  */
 import type { AppContext } from "../../context";
 import type { Tx } from "../../db/client";
@@ -35,8 +34,6 @@ interface Base {
   department_name: string;
   /** Planned membership/profile state from the file. */
   active: boolean;
-  /** Create the membership inactive and activate it after the saga (no invitation e-mail). */
-  activate_after_profile: boolean;
 }
 export interface TeacherPayload extends Base {
   teacher_number: string;
@@ -58,37 +55,23 @@ export async function rowInvitationKey(jobId: string, row: number): Promise<stri
   return `${h.slice(0, 8)}-${h.slice(8, 12)}-5${h.slice(13, 16)}-${variant}${h.slice(17, 20)}-${h.slice(20, 32)}`;
 }
 
-/**
- * Request view for the saga: same actor, database handle and dependencies, but the row's own Idempotency-Key and
- * a per-row route (used in the saga's request hash).
- */
-function rowContext(c: AppContext, key: string, path: string): AppContext {
-  const req = {
-    header: (name: string) => (name.toLowerCase() === "idempotency-key" ? key : c.req.header(name)),
-    method: "POST",
-    path,
-  };
-  return { get: c.get, var: c.var, env: c.env, req } as unknown as AppContext;
-}
-
 async function assertEmailFree(tx: Tx, email: string): Promise<void> {
   if (await tx.maybeOne(sql`SELECT 1 FROM app.users WHERE lower(email) = lower(${email})`)) {
     fail("EMAIL_TAKEN", { message_ja: "ドライランの後にこのメールアドレスが別のアカウントで登録されたため、登録していません。" });
   }
 }
 
-async function markItem(tx: Tx, orgId: string, jobId: string, row: number, userId: string, version: number, pending: boolean): Promise<void> {
+/** Marks the import item applied in the saga's profile transaction (rollback compares committed_version). */
+async function markItem(tx: Tx, orgId: string, jobId: string, row: number, userId: string, version: number): Promise<void> {
   await tx.exec(sql`
-    UPDATE app.import_items SET entity_id = ${userId}, committed_version = ${version}, committed_at = now(),
-      commit_state = ${pending ? "pending_activation" : "applied"}, commit_message = NULL
+    UPDATE app.import_items SET entity_id = ${userId}, committed_version = ${version}, committed_at = now(), commit_state = 'applied', commit_message = NULL
     WHERE org_id = ${orgId} AND job_id = ${jobId} AND row_number = ${row}`);
 }
 
 async function insertAccount(tx: Tx, orgId: string, role: "teacher" | "student", p: Base, userId: string): Promise<void> {
-  const membershipActive = p.active && !p.activate_after_profile;
   await tx.exec(sql`INSERT INTO app.users(id, display_name, email) VALUES (${userId}, ${p.display_name}, ${p.email})`);
   await tx.exec(sql`INSERT INTO app.memberships(org_id, id, role, active, disabled_at)
-    VALUES (${orgId}, ${userId}, ${role}, ${membershipActive}, CASE WHEN ${p.active}::boolean THEN NULL ELSE now() END)`);
+    VALUES (${orgId}, ${userId}, ${role}, ${p.active}, CASE WHEN ${p.active}::boolean THEN NULL ELSE now() END)`);
 }
 
 function teacherSpec(c: AppContext, p: TeacherPayload): InvitationSpec {
@@ -117,7 +100,7 @@ function teacherSpec(c: AppContext, p: TeacherPayload): InvitationSpec {
         import_job_id: s.import_job_id,
         row: s.row,
       });
-      await markItem(tx, actor.orgId, s.import_job_id, s.row, userId, profile.row_version, s.active && s.activate_after_profile);
+      await markItem(tx, actor.orgId, s.import_job_id, s.row, userId, profile.row_version);
     },
   };
 }
@@ -177,12 +160,12 @@ function studentSpec(c: AppContext, p: StudentPayload): InvitationSpec {
         import_job_id: s.import_job_id,
         row: s.row,
       });
-      await markItem(tx, actor.orgId, s.import_job_id, s.row, userId, profile.row_version, s.active && s.activate_after_profile);
+      await markItem(tx, actor.orgId, s.import_job_id, s.row, userId, profile.row_version);
     },
   };
 }
 
-function payloadOf(entity: "teachers" | "students", jobId: string, item: PeopleRow, sendInvitations: boolean): TeacherPayload | StudentPayload {
+function payloadOf(entity: "teachers" | "students", jobId: string, item: PeopleRow): TeacherPayload | StudentPayload {
   const a = item.after;
   const str = (k: string) => String(a[k] ?? "");
   const base: Base = {
@@ -194,7 +177,6 @@ function payloadOf(entity: "teachers" | "students", jobId: string, item: PeopleR
     email: str("email"),
     department_name: str("department_name"),
     active: a.active !== false,
-    activate_after_profile: !sendInvitations,
   };
   if (entity === "teachers") return { ...base, teacher_number: str("teacher_number") };
   return {
@@ -220,18 +202,12 @@ export async function createImportedAccount(
   item: PeopleRow,
   sendInvitations: boolean,
 ): Promise<{ userId: string }> {
-  const payload = payloadOf(entity, jobId, item, sendInvitations);
-  const key = await rowInvitationKey(jobId, item.row);
-  const ctx = rowContext(c, key, `/api/v1/imports/${jobId}/rows/${item.row}`);
+  const payload = payloadOf(entity, jobId, item);
   const spec = entity === "teachers" ? teacherSpec(c, payload as TeacherPayload) : studentSpec(c, payload as StudentPayload);
-  const outcome = await runInvitation(ctx, spec);
+  const outcome = await runInvitation(c, spec, {
+    idempotencyKey: await rowInvitationKey(jobId, item.row),
+    route: `POST /api/v1/imports/${jobId}/rows/${item.row}`,
+    send: sendInvitations,
+  });
   return { userId: outcome.userId };
-}
-
-/** Second half of the no-invitation path: activates the membership created inactive by the saga. */
-export async function activateImportedAccount(tx: Tx, orgId: string, jobId: string, row: number, userId: string): Promise<void> {
-  await tx.exec(sql`UPDATE app.memberships SET active = true, disabled_at = NULL, row_version = row_version + 1
-    WHERE org_id = ${orgId} AND id = ${userId} AND NOT active`);
-  await tx.exec(sql`UPDATE app.import_items SET commit_state = 'applied'
-    WHERE org_id = ${orgId} AND job_id = ${jobId} AND row_number = ${row} AND commit_state = 'pending_activation'`);
 }

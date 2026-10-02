@@ -17,7 +17,6 @@ export interface ApplyItem {
   entity_id: string | null;
   before_data: Record<string, unknown> | null;
   after_data: Record<string, unknown>;
-  commit_state: "pending_activation" | null;
 }
 
 export interface ItemResult {
@@ -104,9 +103,9 @@ export async function applyProgress(ctx: ApplyContext, items: ApplyItem[]): Prom
     const rows = creates.map((i) => ({ source_record_id: i.after_data.source_record_id, ...pick(i.after_data) }));
     const inserted = await tx.query<{ id: string; source_record_id: string; row_version: number }>(sql`
       INSERT INTO app.progress_records(org_id, student_id, teacher_id, department_name, teacher_name_snapshot, due_date, content, notes,
-        source_system, source_record_id, state)
+        source_system, source_record_id, state, created_by)
       SELECT ${actor.orgId}, x.student_id, x.teacher_id, x.department_name, x.teacher_name_snapshot, x.due_date, x.content, x.notes,
-        ${ctx.sourceSystem}, x.source_record_id, x.state
+        ${ctx.sourceSystem}, x.source_record_id, x.state, ${actor.userId}::uuid
       FROM jsonb_to_recordset(${json(rows)}::jsonb) AS x(student_id uuid, teacher_id uuid, department_name text, teacher_name_snapshot text,
         due_date date, content text, notes text, source_record_id text, state text)
       ON CONFLICT (org_id, source_system, source_record_id) DO NOTHING
@@ -137,7 +136,7 @@ export async function applyProgress(ctx: ApplyContext, items: ApplyItem[]): Prom
     const updated = await tx.query<{ id: string; row_version: number }>(sql`
       UPDATE app.progress_records p SET student_id = x.student_id, teacher_id = x.teacher_id, department_name = x.department_name,
         teacher_name_snapshot = x.teacher_name_snapshot, due_date = x.due_date, content = x.content, notes = x.notes, state = x.state,
-        row_version = p.row_version + 1
+        row_version = p.row_version + 1, updated_at = now()
       FROM jsonb_to_recordset(${json(rows)}::jsonb) AS x(id uuid, expected int, student_id uuid, teacher_id uuid, department_name text,
         teacher_name_snapshot text, due_date date, content text, notes text, state text)
       WHERE p.org_id = ${actor.orgId} AND p.id = x.id AND p.row_version = x.expected

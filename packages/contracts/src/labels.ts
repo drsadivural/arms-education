@@ -239,7 +239,7 @@ export const IMPORT_DEFAULT_SOURCE_SYSTEM = "旧社員教育進捗管理";
 
 export const IMPORT_ACTION_LABELS = { create: "新規", update: "更新", skip: "変更なし", error: "エラー" } as const;
 export type ImportAction = keyof typeof IMPORT_ACTION_LABELS;
-export const IMPORT_COMMIT_STATE_LABELS = { applied: "反映済み", pending_activation: "反映中", conflict: "競合のため未反映" } as const;
+export const IMPORT_COMMIT_STATE_LABELS = { applied: "反映済み", conflict: "競合のため未反映" } as const;
 export const IMPORT_ROLLBACK_STATE_LABELS = { reverted: "取り消し済み", manual: "手動照合が必要" } as const;
 
 export interface ImportFieldDef {

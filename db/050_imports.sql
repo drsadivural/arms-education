@@ -6,7 +6,8 @@
 --               (lease_token + locked_until) serialises them, commit_key / rollback_key make retries idempotent.
 -- import_items  one row per CSV record: planned action, before_data (current DB row incl. row_version when
 --               updating), after_data (planned values), Japanese row errors/warnings, and after commit the
---               entity id + committed_version used by rollback to refuse rows edited after the import.
+--               entity id + committed_version used by rollback to refuse rows edited after the import
+--               (reverted_version = row_version left behind by a rollback that restored/stopped the record).
 -- import_classroom_keys  verified mapping of a legacy クラス番号 to the ARMS classroom it created
 --               (classrooms have no natural number column; teachers/students/progress use 講師番号 / 社員番号 /
 --               source_record_id).
@@ -52,20 +53,21 @@ ALTER TABLE app.import_items
   ADD COLUMN committed_at timestamptz,
   ADD COLUMN rollback_state text,
   ADD COLUMN rollback_message text,
+  ADD COLUMN reverted_version int,
   ADD CONSTRAINT import_items_action CHECK (action IN ('create', 'update', 'skip', 'error')),
   ADD CONSTRAINT import_items_entity_kind CHECK (entity_kind IN ('teacher', 'classroom', 'student', 'progress_record')),
-  ADD CONSTRAINT import_items_commit_state CHECK (commit_state IN ('applied', 'pending_activation', 'conflict')),
+  ADD CONSTRAINT import_items_commit_state CHECK (commit_state IN ('applied', 'conflict')),
   ADD CONSTRAINT import_items_rollback_state CHECK (rollback_state IN ('reverted', 'manual')),
   ADD CONSTRAINT import_items_errors_shape CHECK (jsonb_typeof(errors) = 'array' AND jsonb_typeof(warnings) = 'array'),
   ADD CONSTRAINT import_items_error_action CHECK ((action = 'error') = (jsonb_array_length(errors) > 0)),
   ADD CONSTRAINT import_items_applied CHECK (commit_state IS NULL OR commit_state = 'conflict' OR (entity_id IS NOT NULL AND committed_version IS NOT NULL)),
-  ADD CONSTRAINT import_items_rollback_after_commit CHECK (rollback_state IS NULL OR commit_state IN ('applied', 'pending_activation'));
+  ADD CONSTRAINT import_items_rollback_after_commit CHECK (rollback_state IS NULL OR commit_state = 'applied');
 -- Dry-run table filters and the commit/rollback work queues.
 CREATE INDEX import_items_action_row ON app.import_items (org_id, job_id, action, row_number);
 CREATE INDEX import_items_commit_queue ON app.import_items (org_id, job_id, row_number)
-  WHERE action IN ('create', 'update') AND (commit_state IS NULL OR commit_state = 'pending_activation');
+  WHERE action IN ('create', 'update') AND commit_state IS NULL;
 CREATE INDEX import_items_rollback_queue ON app.import_items (org_id, job_id, row_number DESC)
-  WHERE commit_state IN ('applied', 'pending_activation') AND rollback_state IS NULL;
+  WHERE commit_state = 'applied' AND rollback_state IS NULL;
 
 CREATE TABLE app.import_classroom_keys(
   org_id uuid NOT NULL REFERENCES app.organizations,

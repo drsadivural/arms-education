@@ -60,6 +60,23 @@ export interface InvitationSpec {
   createProfile(tx: Tx, payload: Record<string, unknown>, userId: string): Promise<void>;
 }
 
+/**
+ * Per-call options. Defaults reproduce the HTTP create endpoints: the request's Idempotency-Key and route, and
+ * the invitation e-mail is sent once the profile exists. The data migration (domain/imports) runs one saga per
+ * imported row with its own key/route and sends only when the admin asked for it.
+ */
+export interface InvitationOptions {
+  /** Idempotency key of this saga run (UUID). Default: the request's Idempotency-Key header. */
+  idempotencyKey?: string;
+  /** Route recorded in the request hash. Default: `${method} ${path}` of the request. */
+  route?: string;
+  /**
+   * Send the invitation e-mail after the profile is created (default true). With false the job stays at
+   * profile_created (「招待メール送信待ち」) and is sent later through resendInvitation (ユーザー管理・講師管理).
+   */
+  send?: boolean;
+}
+
 export interface InvitationOutcome {
   job: InvitationJob;
   userId: string;
@@ -71,12 +88,13 @@ function codeOf(e: unknown): string {
 }
 
 /** Japanese status message for the UI (「送信失敗（再送可能）」 etc.). */
-export function inviteResult(job: InvitationJob, membershipActive: boolean): InviteResult {
+export function inviteResult(job: InvitationJob, membershipActive: boolean, sendRequested = true): InviteResult {
   const state: InviteResult["state"] = job.state === "sent" ? "sent" : job.state === "failed" ? "failed" : "pending";
   let message_ja: string;
   if (job.state === "sent") message_ja = "招待メールを送信しました。";
   else if (job.state === "failed") message_ja = "招待メールを送信できませんでした（送信失敗・再送可能）。ユーザー管理から招待を再送してください。";
   else if (job.state === "profile_created" && !membershipActive) message_ja = "無効の状態で登録したため、招待メールは送信していません。有効にしてから招待を再送してください。";
+  else if (job.state === "profile_created" && !sendRequested) message_ja = "招待メールはまだ送信していません（招待メール送信待ち）。講師管理またはユーザー管理から送信してください。";
   else message_ja = "招待を処理中です。しばらくしてから状態を確認してください。";
   return { id: job.id, user_id: job.auth_user_id ?? "", state, message_ja, row_version: job.row_version };
 }
@@ -142,11 +160,13 @@ export async function sendInvitation(c: AppContext, job: InvitationJob, metadata
 }
 
 /** Runs (or resumes) the saga for one create request. Throws business errors (409/422/503) from steps 1–2. */
-export async function runInvitation(c: AppContext, spec: InvitationSpec): Promise<InvitationOutcome> {
+export async function runInvitation(c: AppContext, spec: InvitationSpec, opts: InvitationOptions = {}): Promise<InvitationOutcome> {
   const actor = c.get("actor");
   const deps = c.get("deps");
-  const key = requireIdempotencyKey(c);
-  const requestHash = await sha256Hex(stableStringify({ route: `${c.req.method} ${c.req.path}`, request: spec.payload }));
+  const key = opts.idempotencyKey ?? requireIdempotencyKey(c);
+  const send = opts.send ?? true;
+  const route = opts.route ?? `${c.req.method} ${c.req.path}`;
+  const requestHash = await sha256Hex(stableStringify({ route, request: spec.payload }));
   const metadata = { display_name: spec.displayName, role: spec.role };
 
   // Tx A: find (same key) or adopt (same e-mail, unfinished) or create the job, and take its lease.
@@ -158,7 +178,7 @@ export async function runInvitation(c: AppContext, spec: InvitationSpec): Promis
       if (existing.request_hash !== requestHash) fail("IDEMPOTENCY_CONFLICT");
       // Completed from this request's point of view: replay the current state without new side effects.
       if (existing.state === "sent") return { ...existing, leased: false };
-      if (existing.state === "profile_created" && !(await membershipActive(tx, actor.orgId, existing.auth_user_id as string))) {
+      if (existing.state === "profile_created" && (!send || !(await membershipActive(tx, actor.orgId, existing.auth_user_id as string)))) {
         return { ...existing, leased: false };
       }
       const leased = await takeLease(tx, existing.id);
@@ -232,9 +252,10 @@ export async function runInvitation(c: AppContext, spec: InvitationSpec): Promis
 
   const userId = job.auth_user_id as string;
   const active = await actorTx(c, (tx) => membershipActive(tx, actor.orgId, userId));
-  // Step 3: invitation e-mail (only for active accounts; inactive registrations are invited when re-enabled).
+  // Step 3: invitation e-mail (only when requested and for active accounts; inactive registrations are invited when
+  // re-enabled, unsent ones from user management).
   if (job.leased && (job.state === "profile_created" || job.state === "failed")) {
-    if (active) job = await sendInvitation(c, job, metadata);
+    if (active && send) job = await sendInvitation(c, job, metadata);
     else {
       const leasedJob = job;
       job = await actorTx(c, (tx) =>
@@ -242,7 +263,7 @@ export async function runInvitation(c: AppContext, spec: InvitationSpec): Promis
       );
     }
   }
-  return { job, userId, result: inviteResult(job, active) };
+  return { job, userId, result: inviteResult(job, active, send) };
 }
 
 /**

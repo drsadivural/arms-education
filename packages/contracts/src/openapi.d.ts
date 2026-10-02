@@ -1171,7 +1171,7 @@ export interface paths {
         put?: never;
         /**
          * 移行ジョブ登録
-         * @description 許可ロール: admin（講師・受講者は403、他組織のジョブは404）。upload_id は本人がアップロードした purpose=import の upload_jobs で、検査結果が clean または not_applicable のもの （検査中は409 IMPORT_UPLOAD_NOT_READY、検出・拒否は409 IMPORT_UPLOAD_REJECTED、見つからない・用途違いは422）。 columns は {CSVの見出し → 取り込み先項目}。取り込み先項目は entity ごとに決まり（packages/contracts IMPORT_FIELDS）、未知の項目・重複・必須項目の未対応は422 IMPORT_MAPPING_INVALID（field_errors）。生ファイルはアップロードのキーのまま非公開で保持し、URLは返さない。 状態は uploaded。
+         * @description 許可ロール: admin（講師・受講者は403、他組織のジョブは404）。upload_id は本人がアップロードした purpose=import の upload_jobs で、state=clean（ファイル検査済み）のもの。アップロード未完了・検査中は409 IMPORT_UPLOAD_NOT_READY（ファイル検査サービス未設定の場合は details.scanner_configured=false とその旨のメッセージ）、検査で検出・内容不一致は409 IMPORT_UPLOAD_REJECTED、期限切れは409 UPLOAD_EXPIRED、見つからない・用途違いは422。 columns は {CSVの見出し → 取り込み先項目}。取り込み先項目は entity ごとに決まり（packages/contracts IMPORT_FIELDS）、未知の項目・重複・必須項目の未対応は422 IMPORT_MAPPING_INVALID（field_errors）。生ファイルはアップロードのキーのまま非公開で保持し、URLは返さない。 状態は uploaded。
          */
         post: operations["post_imports"];
         delete?: never;
@@ -1211,7 +1211,7 @@ export interface paths {
         put?: never;
         /**
          * 移行確定
-         * @description 許可ロール: admin（講師・受講者は403、他組織のジョブは404）。validated かつエラー0件のジョブのみ（エラー行があれば409 IMPORT_HAS_ERRORS。エラー行だけを除外して確定する指定はない）。backup_confirmed=true 必須。200行ずつのtransactionで反映し、各行の committed_version を記録するため、中断・失敗後に同じジョブへ再度送信すると未反映の行から再開する（同じIdempotency-Keyの再送は同じ結果、確定済みジョブへの別キーは409）。処理時間の上限に達した場合は state=committing のまま返すので、同じキーで再送して続行する。ドライラン後に他の操作で変更された行は上書きせず conflict として報告する。想定外の失敗は state=failed と failure（失敗したバッチの行範囲）を返す。講師・新入社員は管理者招待saga（invitation_jobs）でアカウントを作成し、send_invitations=true のときだけ招待メールを送る（既定は送らず「招待メール送信待ち」。講師管理・ユーザー管理から送信）。パスワードは移行しない。
+         * @description 許可ロール: admin（講師・受講者は403、他組織のジョブは404）。validated かつエラー0件のジョブのみ（エラー行があれば409 IMPORT_HAS_ERRORS。エラー行だけを除外して確定する指定はない）。backup_confirmed=true 必須。200行ずつのtransactionで反映し、各行の committed_version を記録するため、中断・失敗後に同じジョブへ再度送信すると未反映の行から再開する（同じIdempotency-Keyの再送は同じ結果、確定済みジョブへの別キーは409）。処理時間の上限に達した場合は state=committing のまま返すので、再送して続行する。ドライラン後に他の操作で変更された行は上書きせず conflict として報告する。想定外の失敗は state=failed と failure（失敗したバッチの行範囲）を返す。講師・新入社員は管理者招待saga（invitation_jobs）でアカウントを作成し、send_invitations=true のときだけ招待メールを送る（既定は送らず「招待メール送信待ち」。講師管理・ユーザー管理から送信）。パスワードは移行しない。
          */
         post: operations["post_imports_id_commit"];
         delete?: never;
@@ -1231,7 +1231,7 @@ export interface paths {
         put?: never;
         /**
          * 移行rollback
-         * @description 許可ロール: admin（講師・受講者は403、他組織のジョブは404）。completed / failed（一部反映）のジョブを取り消す。import_items の before/after/committed_version を比較し、移行後に編集された行（row_versionが異なる）は上書きせず rollback_state=manual（手動照合が必要）として残す。移行で作成した進捗・クラスは削除、更新した行は移行前の値に戻す。講師・新入社員のアカウントは削除しない（ログイン済みの可能性があるため）：移行で作成したアカウントは停止（membership無効化・セッション失効・認証サービスのログイン停止）し、更新した項目は移行前の値に戻す。予約や主担当クラスがあり停止できない人は manual。状態は rolled_back（manual_review_rows > 0 なら一部手動照合）。
+         * @description 許可ロール: admin（講師・受講者は403、他組織のジョブは404）。completed / failed（一部反映）のジョブを取り消す。import_items の before/after/committed_version を比較し、移行後に編集された行（row_versionが異なる）は上書きせず rollback_state=manual（手動照合が必要）として残す。移行で作成した進捗・クラスは削除、更新した行は移行前の値に戻す。講師・新入社員のアカウントは削除しない（ログイン済みの可能性があるため）：移行で作成したアカウントは停止（membership無効化・セッション失効・認証サービスのログイン停止）し、更新した項目は移行前の値に戻す。予約や主担当クラスがあり停止できない人は manual。状態は rolled_back（manual_review_rows > 0 なら一部手動照合）。処理時間の上限に達した場合は rollback_started=true・state は元のままで返すので、再送して続行する。取り消しを開始したジョブは確定できない。
          */
         post: operations["post_imports_id_rollback"];
         delete?: never;
@@ -1857,7 +1857,7 @@ export interface paths {
         };
         /**
          * エラー明細CSV
-         * @description 許可ロール: admin（講師・受講者は403、他組織のジョブは404）。行番号・項目・元の見出し・内容のCSV（UTF-8 BOM付き、CRLF）。セルが = + - @ TAB CR で始まる場合は先頭に ' を付けて表計算ソフトの数式実行を防ぐ。
+         * @description 許可ロール: admin（講師・受講者は403、他組織のジョブは404）。結果明細のCSV（UTF-8 BOM付き、CRLF）：行番号・種別（エラー／警告／確定時の競合／手動照合が必要）・照合キー・項目・元の見出し・内容。セルが = + - @ TAB CR で始まる場合は先頭に ' を付けて表計算ソフトの数式実行を防ぐ。
          */
         get: operations["get_imports_id_errors_csv"];
         put?: never;
@@ -2899,6 +2899,8 @@ export interface components {
             committed_at: string | null;
             /** Format: date-time */
             rolled_back_at: string | null;
+            /** @description 取り消しを開始済み（完了前は state が元の状態のまま。再送で続きを処理）。 */
+            rollback_started: boolean;
             row_version: number;
         };
         ImportJobResponse: {
@@ -3464,7 +3466,7 @@ export interface components {
                 message_ja: string;
             }[];
             /** @enum {string|null} */
-            commit_state: "applied" | "pending_activation" | "conflict" | null;
+            commit_state: "applied" | "conflict" | null;
             commit_message_ja: string | null;
             /** @enum {string|null} */
             rollback_state: "reverted" | "manual" | null;

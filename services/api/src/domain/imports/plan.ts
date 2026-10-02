@@ -6,8 +6,8 @@
  * (a warning is shown instead); classrooms by the legacy クラス番号 recorded when they were imported; progress
  * records by (source_system, source_record_id). References (teacher / student / classroom numbers) must resolve to
  * records that already exist in ARMS — import the files in the order 講師 → クラス → 新入社員 → 教育進捗.
- * A record that was changed in ARMS after the previous import of the same record is not overwritten (skip with
- * warning, manual reconciliation).
+ * A record that was changed in ARMS after the previous import of the same record gets a warning in the dry run
+ * (the diff shows the current ARMS values); between dry run and commit the row_version is checked again.
  */
 import { PROGRESS_RECORD_STATE_LABELS, type ImportEntity, type ProgressRecordState } from "@arms/contracts";
 import type { Tx } from "../../db/client";
@@ -122,8 +122,7 @@ class Row {
     if (this.errors.length > 0) return "error";
     if (changed.length === 0) return "skip";
     if (editedSinceImport) {
-      this.warn("_row", "前回の移行の後にARMSで編集されているため、このファイルの値では上書きしません（手動で照合してください）。");
-      return "skip";
+      this.warn("_row", "前回の移行の後にARMSで編集されています。確定するとこのファイルの値で上書きします。変更前の値を確認してください。");
     }
     return "update";
   }
@@ -160,16 +159,18 @@ function changedFields(entity: ImportEntity, before: Record<string, unknown>, af
   return COMPARE_FIELDS[entity].filter((f) => String(before[f] ?? "") !== String(after[f] ?? ""));
 }
 
-/** Last applied (not rolled back) import of each entity → the row_version the import left behind. */
+/**
+ * Highest row_version an import operation left on each entity (commit or rollback restore). A current row_version
+ * above it means someone edited the record in ARMS since; the dry run then warns before overwriting.
+ */
 async function importedVersions(ctx: PlanContext, ids: string[]): Promise<Map<string, number>> {
   if (ids.length === 0) return new Map();
-  const rows = await ctx.tx.query<{ entity_id: string; committed_version: number }>(sql`
-    SELECT DISTINCT ON (i.entity_id) i.entity_id, i.committed_version
-    FROM app.import_items i JOIN app.import_jobs j ON j.org_id = i.org_id AND j.id = i.job_id
-    WHERE i.org_id = ${ctx.orgId} AND i.entity_id = ANY(${ids}::uuid[]) AND i.job_id <> ${ctx.jobId}
-      AND i.commit_state IN ('applied', 'pending_activation') AND i.rollback_state IS NULL
-    ORDER BY i.entity_id, i.committed_at DESC NULLS LAST, j.created_at DESC`);
-  return new Map(rows.map((r) => [r.entity_id, r.committed_version]));
+  const rows = await ctx.tx.query<{ entity_id: string; version: number }>(sql`
+    SELECT entity_id, max(greatest(committed_version, coalesce(reverted_version, 0)))::int AS version
+    FROM app.import_items
+    WHERE org_id = ${ctx.orgId} AND entity_id = ANY(${ids}::uuid[]) AND job_id <> ${ctx.jobId} AND commit_state = 'applied'
+    GROUP BY entity_id`);
+  return new Map(rows.map((r) => [r.entity_id, r.version]));
 }
 
 /** E-mail addresses already used by any account (accounts are global; never joined automatically). */
@@ -262,7 +263,7 @@ async function planTeachers(ctx: PlanContext, rows: SourceRow[]): Promise<Planne
         active: current.active,
       };
       const changed = changedFields("teachers", before, after);
-      const edited = imported.has(current.id) && imported.get(current.id) !== current.row_version;
+      const edited = imported.has(current.id) && (imported.get(current.id) ?? 0) < current.row_version;
       return r.item(r.decide(changed, edited), number, current.id, before, after);
     }
     if (!r.mapped("email") || email === "") r.error("email", "新しく登録する講師にはメールが必須です（ログインID・招待先）。");
@@ -367,7 +368,7 @@ async function planClassrooms(ctx: PlanContext, rows: SourceRow[]): Promise<Plan
       }
       const before = { ...current };
       const changed = changedFields("classrooms", before, after);
-      const edited = imported.has(current.id) && imported.get(current.id) !== current.row_version;
+      const edited = imported.has(current.id) && (imported.get(current.id) ?? 0) < current.row_version;
       return r.item(r.decide(changed, edited), code, current.id, before, after);
     }
     return r.item("create", code, null, null, after);
@@ -515,7 +516,7 @@ async function planStudents(ctx: PlanContext, rows: SourceRow[]): Promise<Planne
         active: current.active,
       };
       const changed = changedFields("students", before, after);
-      const edited = imported.has(current.id) && imported.get(current.id) !== current.row_version;
+      const edited = imported.has(current.id) && (imported.get(current.id) ?? 0) < current.row_version;
       return { p, item: r.item(r.decide(changed, edited), number, current.id, before, after) };
     }
     if (!r.mapped("email") || email === "") r.error("email", "新しく登録する社員にはメールが必須です（ログインID・招待先）。");
@@ -663,7 +664,7 @@ async function planProgress(ctx: PlanContext, rows: SourceRow[]): Promise<Planne
     if (current) {
       const before = { ...current };
       const changed = changedFields("progress", before, after);
-      const edited = imported.has(current.id) && imported.get(current.id) !== current.row_version;
+      const edited = imported.has(current.id) && (imported.get(current.id) ?? 0) < current.row_version;
       return r.item(r.decide(changed, edited), sourceId, current.id, before, after);
     }
     return r.item("create", sourceId, null, null, after);
