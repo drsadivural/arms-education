@@ -1,8 +1,8 @@
 import { useMemo, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { Download } from "lucide-react";
 import { OUTBOX_STATE_LABELS } from "@arms/contracts";
 import { Card } from "../../components/ui/Card";
-import { Badge } from "../../components/ui/Badge";
 import { Button } from "../../components/ui/Button";
 import { DataTable, type ColumnDef } from "../../components/ui/DataTable";
 import { Drawer } from "../../components/ui/Drawer";
@@ -15,7 +15,8 @@ import { fmt } from "../../lib/format";
 import { useOnline } from "../../lib/online";
 import { adminKeys } from "../../features/admin/keys";
 import { useCursorList, useUrlFilters } from "../../features/admin/hooks";
-import { ListCount, SearchField } from "../../features/admin/components";
+import { ListCount, SearchField, StatusBadge } from "../../features/admin/components";
+import { downloadFile } from "../../features/admin/download";
 import { DELIVERY_STATE_TONES, EVENT_CATEGORIES, deliveryErrorLabel, eventLabel, eventResult, eventTarget } from "../../features/admin/labels";
 import type { ActionResult, AuditEvent, Delivery } from "../../features/admin/types";
 
@@ -28,6 +29,17 @@ export function EventsTab() {
   const list = useCursorList<AuditEvent>(adminKeys.events(query), "/events", query, { limit: 50 });
   const [selected, setSelected] = useState<AuditEvent | null>(null);
   const rangeError = filters.from && filters.to && filters.from > filters.to ? "終了日は開始日以降にしてください。" : null;
+  const online = useOnline();
+  const toast = useToast();
+  const qc = useQueryClient();
+  // CSV of the audit log with the filters on screen (GET /events/export.csv; the export itself is audited).
+  const exportCsv = useMutation({
+    mutationFn: () => downloadFile("/events/export.csv", query, `arms-audit-${fmt.today().replace(/-/g, "")}.csv`),
+    onSuccess: (name) => {
+      toast.success("CSVを出力しました", name);
+      void qc.invalidateQueries({ queryKey: adminKeys.eventsAll });
+    },
+  });
 
   const columns = useMemo<ColumnDef<AuditEvent, unknown>[]>(
     () => [
@@ -49,7 +61,7 @@ export function EventsTab() {
         header: "結果",
         cell: ({ row }) => {
           const r = eventResult(row.original.event_type);
-          return <Badge tone={r.tone}>{r.label}</Badge>;
+          return <StatusBadge tone={r.tone}>{r.label}</StatusBadge>;
         },
       },
       {
@@ -100,11 +112,26 @@ export function EventsTab() {
             <h2 id="events-title" className="text-base font-bold">
               操作・処理履歴
             </h2>
-            <div className="flex items-center gap-3">
+            <div className="flex flex-wrap items-center gap-3">
               <ListCount count={list.items?.length} hasMore={list.hasMore} />
               <LastFetched checkedAt={list.checkedAt} />
+              <Button
+                size="sm"
+                variant="secondary"
+                icon={<Download className="size-3.5" aria-hidden />}
+                loading={exportCsv.isPending}
+                disabled={!online || !!rangeError}
+                onClick={() => !exportCsv.isPending && exportCsv.mutate()}
+              >
+                CSV出力
+              </Button>
             </div>
           </div>
+          {exportCsv.error ? (
+            <div className="mb-4">
+              <InlineError error={exportCsv.error} />
+            </div>
+          ) : null}
           <DataTable
             caption="操作・処理履歴"
             columns={columns}
@@ -146,7 +173,7 @@ function EventDetail({ event }: { event: AuditEvent }) {
         <dd className="break-all">{event.event_type}</dd>
         <dt className="text-xs text-muted">結果</dt>
         <dd>
-          <Badge tone={result.tone}>{result.label}</Badge>
+          <StatusBadge tone={result.tone}>{result.label}</StatusBadge>
         </dd>
         <dt className="text-xs text-muted">対象ID</dt>
         <dd className="font-mono text-xs break-all">{event.entity_id ?? "—"}</dd>
@@ -187,7 +214,7 @@ function Deliveries({ state, onStateChange }: { state: string; onStateChange(v: 
     () => [
       { id: "created", header: "発生日時", cell: ({ row }) => <span className="text-xs whitespace-nowrap tabular-nums">{fmt.dateTime(row.original.created_at)}</span> },
       { id: "event", header: "通知の種類", cell: ({ row }) => eventLabel(row.original.event_type) },
-      { id: "state", header: "状態", cell: ({ row }) => <Badge tone={DELIVERY_STATE_TONES[row.original.state]}>{OUTBOX_STATE_LABELS[row.original.state]}</Badge> },
+      { id: "state", header: "状態", cell: ({ row }) => <StatusBadge tone={DELIVERY_STATE_TONES[row.original.state]}>{OUTBOX_STATE_LABELS[row.original.state]}</StatusBadge> },
       { id: "attempts", header: "試行回数", cell: ({ row }) => <span className="tabular-nums">{row.original.attempts}回</span> },
       { id: "error", header: "エラー", cell: ({ row }) => deliveryErrorLabel(row.original.last_error_code) },
       {

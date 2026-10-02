@@ -3,11 +3,41 @@
  * (same-origin session cookie + CSRF token, like the app itself), unique names, and form helpers.
  */
 import { randomUUID } from "node:crypto";
-import { expect, type Locator, type Page } from "@playwright/test";
+import { mkdirSync } from "node:fs";
+import { join } from "node:path";
+import { test as base, expect, type Locator, type Page } from "@playwright/test";
 import pg from "pg";
-import { fixture } from "./helpers";
+import { fixture, loginAs } from "./helpers";
+
+export { expect };
 
 const DB = process.env.DATABASE_ADMIN_URL ?? "postgres://postgres:arms_dev_pw@127.0.0.1:55433/arms";
+
+type Role = "admin" | "teacher";
+const sessions = new Map<Role, string>();
+
+/**
+ * Signed-in pages without a UI login per test: the API limits sign-in to 10 attempts per minute per account
+ * (LOGIN_RATE_LIMITER), so each role signs in once per worker (real login incl. TOTP for the administrator) and
+ * tests reuse the session cookie. `test.use({ role: "teacher" })` switches the role.
+ */
+export const test = base.extend<{ role: Role }>({
+  role: ["admin", { option: true }],
+  storageState: async ({ role, browser }, use, testInfo) => {
+    let file = sessions.get(role);
+    if (!file) {
+      const dir = join(testInfo.project.outputDir, ".auth");
+      mkdirSync(dir, { recursive: true });
+      file = join(dir, `${role}-${testInfo.workerIndex}.json`);
+      const page = await browser.newPage({ baseURL: testInfo.project.use.baseURL, locale: "ja-JP", timezoneId: "Asia/Tokyo" });
+      await loginAs(page, role);
+      await page.context().storageState({ path: file });
+      await page.context().close();
+      sessions.set(role, file);
+    }
+    await use(file);
+  },
+});
 
 /** Short unique suffix for names/numbers created by a test. */
 export const uniq = () => randomUUID().slice(0, 8);

@@ -4,7 +4,6 @@ import { ArrowRight, RefreshCw } from "lucide-react";
 import { formatMonthJa, zonedDateString } from "@arms/contracts";
 import { PageHeader } from "../../components/ui/PageHeader";
 import { Card, CardHeader, StatCard } from "../../components/ui/Card";
-import { Badge } from "../../components/ui/Badge";
 import { Button } from "../../components/ui/Button";
 import { EmptyState, ErrorState, LastFetched, LoadingRows, Skeleton } from "../../components/ui/Feedback";
 import { FilterBar, FilterItem } from "../../components/ui/FilterBar";
@@ -16,7 +15,7 @@ import { fmt, ORG_TZ } from "../../lib/format";
 import { useCurrentUser } from "../../lib/session";
 import { adminKeys } from "../../features/admin/keys";
 import { useClassroomOptions, useDepartments, useUrlFilters } from "../../features/admin/hooks";
-import { DepartmentFilter, PersonCell } from "../../features/admin/components";
+import { DepartmentFilter, PersonCell, StatusBadge } from "../../features/admin/components";
 import { trainingStatus } from "../../features/admin/labels";
 import type { Dashboard, DataResponse, LessonSlot, Page, Student } from "../../features/admin/types";
 
@@ -264,7 +263,7 @@ export function DashboardPage() {
                               <ProgressBar value={s.progress_percent} label={`${s.display_name}の進捗`} />
                             </td>
                             <td className="px-3 py-3">
-                              <Badge tone={st.tone}>{st.label}</Badge>
+                              <StatusBadge tone={st.tone}>{st.label}</StatusBadge>
                             </td>
                           </tr>
                         );
@@ -364,7 +363,7 @@ function LessonRow({ lesson }: { lesson: LessonSlot }) {
           {lesson.classroom_name} · {lesson.teacher_name}
         </span>
       </span>
-      <Badge tone={st.tone}>{st.label}</Badge>
+      <StatusBadge tone={st.tone}>{st.label}</StatusBadge>
     </li>
   );
 }

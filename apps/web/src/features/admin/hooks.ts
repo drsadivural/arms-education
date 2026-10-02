@@ -1,6 +1,6 @@
 /** Shared data hooks of the admin screens: URL-backed filters, cursor lists and option lists. */
 import { useInfiniteQuery, useQuery, type QueryKey } from "@tanstack/react-query";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router";
 import { api, type QueryValue } from "../../lib/api";
 import { useCurrentUser } from "../../lib/session";
@@ -9,24 +9,25 @@ import type { Classroom, Page, SettingsResponse, Teacher } from "./types";
 
 /**
  * Filters kept in the URL query string (shareable, survive reload and back/forward).
- * Empty values are removed; changing a filter replaces the history entry.
+ * Empty values are removed; changing a filter replaces the history entry. Changes made in quick succession (before
+ * the router has re-rendered) are merged on top of each other instead of starting from a stale query string.
  */
 export function useUrlFilters<K extends string>(keys: readonly K[]) {
   const [params, setParams] = useSearchParams();
+  const latest = useRef(params);
+  useEffect(() => {
+    latest.current = params;
+  }, [params]);
   const values = useMemo(() => Object.fromEntries(keys.map((k) => [k, params.get(k) ?? ""])) as Record<K, string>, [keys, params]);
   const set = useCallback(
     (patch: Partial<Record<K, string>>) => {
-      setParams(
-        (prev) => {
-          const next = new URLSearchParams(prev);
-          for (const [k, v] of Object.entries(patch) as [K, string | undefined][]) {
-            if (v === undefined || v === "") next.delete(k);
-            else next.set(k, v);
-          }
-          return next;
-        },
-        { replace: true },
-      );
+      const next = new URLSearchParams(latest.current);
+      for (const [k, v] of Object.entries(patch) as [K, string | undefined][]) {
+        if (v === undefined || v === "") next.delete(k);
+        else next.set(k, v);
+      }
+      latest.current = next;
+      setParams(next, { replace: true });
     },
     [setParams],
   );

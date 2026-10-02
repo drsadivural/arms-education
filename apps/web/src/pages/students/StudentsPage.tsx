@@ -4,7 +4,6 @@ import { Plus } from "lucide-react";
 import { zonedDateString } from "@arms/contracts";
 import { PageHeader } from "../../components/ui/PageHeader";
 import { Card } from "../../components/ui/Card";
-import { Badge } from "../../components/ui/Badge";
 import { DataTable, type ColumnDef } from "../../components/ui/DataTable";
 import { LastFetched, Notice } from "../../components/ui/Feedback";
 import { FilterBar, FilterItem } from "../../components/ui/FilterBar";
@@ -14,7 +13,7 @@ import { fmt, ORG_TZ } from "../../lib/format";
 import { useCurrentUser } from "../../lib/session";
 import { adminKeys } from "../../features/admin/keys";
 import { statusQuery, useClassroomOptions, useCursorList, useDepartments, useTeacherOptions, useUrlFilters } from "../../features/admin/hooks";
-import { DepartmentFilter, InvitationStateBadge, ListCount, PersonCell, SearchField } from "../../features/admin/components";
+import { DepartmentFilter, InvitationStateBadge, ListCount, PersonCell, SearchField, StatusBadge } from "../../features/admin/components";
 import { trainingStatus } from "../../features/admin/labels";
 import { primaryLinkClass, smallLinkClass } from "../../features/admin/styles";
 import type { Student } from "../../features/admin/types";
@@ -74,7 +73,7 @@ export function StudentsPage() {
           const st = trainingStatus(row.original, today);
           return (
             <span className="flex flex-wrap gap-1">
-              <Badge tone={st.tone}>{st.label}</Badge>
+              <StatusBadge tone={st.tone}>{st.label}</StatusBadge>
               <InvitationStateBadge state={row.original.invitation_state} />
             </span>
           );

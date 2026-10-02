@@ -19,6 +19,37 @@ export const EVENT_LABELS: Record<string, string> = {
   "attendance.recorded": "出欠の記録",
   "device.registered": "通知端末の登録",
   "device.unregistered": "通知端末の登録解除",
+  "auth.password_set": "パスワードの設定",
+  "audit.exported": "監査ログのCSV出力",
+  "program.created": "教育プログラムの登録",
+  "program.updated": "教育プログラムの変更",
+  "program.archived": "教育プログラムのアーカイブ",
+  "program_version.created": "プログラムの新バージョン作成",
+  "program_version.published": "プログラムバージョンの公開",
+  "unit.created": "単元の追加",
+  "unit.updated": "単元の変更",
+  "material.created": "教材の追加",
+  "material.updated": "教材の変更",
+  "material.published": "教材の公開",
+  "material.confirmed": "教材の確認",
+  "quiz.defined": "確認テストの作成",
+  "quiz.attempted": "確認テストの受験",
+  "submission.created": "課題の提出",
+  "submission.reviewed": "課題の評価",
+  "enrollment.created": "プログラムの割当",
+  "progress.enrolled": "プログラムの割当",
+  "progress_record.created": "進捗記録の追加",
+  "progress_record.corrected": "進捗記録の訂正",
+  "upload.created": "ファイルのアップロード",
+  "upload.verified": "ファイルの確認",
+  "upload.rejected": "ファイルの受付拒否",
+  "upload.scan_clean": "ファイル検査（問題なし）",
+  "upload.scan_blocked": "ファイル検査（検出・公開不可）",
+  "export.requested": "出力の依頼",
+  "export.generated": "出力ファイルの作成",
+  "voice.session_started": "AI音声：開始",
+  "voice.session_ended": "AI音声：終了",
+  "voice.tool_call": "AI音声：データ参照・操作",
 };
 
 /** Event type prefixes offered in the 「イベント」 filter (the API matches event_type by prefix). */
@@ -36,6 +67,11 @@ export const EVENT_CATEGORIES: { value: string; label: string }[] = [
   { value: "settings.", label: "設定" },
   { value: "notification.", label: "通知" },
   { value: "device.", label: "通知端末" },
+  { value: "program", label: "教育プログラム" },
+  { value: "material.", label: "教材" },
+  { value: "progress", label: "進捗" },
+  { value: "voice.", label: "AI音声" },
+  { value: "audit.", label: "監査ログ出力" },
 ];
 
 /** 「予約の承認」 for known types, otherwise the raw type so new events stay visible. */
@@ -45,7 +81,7 @@ export function eventLabel(type: string): string {
 
 /** Result column: failures are recorded with a `.failed` suffix; other audit rows are committed operations. */
 export function eventResult(type: string): { label: string; tone: Tone } {
-  if (type.endsWith(".failed")) return { label: "失敗", tone: "danger" };
+  if (type.endsWith(".failed") || type === "upload.rejected" || type === "upload.scan_blocked") return { label: "失敗", tone: "danger" };
   if (type.endsWith(".retry_requested")) return { label: "再送待ち", tone: "warning" };
   return { label: "成功", tone: "success" };
 }

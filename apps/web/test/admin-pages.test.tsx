@@ -7,6 +7,7 @@ import { StudentFormPage } from "../src/pages/students/StudentFormPage";
 import { StudentsPage } from "../src/pages/students/StudentsPage";
 import { DashboardPage } from "../src/pages/dashboard/DashboardPage";
 import { SettingsPage } from "../src/pages/settings/SettingsPage";
+import { ClassroomDetailPage } from "../src/pages/classrooms/ClassroomDetailPage";
 import type { Classroom, Dashboard, Student, Teacher } from "../src/features/admin/types";
 import { CHECKED_AT, mockApi, page, renderPage } from "./admin-harness";
 
@@ -347,5 +348,62 @@ describe("設定（WEB-16/18/19）", () => {
     expect(await screen.findByText("削除の申請はありません")).toBeInTheDocument();
     await user.click(screen.getByRole("tab", { name: "ログ・イベント" }));
     await waitFor(() => expect(router.state.location.pathname).toBe("/settings/events"));
+  });
+});
+
+describe("クラス設定（WEB-08）", () => {
+  it("教育プログラムは公開中のバージョンだけを候補にする", async () => {
+    const PV1 = "77777777-7777-4777-8777-777777777777";
+    const PV2 = "88888888-8888-4888-8888-888888888888";
+    const program = (id: string, name: string, published: string, latest: { id: string; version_number: number; state: "draft" | "published" | "archived" }) => ({
+      id,
+      name,
+      description: "",
+      department_name: "",
+      archived: false,
+      published_version_id: published,
+      unit_count: 1,
+      material_count: 0,
+      student_count: 0,
+      row_version: 1,
+      latest_version: latest,
+      draft_version_id: latest.state === "draft" ? latest.id : null,
+      created_at: CHECKED_AT,
+    });
+    const calls = mockApi("admin", {
+      "GET /teachers": () => ({ body: page([teacher()]) }),
+      "GET /programs": () => ({
+        body: page([
+          program("p1", "基礎研修", PV1, { id: PV1, version_number: 2, state: "published" }),
+          program("p2", "ビジネスマナー", PV2, { id: "99999999-9999-4999-8999-999999999999", version_number: 4, state: "draft" }),
+        ]),
+      }),
+      [`GET /program-versions/${PV2}`]: () => ({
+        body: {
+          data: {
+            id: PV2,
+            program_id: "p2",
+            version_number: 3,
+            state: "published",
+            row_version: 1,
+            policy: { max_quiz_attempts: 3, quiz_score_policy: "highest" },
+            published_at: CHECKED_AT,
+            created_at: CHECKED_AT,
+            source_version_id: null,
+            unit_count: 1,
+            material_count: 0,
+            required_weight_total: 1,
+          },
+          checked_at: CHECKED_AT,
+        },
+      }),
+    });
+    renderPage(<ClassroomDetailPage />, { path: "/classrooms/new", url: "/classrooms/new" });
+    const group = await screen.findByRole("group", { name: /教育プログラム/ });
+    expect(await within(group).findByRole("checkbox", { name: /^基礎研修 v2/ })).toBeInTheDocument();
+    expect(await within(group).findByRole("checkbox", { name: /^ビジネスマナー v3/ })).toBeInTheDocument();
+    expect(within(group).queryByRole("checkbox", { name: /v4/ })).not.toBeInTheDocument();
+    expect(calls.find((c) => c.path === "/programs")?.query.get("status")).toBe("published");
+    expect(calls.some((c) => c.path === `/program-versions/${PV1}`)).toBe(false);
   });
 });

@@ -1,10 +1,8 @@
-import { expect, test } from "@playwright/test";
-import { expectNoA11yViolations, fixture, loginAs } from "./helpers";
-import { createClassroom, createPublishedProgram, createStudent, createTeacher, expectNoHorizontalScroll, toast, uniq } from "./admin-support";
+import { expectNoA11yViolations, fixture } from "./helpers";
+import { createClassroom, createPublishedProgram, createStudent, createTeacher, expect, expectNoHorizontalScroll, test, toast, uniq } from "./admin-support";
 
 test.describe("クラスルーム管理（WEB-07/08）", () => {
   test("クラスを追加し、補助講師と公開中の教育プログラムを割り当てられる", async ({ page }) => {
-    await loginAs(page, "admin");
     await page.goto("/classrooms");
     const assistant = await createTeacher(page, `補助講師 ${uniq()}`);
     const program = await createPublishedProgram(page);
@@ -44,7 +42,6 @@ test.describe("クラスルーム管理（WEB-07/08）", () => {
   });
 
   test("定員を在籍人数未満にはできず、在籍者がいるクラスはアーカイブできない", async ({ page }) => {
-    await loginAs(page, "admin");
     await page.goto("/classrooms");
     const classroom = await createClassroom(page, fixture().teacher.id, { capacity: 5 });
     await createStudent(page, classroom.id, fixture().teacher.id);
@@ -68,7 +65,6 @@ test.describe("クラスルーム管理（WEB-07/08）", () => {
   });
 
   test("在籍者のいないクラスはアーカイブでき、編集できなくなる", async ({ page }) => {
-    await loginAs(page, "admin");
     await page.goto("/classrooms");
     const classroom = await createClassroom(page, fixture().teacher.id);
     await page.goto(`/classrooms/${classroom.id}`);
@@ -82,7 +78,6 @@ test.describe("クラスルーム管理（WEB-07/08）", () => {
   });
 
   test("クラス一覧は390pxでも横スクロールせず、アクセシブル", async ({ page }) => {
-    await loginAs(page, "admin");
     await page.setViewportSize({ width: 390, height: 844 });
     await page.goto("/classrooms");
     await expect(page.getByRole("heading", { name: "クラスルーム管理", level: 1 })).toBeVisible();

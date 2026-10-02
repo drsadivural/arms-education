@@ -15,6 +15,17 @@ import { useIdempotentMutation } from "../../lib/query";
 import { useToast } from "../../components/ui/Toast";
 import type { InviteResult } from "./types";
 
+/**
+ * Badge for the admin screens. The shared danger pair (#C93843 on #FDECEE) is 4.46:1 at 12 px, just under WCAG AA,
+ * so danger chips here use a darker red on the same soft background (5.8:1); dark mode keeps the theme token.
+ */
+export function StatusBadge({ tone = "neutral", children, className }: { tone?: Tone; children: ReactNode; className?: string }) {
+  if (tone !== "danger") return <Badge tone={tone} className={className}>{children}</Badge>;
+  return (
+    <span className={cn("inline-flex items-center rounded-md bg-danger-soft px-2 py-0.5 text-xs font-medium whitespace-nowrap text-[#ad2a35] dark:text-danger", className)}>{children}</span>
+  );
+}
+
 /** Avatar initial + name + secondary line (社員番号・講師番号・ふりがな). */
 export function PersonCell({ name, sub, to }: { name: string; sub?: ReactNode; to?: string }) {
   return (
@@ -141,7 +152,7 @@ export function InvitationResultCard({ invitation, onChange }: { invitation: Inv
         <div>
           <p className="flex flex-wrap items-center gap-2 text-sm font-bold">
             招待メール
-            <Badge tone={inviteTone[current.state]}>{inviteLabel[current.state]}</Badge>
+            <StatusBadge tone={inviteTone[current.state]}>{inviteLabel[current.state]}</StatusBadge>
           </p>
           <p className="mt-1 text-xs text-muted">{current.message_ja}</p>
         </div>
@@ -164,7 +175,7 @@ export function InvitationResultCard({ invitation, onChange }: { invitation: Inv
 export function InvitationStateBadge({ state }: { state: keyof typeof INVITATION_STATE_LABELS | null | undefined }) {
   if (!state || state === "sent") return null;
   const tone: Tone = state === "failed" ? "danger" : "warning";
-  return <Badge tone={tone}>{INVITATION_STATE_LABELS[state]}</Badge>;
+  return <StatusBadge tone={tone}>{INVITATION_STATE_LABELS[state]}</StatusBadge>;
 }
 
 /** Department control: a select of settings.departments when configured, otherwise free text. */
@@ -257,7 +268,7 @@ export function SaveErrorBanner({ error, onFields }: { error: unknown; onFields:
   if (!error) return null;
   if (onFields) {
     return (
-      <div role="alert" className="rounded-[var(--radius-control)] border border-danger/40 bg-danger-soft px-3 py-2 text-xs text-danger">
+      <div role="alert" className="rounded-[var(--radius-control)] border border-danger/40 bg-danger-soft px-3 py-2 text-xs text-[#ad2a35] dark:text-danger">
         保存できませんでした。赤字の項目を確認してください。入力内容は保持されています。
       </div>
     );

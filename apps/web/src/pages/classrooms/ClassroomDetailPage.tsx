@@ -24,7 +24,7 @@ import { useIdempotentMutation } from "../../lib/query";
 import { useCurrentUser } from "../../lib/session";
 import { adminKeys } from "../../features/admin/keys";
 import { useCursorList, useNavigateAfterSave, useTeacherOptions } from "../../features/admin/hooks";
-import { FormSection, ListCount, PersonCell, SaveErrorBanner, VersionConflictNotice } from "../../features/admin/components";
+import { FormSection, ListCount, PersonCell, SaveErrorBanner, StatusBadge, VersionConflictNotice } from "../../features/admin/components";
 import { applyApiErrors, conflictDetail, isVersionConflict } from "../../features/admin/errors";
 import { ClassroomForm, classroomDefaults, type ClassroomFormValues } from "../../features/admin/forms";
 import { trainingStatus } from "../../features/admin/labels";
@@ -417,7 +417,7 @@ function EnrolledStudents({ classroom }: { classroom: Classroom }) {
         header: "状態",
         cell: ({ row }) => {
           const st = trainingStatus(row.original, today);
-          return <Badge tone={st.tone}>{st.label}</Badge>;
+          return <StatusBadge tone={st.tone}>{st.label}</StatusBadge>;
         },
       },
     ],

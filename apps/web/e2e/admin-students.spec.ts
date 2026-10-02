@@ -1,10 +1,8 @@
-import { expect, test } from "@playwright/test";
-import { expectNoA11yViolations, fixture, loginAs } from "./helpers";
-import { createClassroom, createStudent, createTeacher, setDepartment, toast, uniq } from "./admin-support";
+import { expectNoA11yViolations, fixture } from "./helpers";
+import { createClassroom, createStudent, createTeacher, expect, setDepartment, test, toast, uniq } from "./admin-support";
 
 test.describe("新入社員管理（WEB-05/06）", () => {
   test("クラスを選ぶとそのクラスの講師だけが候補になり、登録すると招待結果が表示される", async ({ page }) => {
-    await loginAs(page, "admin");
     await page.goto("/students");
     // A second classroom with its own primary teacher, so the candidates can be compared.
     const otherTeacher = await createTeacher(page, `別クラス講師 ${uniq()}`);
@@ -44,13 +42,12 @@ test.describe("新入社員管理（WEB-05/06）", () => {
     await page.getByRole("button", { name: "登録して招待" }).click();
     await expect(page).toHaveURL(/\/students\/[0-9a-f-]{36}$/);
     await expect(toast(page, "新入社員を登録しました")).toBeVisible();
-    await expect(page.getByText(/^(送信済み|送信失敗（再送可能）|送信待ち)$/)).toBeVisible();
+    await expect(page.getByText(/^(送信済み|送信失敗（再送可能）|送信待ち)$/).first()).toBeVisible();
     await expect(page.getByRole("heading", { name: "新入社員情報の編集", level: 1 })).toBeVisible();
     await expect(page.getByRole("link", { name: "進捗を見る" })).toHaveAttribute("href", /\/progress\?student_id=/);
   });
 
   test("社員番号の重複と研修期間の誤りを入力欄に表示する", async ({ page }) => {
-    await loginAs(page, "admin");
     await page.goto("/students");
     const existing = await createStudent(page, fixture().classroomId, fixture().teacher.id);
     await page.goto("/students/new");
@@ -73,7 +70,6 @@ test.describe("新入社員管理（WEB-05/06）", () => {
   });
 
   test("クラス移動は理由を記録して行い、在籍終了は確認してから実行する", async ({ page }) => {
-    await loginAs(page, "admin");
     await page.goto("/students");
     const otherTeacher = await createTeacher(page, `移動先講師 ${uniq()}`);
     const target = await createClassroom(page, otherTeacher.id, { name: `移動先クラス ${uniq()}` });
@@ -105,7 +101,6 @@ test.describe("新入社員管理（WEB-05/06）", () => {
   });
 
   test("トップバーの検索で /students?q= を開き、URLの絞り込みが一覧に反映される", async ({ page }) => {
-    await loginAs(page, "admin");
     await page.goto("/students");
     const student = await createStudent(page, fixture().classroomId, fixture().teacher.id, { name: `検索 太郎 ${uniq()}` });
     await page.goto("/dashboard");
