@@ -14,7 +14,10 @@ export function useApiForm<S extends z.ZodType<FieldValues, FieldValues>>(
   const form = useForm<z.input<S>, unknown, z.output<S>>({
     resolver: zodResolver(schema as never) as never,
     defaultValues,
-    mode: "onBlur",
+    // Validate on submit, then live while correcting. (onBlur validation shifted the layout between mouse-down and
+    // mouse-up on the submit button, so the click was lost.)
+    mode: "onSubmit",
+    reValidateMode: "onChange",
   });
   const applyServerErrors = (error: unknown): boolean => {
     if (!(error instanceof ApiError)) return false;

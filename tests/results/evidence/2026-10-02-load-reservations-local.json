@@ -1,0 +1,50 @@
+{
+  "when": "2026-10-02T12:02:28.881Z",
+  "git_sha": "d62e60ec54165f8bed0412c544632c99d4e42329",
+  "os": "Linux 7.0.0-31-generic 4 vCPU",
+  "api": "http://127.0.0.1:8787/api/v1",
+  "students": 100,
+  "postgres_max_connections": 100,
+  "last_seat": {
+    "requests": 100,
+    "created": 1,
+    "slot_full": 99,
+    "other": 0,
+    "responses": {
+      "201": 1,
+      "409 SLOT_FULL": 99
+    },
+    "active_reservations_in_db": 1,
+    "pass": true
+  },
+  "burst_read_lesson_slots_ms": {
+    "p50": 812.8958779999994,
+    "p95": 919.2875600000007,
+    "errors": 0,
+    "responses": {
+      "200": 100
+    }
+  },
+  "steady_reads_ms": {
+    "requests": 500,
+    "p50": 652.5978539999996,
+    "p95": 864.824141000001,
+    "responses": {
+      "200": 500
+    }
+  },
+  "burst_create_reservation_ms": {
+    "p50": 1614.5874199999998,
+    "p95": 2461.394968999999,
+    "created": 100,
+    "responses": {
+      "201": 100
+    }
+  },
+  "approve_ms": {
+    "p50": 38.23830099999759,
+    "p95": 50.49622400000226,
+    "ok": 30
+  },
+  "note": "Local single-host run (wrangler dev/workerd + local PostgreSQL); not a substitute for a same-region staging measurement."
+}

@@ -44,6 +44,7 @@ export const routes: RouteObject[] = [
       { path: "programs/:id", ...page(async () => ({ Component: (await import("./pages/programs/ProgramEditPage")).ProgramEditPage })) },
       { path: "progress", ...page(async () => ({ Component: (await import("./pages/progress/ProgressPage")).ProgressPage })) },
       { path: "progress/records/:id", ...page(async () => ({ Component: (await import("./pages/progress/ProgressRecordPage")).ProgressRecordPage })) },
+      { path: "progress/students/:id", ...page(async () => ({ Component: (await import("./pages/progress/StudentProgressPage")).StudentProgressPage })) },
       { path: "bookings", ...page(async () => ({ Component: (await import("./pages/bookings/BookingsPage")).BookingsPage })) },
       { path: "bookings/reservations/:id", ...page(async () => ({ Component: (await import("./pages/bookings/ReservationDetailPage")).ReservationDetailPage })) },
       { path: "bookings/slots/new", ...page(async () => ({ Component: (await import("./pages/bookings/SlotFormPage")).SlotFormPage })) },
