@@ -74,8 +74,11 @@
     "production": {
       "name": "arms-production",
       "workers_dev": false,
+      // Cloudflare creates the proxied DNS record and certificate for the Workers Custom Domain on deploy (zone ayonix.com).
+      "routes": [{ "pattern": "arms.ayonix.com", "custom_domain": true }],
       "vars": {
         "APP_ENV": "production",
+        "APP_ORIGIN": "https://arms.ayonix.com",
         "DEFAULT_TIMEZONE": "Asia/Tokyo",
         "OPENAI_REALTIME_MODEL": "gpt-realtime-2.1",
         "OPENAI_REALTIME_VOICE": "marin",
@@ -84,7 +87,9 @@
         "BOOKING_PENDING_TTL_SECONDS": "86400",
         "BOOKING_CANCEL_BEFORE_SECONDS": "86400"
       },
-      "hyperdrive": [{ "binding": "HYPERDRIVE", "id": "REPLACE_WITH_PRODUCTION_HYPERDRIVE_ID" }],
+      // No production database exists yet (docs/BLOCKERS_JA.md). Until it does, the API answers 503 NOT_CONFIGURED
+      // and scheduled jobs are skipped. Once created (wrangler hyperdrive create arms-production … --caching-disabled), add:
+      //   "hyperdrive": [{ "binding": "HYPERDRIVE", "id": "<production hyperdrive id>" }],
       "r2_buckets": [{ "binding": "R2_MATERIALS", "bucket_name": "arms-materials-production" }],
       "queues": {
         "producers": [{ "binding": "NOTIFICATION_QUEUE", "queue": "arms-notifications-production" }],

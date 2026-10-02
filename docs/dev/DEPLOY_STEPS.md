@@ -27,3 +27,28 @@
 8. **ビルドとデプロイ**: `pnpm build` → `pnpm --filter @arms/api deploy:staging`。ステージングで受入（docs/07）後に production。
 9. **初期管理者**: Supabase Authで招待 → `app.users`/`app.memberships(role=admin)` を作成（`infra/local/bootstrap.mjs` の処理を参照）。
    初回ログイン時に管理者MFA（TOTP）登録が求められる。
+
+## arms.ayonix.com の初回公開（Web画面のみ先行）
+`wrangler.jsonc` の production 環境は `arms.ayonix.com` を Workers Custom Domain として持ち（DNSレコードと証明書はデプロイ時に
+Cloudflareが作成）、`APP_ORIGIN=https://arms.ayonix.com`。DB・Supabase未作成の段階でも公開でき、画面（ログイン画面）は表示され、
+APIは日本語の503 `NOT_CONFIGURED` を返す（ログイン不可）。定期処理は設定完了までスキップする。`services/api` で実行:
+
+```bash
+npx wrangler r2 bucket create arms-materials-production --location apac
+```
+
+```bash
+npx wrangler queues create arms-notifications-production
+```
+
+```bash
+npx wrangler queues create arms-notifications-production-dlq
+```
+
+```bash
+pnpm --dir ../.. build && npx wrangler deploy --env production
+```
+
+確認: `curl -sI https://arms.ayonix.com/` が200、`curl -s https://arms.ayonix.com/api/v1/health` が503 `NOT_CONFIGURED`。
+ログインを有効にするには上記1〜6（DB・Hyperdriveバインディングの追加・Secrets）と9（初期管理者）を行い、再デプロイする。
+

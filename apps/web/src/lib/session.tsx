@@ -52,7 +52,10 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   }, [apply]);
 
   useEffect(() => {
-    refresh().catch(() => setState({ status: "anonymous", reason: "サーバーに接続できません。時間をおいて再読み込みしてください。" }));
+    // An API answer (e.g. 503 NOT_CONFIGURED while a deployment is being set up) is shown as-is; anything else is a connection failure.
+    refresh().catch((e) =>
+      setState({ status: "anonymous", reason: e instanceof ApiError ? e.messageJa : "サーバーに接続できません。時間をおいて再読み込みしてください。" }),
+    );
   }, [refresh]);
 
   useEffect(

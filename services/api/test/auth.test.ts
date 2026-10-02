@@ -312,3 +312,34 @@ describe("cookie Secure flag follows the app origin", () => {
     expect(loadConfig({ APP_ENV: "development", APP_ORIGIN: "http://localhost:5188" }).cookieSecure).toBe(false);
   });
 });
+
+describe("deployment with incomplete configuration", () => {
+  // Partial production deployment (e.g. the domain is live before the database/Auth exist): fail closed in Japanese.
+  const partialEnv = { APP_ENV: "production", APP_ORIGIN: "https://arms.example.com", WEB_SESSION_ENCRYPTION_KEY: Buffer.alloc(32, 1).toString("base64") };
+
+  it("answers every API request with 503 NOT_CONFIGURED and never names secret values", async () => {
+    const { createApp } = await import("../src/app");
+    const { workerDeps } = await import("../src/deps");
+    const app = createApp(workerDeps);
+    for (const [method, path] of [["GET", "/api/v1/health"], ["GET", "/api/v1/auth/session"], ["POST", "/api/v1/auth/login"]] as const) {
+      const res = await app.request(path, { method, headers: { origin: "https://arms.example.com", "content-type": "application/json" }, body: method === "POST" ? "{}" : undefined }, partialEnv);
+      const body = (await res.json()) as { code: string; message_ja: string; request_id: string };
+      expect(res.status).toBe(503);
+      expect(body.code).toBe("NOT_CONFIGURED");
+      expect(body.message_ja).toMatch(/未設定/);
+      expectContract({ status: res.status, body }, "get", "/health");
+      expect(JSON.stringify(body)).not.toMatch(/SUPABASE|HYPERDRIVE|ENCRYPTION/);
+      expect(res.headers.get("x-request-id")).toBe(body.request_id);
+      expect(res.headers.get("cache-control")).toBe("no-store");
+    }
+  });
+
+  it("skips scheduled jobs instead of failing every minute", async () => {
+    const worker = (await import("../src/index")).default;
+    const waited: Promise<unknown>[] = [];
+    await expect(
+      worker.scheduled({} as never, partialEnv as never, { waitUntil: (p: Promise<unknown>) => waited.push(p), passThroughOnException() {} } as never),
+    ).resolves.toBeUndefined();
+    expect(waited).toHaveLength(0);
+  });
+});

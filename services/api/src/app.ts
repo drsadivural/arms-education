@@ -3,6 +3,7 @@ import { HTTPException } from "hono/http-exception";
 import { installJapaneseErrors } from "@arms/contracts";
 import type { AppEnv, Deps } from "./context";
 import { RequestDb } from "./db/client";
+import { ConfigError } from "./env";
 import { ApiError, mapDbError } from "./http/errors";
 import { registerRoutes } from "./routes";
 
@@ -29,7 +30,20 @@ export function createApp(getDeps: DepsProvider): Hono<AppEnv> {
     const started = Date.now();
     const requestId = crypto.randomUUID();
     c.set("requestId", requestId);
-    const deps = getDeps(c.env);
+    let deps: Deps;
+    try {
+      deps = getDeps(c.env);
+    } catch (err) {
+      if (!(err instanceof ConfigError)) throw err;
+      // A deployment whose secrets/bindings are not all registered yet: fail closed with a Japanese 503 instead of
+      // a generic 500. The message names missing keys only, never values.
+      console.error(JSON.stringify({ ts: new Date().toISOString(), level: "error", msg: "configuration_incomplete", request_id: requestId, detail: err.message }));
+      const notConfigured = new ApiError("NOT_CONFIGURED");
+      c.res = c.json({ code: notConfigured.code, message_ja: notConfigured.message_ja, request_id: requestId }, 503);
+      for (const [k, v] of Object.entries(SECURITY_HEADERS)) c.res.headers.set(k, v);
+      c.res.headers.set("X-Request-Id", requestId);
+      return;
+    }
     c.set("deps", deps);
     const db = new RequestDb(deps.connections);
     c.set("db", db);
