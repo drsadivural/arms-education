@@ -85,7 +85,7 @@ cd apps/web && npx playwright test
 
 - `pnpm test`: API 423件（実行ごとに新規DB、NOSUPERUSER/NOBYPASSRLSの実行ロール、全レスポンスをOpenAPIで検証。接続先は `TEST_DATABASE_ADMIN_URL`）、Web単体 113件、契約 43件。
 - Playwright: 53件（ローカルスタックで実行。`E2E_ALL_BROWSERS=1` と `--project=firefox|webkit` で他エンジン。エンジンごとに別実行）。
-- iOS: `cd apps/ios/ARMSKit && swift test`（176件）、ローカルAPIとのライブ契約試験 `apps/ios/ARMSKit/Scripts/live-contract-test.sh`。アプリ本体はmacOS CI（`.github/workflows/ios.yml`）。詳細は `apps/ios/README.md`。
+- iOS: `cd apps/ios/ARMSKit && swift test`（176件）、ローカルAPIとのライブ契約試験 `apps/ios/ARMSKit/Scripts/live-contract-test.sh`。アプリ本体はmacOS CI（`.github/workflows/ios.yml`、Xcode・iOS Simulatorでビルドとテスト）。詳細は `apps/ios/README.md`。
 - 負荷・並行: `node tests/load/reservations.mjs 100`。秘密スキャン: `pnpm secrets:scan`。ハンドオフ原本の検証: `pnpm check:package`。
 
 ## デプロイ
