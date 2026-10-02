@@ -122,6 +122,7 @@ export const NOTIFICATION_DELIVERY_ERROR_LABELS = {
   NO_ADDRESS: "宛先なし",
   MAIL_RATE_LIMITED: "メール送信の流量制限",
   MAIL_PROVIDER_UNAVAILABLE: "メール送信サービス障害",
+  MAIL_AUTH_FAILED: "メール送信サービスの認証エラー（設定を確認）",
   MAIL_REJECTED: "メール送信を拒否されました",
   APNS_RETRY: "APNs一時障害",
   APNS_REJECTED: "APNsが通知を拒否",

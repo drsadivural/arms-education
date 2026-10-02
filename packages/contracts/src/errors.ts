@@ -80,6 +80,7 @@ export const ERROR_CATALOG = {
   ALREADY_RESERVED: { status: 409, message_ja: "この授業は既に申請済みです。" },
   ATTENDANCE_NOT_OPEN: { status: 409, message_ja: "出欠は授業開始の30分前から記録できます。" },
   SLOT_CANCELLED: { status: 409, message_ja: "この授業枠は取り消されています。" },
+  PROGRAM_NOT_ASSIGNED: { status: 403, message_ja: "この授業の教育プログラムが割り当てられていないため申請できません。" },
 
   // ---- area: voice (append new codes directly below this line) ----
 

@@ -9,6 +9,7 @@ import { parseList } from "../../domain/booking/common";
 import { createReservation, decideReservation, getReservation, listReservations, type DecisionAction } from "../../domain/booking/reservations";
 import { validationError } from "../../http/errors";
 import { requireIdempotencyKey } from "../../http/idempotency";
+import { rateLimit } from "../../http/rate-limit";
 import { decodeCursor, encodeCursor, parseLimit } from "../../http/pagination";
 import { pathId, readBody, readQuery } from "../../http/validation";
 import { KeyCursor, bookingScope, httpIdempotency, respondStored, zMonth } from "./shared";
@@ -85,6 +86,7 @@ reservationRoutes.get("/reservations/:id", requireRole("admin", "teacher", "stud
  * idempotency key of app.create_reservation (same key + same slot → same reservation, HTTP 201).
  */
 reservationRoutes.post("/reservations", requireRole("student"), async (c) => {
+  await rateLimit(c, "api", `booking:${c.get("actor").userId}`);
   const input = await readBody(c, ReservationInput);
   const key = requireIdempotencyKey(c);
   const stored = await createReservation(bookingScope(c), input.slot_id.toLowerCase(), key, httpIdempotency(c, input));
@@ -93,6 +95,7 @@ reservationRoutes.post("/reservations", requireRole("student"), async (c) => {
 
 function decision(action: DecisionAction) {
   return async (c: AppContext) => {
+    await rateLimit(c, "api", `booking:${c.get("actor").userId}`);
     const id = pathId(c);
     const input = await readBody(c, DecisionInput);
     requireIdempotencyKey(c);

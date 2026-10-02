@@ -169,6 +169,8 @@ export async function listSlots(tx: Tx, actor: Actor, f: SlotListFilters): Promi
       range.end && sql`s.starts_at < ${range.end}`,
       // Default window: upcoming (students: not yet started; staff: not yet ended).
       !explicitRange && (actor.role === "student" ? sql`s.starts_at > now()` : sql`s.ends_at > now()`),
+      // Slots of a disabled teacher are not offered for booking (app.reserve_slot refuses them as well).
+      actor.role === "student" && sql`EXISTS (SELECT 1 FROM app.memberships tm WHERE tm.org_id = s.org_id AND tm.id = s.teacher_id AND tm.active)`,
       f.cursor && sql`(s.starts_at, s.id) > (${f.cursor.k}::timestamptz, ${f.cursor.id}::uuid)`,
     ])}
     ORDER BY s.starts_at, s.id
@@ -226,19 +228,27 @@ export async function bookingDefaults(tx: Tx, orgId: string, config: Config): Pr
   };
 }
 
-/** Checks the classroom/teacher/unit references of a slot input (422 with Japanese field errors). */
-async function validateSlotRefs(tx: Tx, orgId: string, input: SlotInputT): Promise<void> {
+/**
+ * Checks the classroom/teacher/unit references of a slot input (422 with Japanese field errors). On edit,
+ * `current` skips the checks for references that did not change (e.g. closing the slot of a teacher who has
+ * since been disabled, or retitling a lesson whose programme link was later removed).
+ */
+async function validateSlotRefs(tx: Tx, orgId: string, input: SlotInputT, current?: SlotRow): Promise<void> {
   const classroom = await tx.maybeOne<{ archived: boolean }>(sql`SELECT archived FROM app.classrooms WHERE org_id = ${orgId} AND id = ${input.classroom_id}`);
   if (!classroom) throw validationError({ classroom_id: "クラスが見つかりません。" });
-  if (classroom.archived) throw validationError({ classroom_id: "終了したクラスには授業枠を作成できません。" });
+  if (classroom.archived && current?.classroom_id !== input.classroom_id) throw validationError({ classroom_id: "終了したクラスには授業枠を作成できません。" });
   const teacher = await tx.maybeOne<{ active: boolean }>(sql`
     SELECT m.active FROM app.classroom_teachers ct JOIN app.memberships m ON m.org_id = ct.org_id AND m.id = ct.teacher_id AND m.role = 'teacher'
     WHERE ct.org_id = ${orgId} AND ct.classroom_id = ${input.classroom_id} AND ct.teacher_id = ${input.teacher_id}`);
   if (!teacher) throw new ApiError("TEACHER_CLASSROOM_MISMATCH", { field_errors: { teacher_id: "選択した講師はこのクラスの担当ではありません。" } });
-  if (!teacher.active) throw new ApiError("TEACHER_INACTIVE", { field_errors: { teacher_id: "停止中の講師は選択できません。" } });
-  if (input.unit_id) {
-    const unit = await tx.maybeOne(sql`SELECT 1 AS ok FROM app.units WHERE org_id = ${orgId} AND id = ${input.unit_id}`);
+  if (!teacher.active && current?.teacher_id !== input.teacher_id) throw new ApiError("TEACHER_INACTIVE", { field_errors: { teacher_id: "停止中の講師は選択できません。" } });
+  if (input.unit_id && (input.unit_id !== current?.unit_id || input.classroom_id !== current?.classroom_id)) {
+    const unit = await tx.maybeOne<{ linked: boolean }>(sql`
+      SELECT EXISTS (SELECT 1 FROM app.classroom_programs cp
+                     WHERE cp.org_id = u.org_id AND cp.classroom_id = ${input.classroom_id} AND cp.program_version_id = u.program_version_id) AS linked
+      FROM app.units u WHERE u.org_id = ${orgId} AND u.id = ${input.unit_id}`);
     if (!unit) throw validationError({ unit_id: "単元が見つかりません。" });
+    if (!unit.linked) throw validationError({ unit_id: "このクラスの教育プログラムに含まれない単元です。" });
   }
 }
 
@@ -296,7 +306,7 @@ export async function updateSlot(tx: Tx, actor: Actor, now: Date, id: string, ex
   if (new Date(input.starts_at).getTime() !== current.starts_at.getTime() && new Date(input.starts_at) <= now) {
     throw validationError({ starts_at: "開始時刻は現在より後にしてください。" });
   }
-  await validateSlotRefs(tx, actor.orgId, input);
+  await validateSlotRefs(tx, actor.orgId, input, current);
   const next = {
     title: input.title,
     classroom_id: input.classroom_id,

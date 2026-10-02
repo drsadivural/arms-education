@@ -2,6 +2,7 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { call, createTestContext, type TestContext } from "../helpers/app";
 import { expectContract } from "../helpers/contract";
+import { createTeacher } from "../helpers/fixtures";
 import {
   auditTypes,
   bookingWorld,
@@ -99,6 +100,61 @@ describe("POST /reservations", () => {
     expect(res.status).toBe(409);
     expect(res.body.code).toBe("BOOKING_CLOSED");
     expect(res.body.message_ja).toBe("予約受付を終了しました。");
+  });
+});
+
+describe("booking preconditions beyond capacity", () => {
+  it("slots of a disabled teacher are not offered and refuse bookings (BOOKING_CLOSED)", async () => {
+    const extra = await createTeacher(ctx.admin, w.org.orgId, { displayName: "退職予定 講師" });
+    await ctx.admin.query("INSERT INTO app.classroom_teachers(org_id, classroom_id, teacher_id, is_primary) VALUES ($1, $2, $3, false)", [w.org.orgId, w.org.classroomId, extra.userId]);
+    const slot = await createSlotViaApi(ctx, w.admin, slotBody(w.org, { teacherId: extra.userId }));
+    await ctx.admin.query("UPDATE app.memberships SET active = false WHERE org_id = $1 AND id = $2", [w.org.orgId, extra.userId]);
+    const listed = await call(ctx, w.student, "GET", "/lesson-slots?limit=100");
+    expect(listed.body.items.map((s: { id: string }) => s.id)).not.toContain(slot.id);
+    const res = await call(ctx, w.student, "POST", "/reservations", { body: { slot_id: slot.id } });
+    expect(res.status).toBe(409);
+    expect(res.body.code).toBe("BOOKING_CLOSED");
+    // Creating new slots for a disabled teacher is refused too, but the admin can still close the existing one.
+    const create = await call(ctx, w.admin, "POST", "/lesson-slots", { body: slotBody(w.org, { teacherId: extra.userId }) });
+    expect(create.status).toBe(422);
+    expect(create.body.code).toBe("TEACHER_INACTIVE");
+    const close = await call(ctx, w.admin, "PATCH", `/lesson-slots/${slot.id}`, {
+      body: { ...slotBody(w.org, { teacherId: extra.userId, startsAt: new Date(slot.starts_at) }), state: "closed" },
+      ifMatch: slot.row_version,
+    });
+    expect(close.status).toBe(200);
+    expect(close.body.data.state).toBe("closed");
+  });
+
+  it("a lesson tied to a unit needs the unit's programme assigned to the student or their classroom", async () => {
+    const program = await ctx.admin.query("INSERT INTO app.programs(org_id, name) VALUES ($1, '新入社員基礎研修') RETURNING id", [w.org.orgId]);
+    const version = await ctx.admin.query("INSERT INTO app.program_versions(org_id, program_id, version_number, state) VALUES ($1, $2, 1, 'draft') RETURNING id", [
+      w.org.orgId,
+      program.rows[0].id,
+    ]);
+    const unit = await ctx.admin.query("INSERT INTO app.units(org_id, program_version_id, title, position, weight) VALUES ($1, $2, 'IT基礎', 0, 1) RETURNING id", [
+      w.org.orgId,
+      version.rows[0].id,
+    ]);
+    const unitId = unit.rows[0].id as string;
+    const unlinked = await call(ctx, w.admin, "POST", "/lesson-slots", { body: { ...slotBody(w.org), unit_id: unitId } });
+    expect(unlinked.status).toBe(422);
+    expect(unlinked.body.field_errors.unit_id).toBe("このクラスの教育プログラムに含まれない単元です。");
+
+    await ctx.admin.query("INSERT INTO app.classroom_programs(org_id, classroom_id, program_version_id) VALUES ($1, $2, $3)", [w.org.orgId, w.org.classroomId, version.rows[0].id]);
+    const slot = await createSlotViaApi(ctx, w.admin, { ...slotBody(w.org), unit_id: unitId });
+    // The classroom later drops the programme: only students enrolled in it may still book.
+    await ctx.admin.query("DELETE FROM app.classroom_programs WHERE org_id = $1 AND classroom_id = $2", [w.org.orgId, w.org.classroomId]);
+    const refused = await call(ctx, w.student, "POST", "/reservations", { body: { slot_id: slot.id } });
+    expect(refused.status).toBe(403);
+    expect(refused.body.code).toBe("PROGRAM_NOT_ASSIGNED");
+    expect(refused.body.message_ja).toContain("教育プログラム");
+    await ctx.admin.query("INSERT INTO app.enrollments(org_id, student_id, program_version_id, due_on) VALUES ($1, $2, $3, '2026-12-31')", [
+      w.org.orgId,
+      w.org.student.userId,
+      version.rows[0].id,
+    ]);
+    expect((await call(ctx, w.student, "POST", "/reservations", { body: { slot_id: slot.id } })).status).toBe(201);
   });
 });
 

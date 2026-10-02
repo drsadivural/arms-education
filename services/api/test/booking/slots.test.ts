@@ -32,6 +32,25 @@ describe("POST /lesson-slots", () => {
     expect(JSON.stringify(audit.rows[0].payload)).not.toContain("meet.example.invalid");
   });
 
+  it("the pending hold follows the organisation setting at request time; existing holds are not changed", async () => {
+    const slot = await createSlotViaApi(ctx, w.admin, slotBody(w.org));
+    const first = await reserve(ctx, w.student, slot.id);
+    const held1 = new Date(first.expires_at).getTime() - Date.now();
+    expect(held1).toBeGreaterThan(3_500_000);
+    expect(held1).toBeLessThanOrEqual(3_605_000);
+    await ctx.admin.query("UPDATE app.organizations SET settings = settings || '{\"booking_pending_ttl_seconds\": 7200}'::jsonb WHERE id = $1", [w.org.orgId]);
+    try {
+      const second = await reserve(ctx, w.student2, slot.id);
+      const held2 = new Date(second.expires_at).getTime() - Date.now();
+      expect(held2).toBeGreaterThan(7_100_000);
+      expect(held2).toBeLessThanOrEqual(7_205_000);
+      const { rows } = await ctx.admin.query("SELECT expires_at FROM app.reservations WHERE id = $1", [first.id]);
+      expect(new Date(rows[0].expires_at).toISOString()).toBe(first.expires_at);
+    } finally {
+      await ctx.admin.query("UPDATE app.organizations SET settings = settings || '{\"booking_pending_ttl_seconds\": 3600}'::jsonb WHERE id = $1", [w.org.orgId]);
+    }
+  });
+
   it("teacher may create only their own slots in classrooms they teach", async () => {
     const own = await call(ctx, w.teacher, "POST", "/lesson-slots", { body: slotBody(w.org, { meetingUrl: null }) });
     expect(own.status).toBe(200);
@@ -170,6 +189,19 @@ describe("GET /lesson-slots scope, remaining and meeting URL", () => {
 });
 
 describe("PATCH /lesson-slots/{id}", () => {
+  it("validates the body like creation (422 with Japanese field errors)", async () => {
+    const slot = await createSlotViaApi(ctx, w.admin, slotBody(w.org));
+    const body = slotBody(w.org);
+    const res = await call(ctx, w.admin, "PATCH", `/lesson-slots/${slot.id}`, { body: { ...body, ends_at: body.starts_at }, ifMatch: slot.row_version });
+    expect(res.status).toBe(422);
+    expectContract(res, "patch", "/lesson-slots/{id}");
+    expect(res.body.field_errors.ends_at).toBe("終了時刻は開始時刻より後にしてください。");
+    // Cancellation is a separate, reasoned operation — PATCH only toggles open/closed.
+    const cancel = await call(ctx, w.admin, "PATCH", `/lesson-slots/${slot.id}`, { body: { ...body, state: "cancelled" }, ifMatch: slot.row_version });
+    expect(cancel.status).toBe(422);
+    expect(cancel.body.field_errors.state).toBe("選択肢から選んでください。");
+  });
+
   it("requires If-Match and the current version", async () => {
     const slot = await createSlotViaApi(ctx, w.admin, slotBody(w.org));
     const body = slotBody(w.org, { title: "改題" });
@@ -360,6 +392,47 @@ describe("attendance", () => {
     const empty = await call(ctx, w.teacher, "POST", `/lesson-slots/${slot.id}/attendance`, { body: { records: [] } });
     expect(empty.status).toBe(422);
     expect(empty.body.field_errors.records).toBe("1件以上指定してください。");
+  });
+});
+
+describe("authentication and role matrix (all booking endpoints)", () => {
+  it("401 without credentials and 403 for roles the endpoint does not allow", async () => {
+    const slot = await createSlotViaApi(ctx, w.admin, slotBody(w.org));
+    const r = await reserve(ctx, w.student, slot.id);
+    const hash = "0".repeat(64);
+    const endpoints: { method: string; path: string; template: string; body?: unknown; forbidden: ("admin" | "teacher" | "student")[] }[] = [
+      { method: "GET", path: "/lesson-slots", template: "/lesson-slots", forbidden: [] },
+      { method: "GET", path: `/lesson-slots/${slot.id}`, template: "/lesson-slots/{id}", forbidden: [] },
+      { method: "POST", path: "/lesson-slots", template: "/lesson-slots", body: slotBody(w.org), forbidden: ["student"] },
+      { method: "PATCH", path: `/lesson-slots/${slot.id}`, template: "/lesson-slots/{id}", body: slotBody(w.org), forbidden: ["student"] },
+      { method: "POST", path: `/lesson-slots/${slot.id}/cancel`, template: "/lesson-slots/{id}/cancel", body: { reason: "x", expected_version: 1 }, forbidden: ["student"] },
+      { method: "GET", path: `/lesson-slots/${slot.id}/attendance`, template: "/lesson-slots/{id}/attendance", forbidden: ["student"] },
+      { method: "POST", path: `/lesson-slots/${slot.id}/attendance`, template: "/lesson-slots/{id}/attendance", body: { records: [] }, forbidden: ["student"] },
+      { method: "GET", path: "/today-lessons", template: "/today-lessons", forbidden: ["admin"] },
+      { method: "GET", path: "/reservations", template: "/reservations", forbidden: [] },
+      { method: "GET", path: `/reservations/${r.id}`, template: "/reservations/{id}", forbidden: [] },
+      { method: "POST", path: "/reservations", template: "/reservations", body: { slot_id: slot.id }, forbidden: ["admin", "teacher"] },
+      { method: "POST", path: `/reservations/${r.id}/approve`, template: "/reservations/{id}/approve", body: { expected_version: 1 }, forbidden: ["student"] },
+      { method: "POST", path: `/reservations/${r.id}/reject`, template: "/reservations/{id}/reject", body: { expected_version: 1, reason: "x" }, forbidden: ["student"] },
+      { method: "POST", path: `/reservations/${r.id}/cancel`, template: "/reservations/{id}/cancel", body: { expected_version: 1 }, forbidden: ["admin", "teacher"] },
+      { method: "POST", path: `/reservations/${r.id}/remove`, template: "/reservations/{id}/remove", body: { expected_version: 1, reason: "x" }, forbidden: ["student"] },
+      { method: "GET", path: "/notifications", template: "/notifications", forbidden: [] },
+      { method: "POST", path: "/notifications/read-all", template: "/notifications/read-all", forbidden: [] },
+      { method: "POST", path: `/notifications/${crypto.randomUUID()}/read`, template: "/notifications/{id}/read", forbidden: [] },
+      { method: "POST", path: "/devices", template: "/devices", body: { token: "ab".repeat(32), environment: "sandbox" }, forbidden: ["admin"] },
+      { method: "DELETE", path: `/devices/${hash}`, template: "/devices/{token_hash}", forbidden: ["admin"] },
+    ];
+    for (const e of endpoints) {
+      const anon = await call(ctx, null, e.method, e.path, { body: e.body, ifMatch: e.method === "PATCH" ? 1 : undefined });
+      expect(anon.status, `${e.method} ${e.path}`).toBe(401);
+      expectContract(anon, e.method, e.template);
+      for (const role of e.forbidden) {
+        const res = await call(ctx, w[role], e.method, e.path, { body: e.body, ifMatch: e.method === "PATCH" ? 1 : undefined });
+        expect(res.status, `${role} ${e.method} ${e.path}`).toBe(403);
+        expect(res.body.code).toBe("FORBIDDEN");
+        expectContract(res, e.method, e.template);
+      }
+    }
   });
 });
 
