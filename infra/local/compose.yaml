@@ -5,6 +5,8 @@ name: arms
 services:
   postgres:
     image: postgres:17-alpine
+    # Each API test run creates its own database and pools; parallel runs need more than the default 100 connections.
+    command: ["postgres", "-c", "max_connections=500"]
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: arms_dev_pw
