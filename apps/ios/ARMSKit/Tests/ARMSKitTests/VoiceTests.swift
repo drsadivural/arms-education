@@ -610,6 +610,19 @@ final class VoiceSessionControllerTests: XCTestCase {
     XCTAssertEqual(h.audio.deactivations, 1)
   }
 
+  func testAudioSessionFailureReleasesServerSession() async {
+    struct Busy: Error {}
+    let h = makeHarness()
+    h.audio.activateError = Busy()
+    await h.controller.start()
+    guard case .failed = h.controller.phase else { return XCTFail("expected failure") }
+    XCTAssertEqual(h.transport.requests(.post, "/voice/sessions/vs-1/end").count, 1)
+    XCTAssertTrue(h.realtime.secrets.isEmpty)
+    await h.controller.end()
+    XCTAssertEqual(h.transport.requests(.post, "/voice/sessions/vs-1/end").count, 1, "nothing left to end")
+    XCTAssertEqual(h.audio.deactivations, 0)
+  }
+
   func testMicrophoneDeniedStillAllowsTextConversation() async {
     let h = makeHarness()
     h.audio.permission = .undetermined

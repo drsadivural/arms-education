@@ -86,8 +86,3 @@ public struct ResourceResult: Codable, Sendable, Equatable {
     case checkedAt = "checked_at"
   }
 }
-
-/// Placeholder for endpoints whose request has no JSON body.
-public struct NoBody: Codable, Sendable, Equatable {
-  public init() {}
-}

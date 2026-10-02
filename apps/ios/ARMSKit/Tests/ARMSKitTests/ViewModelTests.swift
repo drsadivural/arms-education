@@ -129,6 +129,15 @@ final class SessionStoreTests: XCTestCase {
     XCTAssertEqual(store3.state, .restoreFailed(ARMSError.offline.messageJa))
   }
 
+  func testSelectedRoleIsRemembered() {
+    let keyValues = InMemoryKeyValueStore()
+    let store = makeStore(MockTransport(), keyValues: keyValues)
+    XCTAssertEqual(store.selectedRole, .student)
+    store.selectedRole = .teacher
+    XCTAssertEqual(keyValues.string(forKey: StorageKeys.selectedRole), "teacher")
+    XCTAssertEqual(makeStore(MockTransport(), keyValues: keyValues).selectedRole, .teacher)
+  }
+
   func testRestoreWithoutSessionShowsLogin() async {
     let tokens = StubTokens()
     tokens.signedIn = false

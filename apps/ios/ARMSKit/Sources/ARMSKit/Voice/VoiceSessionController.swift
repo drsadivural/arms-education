@@ -139,6 +139,7 @@ public final class VoiceSessionController {
       permission = await audio.requestMicrophonePermission() ? .granted : .denied
     }
     microphonePermission = permission
+    guard generation == myGeneration else { return }
 
     let grant: VoiceSessionGrant
     do {
@@ -157,6 +158,7 @@ public final class VoiceSessionController {
     do {
       try audio.activate()
     } catch {
+      sessionId = nil
       await finishOnServer(grant.sessionId)
       phase = .failed("マイクとスピーカーを準備できませんでした。ほかのアプリの通話や録音を終了してから再度お試しください。")
       return
@@ -200,6 +202,7 @@ public final class VoiceSessionController {
 
   public func end(reason: VoiceEndReason = .user) async {
     let wasRunning = isRunning
+    guard wasRunning || sessionId != nil else { return }
     generation += 1
     tickTask?.cancel()
     tickTask = nil

@@ -30,7 +30,7 @@ apps/ios/
 │   ├── Voice/               WebRTC トランスポート、AVAudioSession、音声画面・確認カード
 │   ├── DesignSystem/        色（docs/10）・カード・ボタン・状態表示（読み込み／空／エラー／オフライン）
 │   ├── Resources/           Info.plist、Assets（H&A ロゴ原本）、PrivacyInfo.xcprivacy、entitlements、文字列カタログ
-│   └── Config/              xcconfig（接続先はプレースホルダー。値は Local.xcconfig で設定）
+│   └── Config/              xcconfig（接続先は空欄。値はリポジトリ管理外の Local.xcconfig で設定）
 └── ARMSTests/               アプリ側ユニットテスト（設定読込・ルーター・リソース）
 ```
 
