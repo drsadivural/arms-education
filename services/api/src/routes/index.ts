@@ -12,7 +12,7 @@ import { voiceRoutes } from "./voice";
 import { importsRoutes } from "./imports";
 
 /** Endpoints reachable without credentials. Everything else is authenticated (default deny). */
-const PUBLIC_ENDPOINTS = new Set(["GET /api/v1/health", "POST /api/v1/auth/login", "POST /api/v1/auth/password-reset"]);
+const PUBLIC_ENDPOINTS = new Set(["GET /api/v1/health", "POST /api/v1/auth/login", "POST /api/v1/auth/password-reset", "POST /api/v1/auth/password"]);
 /**
  * Machine-to-machine callbacks authenticated by their own signature instead of a user session:
  * the malware scanner's verdict callback (HMAC-SHA256 with the scanner key, ±300 s timestamp window).

@@ -8124,6 +8124,54 @@
         }
       }
     },
+    "/auth/password": {
+      "post": {
+        "operationId": "post_auth_password",
+        "summary": "招待・再設定リンクからのパスワード設定",
+        "description": "許可ロール: 公開（メールリンクの短期アクセストークンをAuthの公開鍵で検証）。組織メンバーシップが必要。受講者はiOS、管理者・講師はWebでログインするよう案内する。",
+        "tags": [
+          "auth"
+        ],
+        "security": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PasswordSetInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ActionResult"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
     "/events/deliveries": {
       "get": {
         "operationId": "get_event_deliveries",
@@ -8509,6 +8557,94 @@
             "$ref": "#/components/responses/Error"
           },
           "503": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/events/export.csv": {
+      "get": {
+        "operationId": "get_events_export_csv",
+        "summary": "監査ログCSV出力",
+        "description": "許可ロール: admin。/events と同じ絞り込み（最大10,000件、超える場合は422 EXPORT_TOO_LARGE）。UTF-8 BOM付き・CRLF・数式インジェクション対策済み、詳細は画面と同じくマスキング。出力操作自体を監査記録する。",
+        "tags": [
+          "events"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "maxLength": 100
+            },
+            "description": "イベント種別・操作者名の部分一致"
+          },
+          {
+            "name": "event_type",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "maxLength": 100
+            },
+            "description": "イベント種別の前方一致（例: reservation. ）"
+          },
+          {
+            "name": "actor_id",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "entity_id",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "date"
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "date"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "CSV",
+            "content": {
+              "text/csv": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "422": {
             "$ref": "#/components/responses/Error"
           }
         }
@@ -13686,6 +13822,27 @@
         "required": [
           "data",
           "checked_at"
+        ],
+        "additionalProperties": false
+      },
+      "PasswordSetInput": {
+        "type": "object",
+        "properties": {
+          "access_token": {
+            "type": "string",
+            "minLength": 20,
+            "maxLength": 4096
+          },
+          "password": {
+            "type": "string",
+            "minLength": 10,
+            "maxLength": 128,
+            "description": "英字と数字を両方含む10文字以上。"
+          }
+        },
+        "required": [
+          "access_token",
+          "password"
         ],
         "additionalProperties": false
       },

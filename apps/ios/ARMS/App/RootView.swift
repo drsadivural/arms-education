@@ -11,6 +11,8 @@ struct RootView: View {
         .task { await app.launch() }
     case .signedOut:
       LoginView()
+        // Also covers forced sign-outs initiated by SessionStore (expired session, role mismatch).
+        .task { await app.resetUserState() }
     case .choosingOrganization(let choices):
       OrganizationPickerView(choices: choices)
     case .signedIn(let me):

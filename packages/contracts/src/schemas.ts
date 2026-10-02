@@ -96,6 +96,16 @@ export const LoginInput = z.strictObject({
   organization_id: zId.optional(),
 });
 export const PasswordResetInput = z.strictObject({ email: z.email() });
+/** 10〜128文字、英字と数字を含む（組織の初期パスワードポリシー）。 */
+export const zNewPassword = z
+  .string()
+  .min(10, { message: "10文字以上で入力してください。" })
+  .max(128)
+  .refine((v) => /[A-Za-z]/.test(v) && /\d/.test(v), { message: "英字と数字を両方含めてください。" });
+export const PasswordSetInput = z.strictObject({
+  access_token: z.string().min(20).max(4096),
+  password: zNewPassword,
+});
 export const MfaVerifyInput = z.strictObject({ code: z.string().regex(/^\d{6}$/, { message: "6桁の数字を入力してください。" }) });
 export const PreferenceInput = z.strictObject({
   theme: z.enum(["light", "dark", "system"]),

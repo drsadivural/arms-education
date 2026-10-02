@@ -1560,6 +1560,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/auth/password": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * 招待・再設定リンクからのパスワード設定
+         * @description 許可ロール: 公開（メールリンクの短期アクセストークンをAuthの公開鍵で検証）。組織メンバーシップが必要。受講者はiOS、管理者・講師はWebでログインするよう案内する。
+         */
+        post: operations["post_auth_password"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/events/deliveries": {
         parameters: {
             query?: never;
@@ -1654,6 +1674,26 @@ export interface paths {
          * @description 許可ロール: admin。アカウントを停止（membership無効・Webセッション失効・Auth providerでログイン停止）し、申請をcompletedにする。研修記録は保持する。
          */
         post: operations["post_account_deletion_request_complete"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/events/export.csv": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * 監査ログCSV出力
+         * @description 許可ロール: admin。/events と同じ絞り込み（最大10,000件、超える場合は422 EXPORT_TOO_LARGE）。UTF-8 BOM付き・CRLF・数式インジェクション対策済み、詳細は画面と同じくマスキング。出力操作自体を監査記録する。
+         */
+        get: operations["get_events_export_csv"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -3044,6 +3084,11 @@ export interface components {
             data: components["schemas"]["Me"];
             /** Format: date-time */
             checked_at: string;
+        };
+        PasswordSetInput: {
+            access_token: string;
+            /** @description 英字と数字を両方含む10文字以上。 */
+            password: string;
         };
         TeacherCreateResponse: {
             data: components["schemas"]["Teacher"];
@@ -6690,6 +6735,35 @@ export interface operations {
             503: components["responses"]["Error"];
         };
     };
+    post_auth_password: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PasswordSetInput"];
+            };
+        };
+        responses: {
+            /** @description 成功 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ActionResult"];
+                };
+            };
+            401: components["responses"]["Error"];
+            403: components["responses"]["Error"];
+            422: components["responses"]["Error"];
+            429: components["responses"]["Error"];
+            503: components["responses"]["Error"];
+        };
+    };
     get_event_deliveries: {
         parameters: {
             query?: {
@@ -6851,6 +6925,38 @@ export interface operations {
             422: components["responses"]["Error"];
             429: components["responses"]["Error"];
             503: components["responses"]["Error"];
+        };
+    };
+    get_events_export_csv: {
+        parameters: {
+            query?: {
+                /** @description イベント種別・操作者名の部分一致 */
+                q?: string;
+                /** @description イベント種別の前方一致（例: reservation. ） */
+                event_type?: string;
+                actor_id?: string;
+                entity_id?: string;
+                from?: string;
+                to?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description CSV */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/csv": string;
+                };
+            };
+            401: components["responses"]["Error"];
+            403: components["responses"]["Error"];
+            422: components["responses"]["Error"];
         };
     };
     get_submissions: {

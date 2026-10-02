@@ -35,6 +35,8 @@ export interface AuthProvider {
   adminSendInvite(email: string, metadata: Record<string, unknown>): Promise<{ userId: string }>;
   /** Blocks or unblocks sign-in at the provider (membership.active is still enforced by the API). */
   adminSetBanned(userId: string, banned: boolean): Promise<void>;
+  /** Sets the password with the short-lived session from an invitation or recovery link. */
+  updatePassword(accessToken: string, password: string): Promise<void>;
 }
 
 interface SupabaseAuthOptions {
@@ -166,6 +168,18 @@ export function createSupabaseAuth(opts: SupabaseAuthOptions): AuthProvider {
       const { status, body } = await call(`/invite?redirect_to=${encodeURIComponent(opts.redirectUrl)}`, { method: "POST", admin: true, body: { email, data: metadata } });
       if ((status === 200 || status === 201) && typeof body.id === "string") return { userId: body.id };
       if (status === 422) throw new ApiError("INVALID_STATE", { message_ja: "このユーザーは既に登録を完了しています。" });
+      throw new ApiError("AUTH_PROVIDER_UNAVAILABLE", { details: { provider_status: status } });
+    },
+    async updatePassword(accessToken, password) {
+      const { status, body } = await call("/user", { method: "PUT", bearer: accessToken, body: { password } });
+      if (status === 200) return;
+      const code = errorCode(body);
+      if (status === 401 || status === 403) throw new ApiError("SESSION_EXPIRED", { message_ja: "リンクの有効期限が切れています。もう一度メールのリンクからお試しください。" });
+      if (code === "weak_password" || code === "same_password" || status === 422) {
+        throw new ApiError("VALIDATION_FAILED", {
+          field_errors: { password: code === "same_password" ? "以前と異なるパスワードを入力してください。" : "より強いパスワードを入力してください。" },
+        });
+      }
       throw new ApiError("AUTH_PROVIDER_UNAVAILABLE", { details: { provider_status: status } });
     },
     async adminSetBanned(userId, banned) {

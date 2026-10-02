@@ -24,6 +24,8 @@ final class AppModel {
   @ObservationIgnored private var pendingDeepLink: DeepLink?
   @ObservationIgnored private var pendingDeviceToken: Data?
   private(set) var voice: VoiceSessionController?
+  /// Identity the voice controller was built for (rebuilt when another user or role signs in).
+  @ObservationIgnored private var voiceOwner: (id: String, role: Role)?
   /// System notification permission (Settings screen shows it next to the server preference).
   private(set) var notificationAuthorization: UNAuthorizationStatus = .notDetermined
 
@@ -84,20 +86,30 @@ final class AppModel {
   }
 
   func signOut() async {
+    await resetUserState()
+    await session.signOut()
+  }
+
+  /// Clears everything tied to the signed-in user. Runs for explicit sign-out and whenever the session ends for other
+  /// reasons (expired token, role mismatch, disabled account), so voice/microphone, push registration and navigation
+  /// never leak into the next session. Idempotent.
+  func resetUserState() async {
     await voice?.end(reason: .user)
     voice = nil
+    voiceOwner = nil
     push.reset()
     router.reset()
-    await session.signOut()
   }
 
   private func afterSignInIfNeeded() async {
     guard let me = session.me else {
-      voice = nil
+      await resetUserState()
       return
     }
-    if voice == nil {
+    if voice == nil || voiceOwner?.id != me.id || voiceOwner?.role != me.role {
+      await voice?.end(reason: .user)
       voice = makeVoiceController(for: me)
+      voiceOwner = (me.id, me.role)
     }
     if let link = pendingDeepLink {
       pendingDeepLink = nil

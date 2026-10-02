@@ -1,6 +1,10 @@
 @_exported import ARMSKit
 import Foundation
 
+/// SwiftUI also declares a public `Material` (blur materials); this app-level alias makes every `Material` in the app
+/// target mean the ARMS learning material and avoids "'Material' is ambiguous for type lookup".
+typealias Material = ARMSKit.Material
+
 /// Build-time configuration read from Info.plist (values come from the xcconfig files:
 /// `API_BASE_URL`, `SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEY`, `TERMS_URL`, `PRIVACY_POLICY_URL`).
 /// Real values are customer inputs and are never committed.
