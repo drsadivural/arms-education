@@ -37,6 +37,7 @@
 | POST /settings/users/invite | 修正 | 管理者アカウントのみ招待する。講師・受講者はプロフィール（講師番号／社員番号・クラス・担当講師）が必須のため講師管理・新入社員管理から登録（role=teacher/studentは422で案内）。 |
 | POST /settings/users/{id}/enable | 追加 | WEB-18 停止の取り消し（membership有効化＋Auth providerのログイン停止解除）。停止と対称のため追加。 |
 | GET /settings/account-deletion-requests, POST /settings/account-deletion-requests/{id}/complete, AccountDeletionRequest(Page) | 追加 | WEB-18「本人削除申請」。POST /me/account-deletion の申請一覧と対応完了（アカウント停止・監査記録。研修記録は保持）。 |
+| GET /events/export.csv | 追加 | docs/01「設定: …監査ログ・エクスポート」。監査ログを絞り込み条件のままCSV出力（マスキング・数式対策・出力自体を監査）。 |
 
 ## 20-learning.json（プログラム・教材・進捗・出力）
 | 対象 | 種別 | 理由 |

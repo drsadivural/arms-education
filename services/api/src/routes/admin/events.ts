@@ -4,7 +4,8 @@
  */
 import { Hono } from "hono";
 import { z } from "zod";
-import { zDate, zId, zonedDayRange, type components } from "@arms/contracts";
+import { formatInstantDateJa, formatTimeJa, zDate, zId, zonedDateString, zonedDayRange, type components } from "@arms/contracts";
+import { csvCell } from "../../domain/learning/export-render";
 import type { AppEnv } from "../../context";
 import { actorTx } from "../../context";
 import { and, sql } from "../../db/sql";
@@ -34,45 +35,98 @@ const EventQuery = z
   })
   .refine((v) => !v.from || !v.to || v.from <= v.to, { path: ["to"], message: "終了日は開始日以降にしてください。" });
 
+type EventFilters = Omit<z.infer<typeof EventQuery>, "cursor" | "limit">;
+
+function eventWhere(orgId: string, timezone: string, query: EventFilters, after: { t: string; id: string } | null) {
+  const from = query.from ? zonedDayRange(query.from, timezone).start : null;
+  const to = query.to ? zonedDayRange(query.to, timezone).end : null;
+  const like = query.q ? containsPattern(query.q) : null;
+  return and([
+    sql`e.org_id = ${orgId}`,
+    like ? sql`(e.event_type ILIKE ${like} ESCAPE '\\' OR u.display_name ILIKE ${like} ESCAPE '\\')` : null,
+    query.event_type ? sql`e.event_type LIKE ${prefixPattern(query.event_type)} ESCAPE '\\'` : null,
+    query.actor_id ? sql`e.actor_id = ${query.actor_id}` : null,
+    query.entity_id ? sql`e.entity_id = ${query.entity_id}` : null,
+    from ? sql`e.created_at >= ${from}` : null,
+    to ? sql`e.created_at < ${to}` : null,
+    after ? sql`(e.created_at, e.id) < (${after.t}::timestamptz, ${after.id}::uuid)` : null,
+  ]);
+}
+
+interface EventRow {
+  id: string;
+  actor_id: string | null;
+  actor_name: string | null;
+  event_type: string;
+  entity_id: string | null;
+  created_at: Date;
+  payload: unknown;
+  cursor_t: string;
+}
+
+const toDetails = (payload: unknown): Record<string, unknown> => {
+  const details = redact(payload);
+  return details !== null && typeof details === "object" && !Array.isArray(details) ? (details as Record<string, unknown>) : { value: details };
+};
+
 eventRoutes.get("/events", requireRole("admin"), async (c) => {
   const actor = c.get("actor");
   const query = readQuery(c, EventQuery);
   const limit = parseLimit(query.limit);
   const after = decodeCursor(query.cursor, TimeIdCursor);
-  const from = query.from ? zonedDayRange(query.from, actor.timezone).start : null;
-  const to = query.to ? zonedDayRange(query.to, actor.timezone).end : null;
-  const like = query.q ? containsPattern(query.q) : null;
   const rows = await actorTx(c, (tx) =>
-    tx.query<{ id: string; actor_id: string | null; actor_name: string | null; event_type: string; entity_id: string | null; created_at: Date; payload: unknown; cursor_t: string }>(sql`
+    tx.query<EventRow>(sql`
       SELECT e.id, e.actor_id, u.display_name AS actor_name, e.event_type, e.entity_id, e.created_at, e.payload, e.created_at::text AS cursor_t
       FROM app.audit_events e
       LEFT JOIN app.users u ON u.id = e.actor_id
-      WHERE ${and([
-        sql`e.org_id = ${actor.orgId}`,
-        like ? sql`(e.event_type ILIKE ${like} ESCAPE '\\' OR u.display_name ILIKE ${like} ESCAPE '\\')` : null,
-        query.event_type ? sql`e.event_type LIKE ${prefixPattern(query.event_type)} ESCAPE '\\'` : null,
-        query.actor_id ? sql`e.actor_id = ${query.actor_id}` : null,
-        query.entity_id ? sql`e.entity_id = ${query.entity_id}` : null,
-        from ? sql`e.created_at >= ${from}` : null,
-        to ? sql`e.created_at < ${to}` : null,
-        after ? sql`(e.created_at, e.id) < (${after.t}::timestamptz, ${after.id}::uuid)` : null,
-      ])}
+      WHERE ${eventWhere(actor.orgId, actor.timezone, query, after)}
       ORDER BY e.created_at DESC, e.id DESC LIMIT ${limit + 1}`),
   );
   const { items, nextCursor } = paginate(rows, limit, (r) => ({ t: r.cursor_t, id: r.id }));
-  const events: AuditEvent[] = items.map((r) => {
-    const details = redact(r.payload);
-    return {
-      id: r.id,
-      actor_id: r.actor_id,
-      actor_name: r.actor_name ?? "システム",
-      event_type: r.event_type,
-      entity_id: r.entity_id,
-      created_at: r.created_at.toISOString(),
-      details: details !== null && typeof details === "object" && !Array.isArray(details) ? (details as Record<string, unknown>) : { value: details },
-    };
-  });
+  const events: AuditEvent[] = items.map((r) => ({
+    id: r.id,
+    actor_id: r.actor_id,
+    actor_name: r.actor_name ?? "システム",
+    event_type: r.event_type,
+    entity_id: r.entity_id,
+    created_at: r.created_at.toISOString(),
+    details: toDetails(r.payload),
+  }));
   return page(c, events, nextCursor);
+});
+
+const EXPORT_MAX_ROWS = 10_000;
+
+/**
+ * GET /events/export.csv — the filtered audit log as CSV (UTF-8 with BOM, CRLF, formula-injection safe, details
+ * redacted like the screen). Exporting is itself audited. Larger result sets must be narrowed with filters.
+ */
+eventRoutes.get("/events/export.csv", requireRole("admin"), async (c) => {
+  const actor = c.get("actor");
+  const { cursor: _cursor, limit: _limit, ...filters } = readQuery(c, EventQuery);
+  const rows = await actorTx(c, async (tx) => {
+    const found = await tx.query<EventRow>(sql`
+      SELECT e.id, e.actor_id, u.display_name AS actor_name, e.event_type, e.entity_id, e.created_at, e.payload, e.created_at::text AS cursor_t
+      FROM app.audit_events e
+      LEFT JOIN app.users u ON u.id = e.actor_id
+      WHERE ${eventWhere(actor.orgId, actor.timezone, filters, null)}
+      ORDER BY e.created_at DESC, e.id DESC LIMIT ${EXPORT_MAX_ROWS + 1}`);
+    if (found.length > EXPORT_MAX_ROWS) fail("EXPORT_TOO_LARGE", { message_ja: "出力件数が10,000件を超えています。期間や種別で絞り込んでください。" });
+    await audit(tx, actor, "audit.exported", null, { filters, rows: found.length, request_id: c.get("requestId") });
+    return found;
+  });
+  const lines = [["日時", "実行者", "イベント種別", "対象ID", "詳細"].map(csvCell).join(",")];
+  for (const r of rows) {
+    lines.push(
+      [formatInstantDateJa(r.created_at, actor.timezone) + " " + formatTimeJa(r.created_at, actor.timezone), r.actor_name ?? "システム", r.event_type, r.entity_id ?? "", JSON.stringify(toDetails(r.payload))]
+        .map(csvCell)
+        .join(","),
+    );
+  }
+  const stamp = zonedDateString(c.get("deps").now(), actor.timezone).replace(/-/g, "");
+  c.header("Content-Type", "text/csv; charset=utf-8");
+  c.header("Content-Disposition", `attachment; filename="arms-audit-${stamp}.csv"`);
+  return c.body(`\uFEFF${lines.join("\r\n")}\r\n`);
 });
 
 const DeliveryQuery = z.object({

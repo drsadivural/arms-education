@@ -1452,6 +1452,94 @@
           }
         }
       }
+    },
+    "/events/export.csv": {
+      "get": {
+        "operationId": "get_events_export_csv",
+        "summary": "監査ログCSV出力",
+        "description": "許可ロール: admin。/events と同じ絞り込み（最大10,000件、超える場合は422 EXPORT_TOO_LARGE）。UTF-8 BOM付き・CRLF・数式インジェクション対策済み、詳細は画面と同じくマスキング。出力操作自体を監査記録する。",
+        "tags": [
+          "events"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "maxLength": 100
+            },
+            "description": "イベント種別・操作者名の部分一致"
+          },
+          {
+            "name": "event_type",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "maxLength": 100
+            },
+            "description": "イベント種別の前方一致（例: reservation. ）"
+          },
+          {
+            "name": "actor_id",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "entity_id",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "date"
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "date"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "CSV",
+            "content": {
+              "text/csv": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
     }
   },
   "components": {

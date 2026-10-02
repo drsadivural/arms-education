@@ -1680,6 +1680,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/events/export.csv": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * 監査ログCSV出力
+         * @description 許可ロール: admin。/events と同じ絞り込み（最大10,000件、超える場合は422 EXPORT_TOO_LARGE）。UTF-8 BOM付き・CRLF・数式インジェクション対策済み、詳細は画面と同じくマスキング。出力操作自体を監査記録する。
+         */
+        get: operations["get_events_export_csv"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/submissions": {
         parameters: {
             query?: never;
@@ -6905,6 +6925,38 @@ export interface operations {
             422: components["responses"]["Error"];
             429: components["responses"]["Error"];
             503: components["responses"]["Error"];
+        };
+    };
+    get_events_export_csv: {
+        parameters: {
+            query?: {
+                /** @description イベント種別・操作者名の部分一致 */
+                q?: string;
+                /** @description イベント種別の前方一致（例: reservation. ） */
+                event_type?: string;
+                actor_id?: string;
+                entity_id?: string;
+                from?: string;
+                to?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description CSV */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/csv": string;
+                };
+            };
+            401: components["responses"]["Error"];
+            403: components["responses"]["Error"];
+            422: components["responses"]["Error"];
         };
     };
     get_submissions: {
