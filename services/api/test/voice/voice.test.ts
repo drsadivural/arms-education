@@ -265,3 +265,26 @@ describe("voice tool permissions and validation", () => {
     expect(Object.keys(rows[0].payload).sort()).toEqual(["call_id", "error_code", "request_id", "success", "target_id", "tool"]);
   });
 });
+
+describe("voice progress uses the shared progress service", () => {
+  it("returns the same percentage as GET /students/{id}/progress and enforces teacher scope", async () => {
+    const s = await startSession(w.student);
+    const voice = await tool(w.student, s.session_id, "get_progress", {});
+    expect(voice.body.success).toBe(true);
+    const rest = await call(ctx, w.student, "GET", `/students/${w.org.student.userId}/progress`);
+    expect(voice.body.data.progress_percent).toBe(rest.body.progress_percent);
+    if (rest.body.progress_percent === null) expect(voice.body.data.progress_ja).toMatch(/^未設定/);
+
+    const other = await tool(w.student, s.session_id, "get_progress", { student_id: w.org.student2.userId });
+    expect(other.body.data.error_code).toBe("FORBIDDEN");
+
+    const t = await startSession(w.teacher);
+    const needsId = await tool(w.teacher, t.session_id, "get_progress", {});
+    expect(needsId.body.data.error_code).toBe("STUDENT_REQUIRED");
+    const mine = await tool(w.teacher, t.session_id, "get_progress", { student_id: w.org.student.userId });
+    expect(mine.body.success).toBe(true);
+    expect(mine.body.data.student_name).toBe("和田 一夫");
+    const outOfScope = await tool(w.teacher, t.session_id, "get_progress", { student_id: w.org.otherStudent.userId });
+    expect(outOfScope.body.data.error_code).toBe("NOT_FOUND");
+  });
+});

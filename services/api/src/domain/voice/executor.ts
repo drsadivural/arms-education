@@ -6,6 +6,7 @@
  */
 import {
   RESERVATION_STATUS_LABELS,
+  UNIT_STATE_LABELS,
   addDays,
   formatDateJa,
   formatTimeJa,
@@ -23,6 +24,8 @@ import { bookingTx } from "../booking/common";
 import { findSlot, listSlots, listTodayLessons, toSlotDto } from "../booking/slots";
 import { createReservation, decideReservation, getReservation, listReservations } from "../booking/reservations";
 import type { ToolName } from "./tools";
+import { readStudentProgress } from "../progress";
+import { canSeeStudent } from "../learning/common";
 
 export const ACTION_TTL_SECONDS = 120;
 
@@ -249,6 +252,45 @@ export async function executeTool(ctx: ToolContext, name: ToolName, args: Record
 }
 
 /** get_progress is served by the shared progress service (docs/04 「Web/iOS/AIは同じprogress serviceを呼ぶ」). */
-async function executeGetProgress(_ctx: ToolContext, _args: { student_id?: string }): Promise<ToolOutcome> {
-  return fail("NOT_CONFIGURED", "進捗の確認は現在利用できません。画面から確認してください。");
+async function executeGetProgress(ctx: ToolContext, args: { student_id?: string }): Promise<ToolOutcome> {
+  const { b } = ctx;
+  const actor = b.actor;
+  const now = b.deps.now();
+  const today = zonedDateString(now, actor.timezone);
+  let studentId: string;
+  if (actor.role === "student") {
+    if (args.student_id && args.student_id !== actor.userId) return fail("FORBIDDEN", "ご本人以外の進捗は確認できません。");
+    studentId = actor.userId;
+  } else {
+    if (!args.student_id) return fail("STUDENT_REQUIRED", "どの受講者の進捗かを確認してください。");
+    studentId = args.student_id;
+  }
+  const result = await bookingTx(b, async (tx) => {
+    if (actor.role !== "student") {
+      const access = await canSeeStudent(tx, actor, studentId);
+      if (access !== "ok") return null;
+    }
+    return readStudentProgress(tx, actor.orgId, studentId, today);
+  });
+  if (!result) return fail("NOT_FOUND", "担当の受講者が見つかりません。");
+  const units = result.units as { title: string; state: keyof typeof UNIT_STATE_LABELS; score: number | null; required: boolean; program_name: string }[];
+  return {
+    success: true,
+    data: {
+      student_name: result.student_name,
+      progress_percent: result.progress_percent,
+      progress_ja: result.progress_percent === null ? "未設定（必須の単元が割り当てられていません）" : `${result.progress_percent}%`,
+      required_total: result.required_total,
+      required_completed: result.required_completed,
+      programs: (result.enrollments as { program_name: string; due_on: string; overdue: boolean; progress_percent: number | null }[]).map((e) => ({
+        program_name: e.program_name,
+        due_on: e.due_on,
+        due_ja: formatDateJa(e.due_on),
+        overdue: e.overdue,
+        progress_percent: e.progress_percent,
+      })),
+      units: units.map((u) => ({ title: u.title, program_name: u.program_name, required: u.required, state_ja: UNIT_STATE_LABELS[u.state] ?? u.state, score: u.score })),
+      checked_at: now.toISOString(),
+    },
+  };
 }

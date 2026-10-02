@@ -61,7 +61,10 @@ export function installJapaneseErrors(): void {
 
 export const zId = z.guid();
 /** Strict calendar date (rejects 2026-02-30). */
-export const zDate = z.iso.date().refine((v) => parseDateOnly(v) !== null, { message: "存在しない日付です。" });
+export const zDate = z
+  .string()
+  .regex(/^\d{4}-\d{2}-\d{2}$/, { message: "日付を正しく入力してください（例: 2026-10-05）。" })
+  .refine((v) => parseDateOnly(v) !== null, { message: "存在しない日付です。" });
 export const zDateTime = z.iso.datetime({ offset: true });
 export const zHttpsUrl = z
   .string()
