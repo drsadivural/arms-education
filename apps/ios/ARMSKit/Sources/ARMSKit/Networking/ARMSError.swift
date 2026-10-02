@@ -291,6 +291,16 @@ public enum ErrorCatalog {
     "PROGRAM_NOT_ASSIGNED": "この授業の教育プログラムが割り当てられていないため申請できません。",
     // area: voice
     "VOICE_SESSION_ENDED": "音声セッションは終了しました。もう一度開始してください。",
+    "IMPORT_UPLOAD_NOT_READY": "アップロードしたファイルの検査が完了していません。しばらくしてから再度お試しください。",
+    "IMPORT_UPLOAD_REJECTED": "アップロードしたファイルは検査で利用できないと判定されました。別のファイルをアップロードしてください。",
+    "IMPORT_FILE_MISSING": "アップロードしたファイルが見つかりません。もう一度アップロードしてください。",
+    "IMPORT_ENCODING_MISMATCH": "指定した文字コードとファイルの文字コードが一致しません。文字コードを選び直してください。",
+    "IMPORT_ENCODING_UNSUPPORTED": "ファイルの文字コードを判別できません。UTF-8またはShift_JIS（CP932）のCSVを指定してください。",
+    "IMPORT_TOO_MANY_ROWS": "行数が上限（10,000行）を超えています。ファイルを分割してください。",
+    "IMPORT_EMPTY": "取り込むデータ行がありません。ヘッダー行とデータ行を確認してください。",
+    "IMPORT_MAPPING_INVALID": "列の対応付けを確認してください。",
+    "IMPORT_HAS_ERRORS": "エラーのある行があるため確定できません。元データまたは項目の対応を修正して、もう一度ドライランを実行してください。",
+    "IMPORT_IN_PROGRESS": "この移行ジョブは処理中です。しばらくしてから状態を確認してください。",
   ]
 
   public static func message(for code: String) -> String {

@@ -64,6 +64,8 @@
 | Export | 修正 | state に expired（保存期限24時間経過）を追加。format・created_at・row_count・filename・error_code を追加。 |
 | GET /uploads/{id}, UploadStatus | 追加 | 検疫・検査状態（WEB-10「検疫状態」）をアップロードした本人/管理者が確認する。 |
 | POST /uploads/{id}/scan-result, ScanCallbackInput | 追加 | ファイル検査サービスの非同期結果通知。ユーザー認証ではなく HMAC-SHA256 署名（X-ARMS-Scan-Timestamp / X-ARMS-Scan-Signature）で認証。routes/index.ts の認証除外に `POST /api/v1/uploads/<uuid>/scan-result` のパターン一致（PUBLIC_ENDPOINTS は完全一致の Set のため動的パスに一致しない）を追加する必要がある（未追加の間は cron のポーリングで判定）。 |
+| GET /units/{id}/materials | 修正 | 実装が受け付けるのは cursor/limit/q のみ。原本の汎用フィルターを削除。 |
+| UploadStatus.scanner_configured | 追加 | `POST /uploads/{id}/complete` が返す検査サービス設定有無を契約に明記（iOS/Webの案内表示に使用）。 |
 
 ## 30-booking.json（授業枠・予約・出欠・通知）
 | 対象 | 種別 | 理由 |
@@ -78,6 +80,7 @@
 | POST /notifications/read-all | 追加 | IOS-15のお知らせ一覧「すべて既読」。 |
 | DELETE /devices/{token_hash} | 追加 | IOS-18ログアウト時に端末のAPNs登録を解除する。端末登録はバージョン管理対象外のため If-Match 不要（冪等）。 |
 | エラーコード ALREADY_RESERVED / ATTENDANCE_NOT_OPEN / SLOT_CANCELLED / PROGRAM_NOT_ASSIGNED | 追加 | 同一枠への重複申請（「この授業は既に申請済みです。」）、授業開始30分前より前の出欠記録、取消済み枠の編集・出欠、単元付き授業で教育プログラム未割当の受講者の申請（docs/04「教材プログラム紐付け確認」）を区別して表示するため。 |
+| GET /today-lessons | 修正 | 実装が受け付けるのは cursor/limit のみ（今日・本人/担当範囲はサーバーで決定）。原本の汎用フィルターを削除して実装と一致させた。 |
 
 ## 40-voice.json（音声）
 | 対象 | 種別 | 理由 |
@@ -87,6 +90,7 @@
 | POST /voice/tool-calls | 修正 | 業務エラーを success:false + data.error_code/message_ja で返すこと、action tokenの扱いを明記。 |
 | GET /voice/quota | 追加 | IOS-18/IOS-13で本日の残り利用時間を表示するため。 |
 | VoiceQuota, VoiceQuotaResponse | 追加 | 同上。 |
+| VoiceCard, VoicePrepareData, VoiceCommitData, VoiceToolFailureData | 追加 | ツール結果（ActionResult.data）の形を契約に明記（iOS/Webクライアントの実装根拠）。 |
 
 ## 50-imports.json（データ移植）
 | 対象 | 種別 | 理由 |

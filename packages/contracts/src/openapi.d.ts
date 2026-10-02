@@ -1375,7 +1375,7 @@ export interface paths {
         put?: never;
         /**
          * 許可音声ツール実行
-         * @description 許可ロール: teacher/student。セッション所有・有効期限・ロール別allowlist・引数schema・call_id冪等をサーバーで検証し、REST APIと同じドメインサービスで実行する。業務上の失敗は success:false と data.error_code / data.message_ja で返す（モデルへ渡すため）。予約の申請・取消は prepare_* が返す action_token（120秒・本人/セッション/目的に紐付け、ハッシュのみ保存）を commit_* に渡した場合のみ成立し、トークンの消費と予約の変更は同一トランザクション。
+         * @description 許可ロール: teacher/student。セッション所有・有効期限・ロール別allowlist・引数schema・call_id冪等をサーバーで検証し、REST APIと同じドメインサービスで実行する。業務上の失敗は success:false と data.error_code / data.message_ja で返す（モデルへ渡すため）。予約の申請・取消は prepare_* が返す action_token（120秒・本人/セッション/目的に紐付け、ハッシュのみ保存）を commit_* に渡した場合のみ成立し、トークンの消費と予約の変更は同一トランザクション。 data の形: prepare_* は VoicePrepareData、commit_* は VoiceCommitData、失敗時は VoiceToolFailureData。today_lessons {date, date_ja, lessons[VoiceCard], count, checked_at}、search_slots {date, date_ja, time_band, slots[VoiceCard], full_or_closed_count, checked_at}、get_reservations {reservations[VoiceCard] | reservation, checked_at}、get_progress {student_name, progress_percent, progress_ja, required_total, required_completed, programs[], units[], checked_at}。
          */
         post: operations["post_voice_tool_calls"];
         delete?: never;
@@ -3413,6 +3413,8 @@ export interface components {
             /** Format: date-time */
             completed_at: string | null;
             reject_code: string | null;
+            /** @description マルウェアスキャンサービスが設定されているか（falseの間はファイルが検査待ちのまま公開・取り込みできない）。 */
+            scanner_configured?: boolean;
         };
         UploadStatusResponse: {
             data: components["schemas"]["UploadStatus"];
@@ -3472,6 +3474,56 @@ export interface components {
             data: components["schemas"]["VoiceQuota"];
             /** Format: date-time */
             checked_at: string;
+        };
+        /** @description 授業・予約の要約（日時は日本時間）。 */
+        VoiceCard: {
+            /** Format: uuid */
+            slot_id?: string;
+            /** Format: uuid */
+            reservation_id?: string;
+            title?: string;
+            /** Format: date */
+            date?: string;
+            date_ja?: string;
+            /** @description HH:mm */
+            start?: string;
+            end?: string;
+            teacher_name?: string;
+            classroom_name?: string;
+            remaining?: number;
+            status?: string;
+            status_ja?: string;
+            /** Format: date-time */
+            cancel_deadline?: string;
+        } & {
+            [key: string]: unknown;
+        };
+        /** @description prepare_reservation / prepare_cancellation の data。確認カードに confirmation_ja を表示・読み上げ、利用者の明示同意後にのみ action_token を commit_* へ渡す。 */
+        VoicePrepareData: {
+            action_token: string;
+            /** Format: date-time */
+            expires_at: string;
+            confirmation_ja: string;
+            card: components["schemas"]["VoiceCard"];
+            /** Format: date-time */
+            checked_at: string;
+        };
+        /** @description commit_reservation / commit_cancellation の data。同じトークンの再送は記録済みの結果を返す。 */
+        VoiceCommitData: {
+            reservation: components["schemas"]["VoiceCard"];
+            message_ja: string;
+            /** Format: date-time */
+            checked_at: string;
+        };
+        /** @description success:false のときの data（業務エラー。モデルは message_ja を伝え、画面操作を案内する）。 */
+        VoiceToolFailureData: {
+            error_code: string;
+            message_ja: string;
+            field_errors?: {
+                [key: string]: string;
+            };
+        } & {
+            [key: string]: unknown;
         };
         /** @description 取り込み先項目ごとの対応と空欄の意味（docs/08）。empty_count はドライラン後のみ。 */
         ImportColumn: {
@@ -4810,14 +4862,6 @@ export interface operations {
                 cursor?: string;
                 limit?: number;
                 q?: string;
-                classroom_id?: string;
-                teacher_id?: string;
-                student_id?: string;
-                status?: string;
-                from?: string;
-                to?: string;
-                month?: string;
-                department?: string;
             };
             header?: never;
             path: {
@@ -5620,15 +5664,6 @@ export interface operations {
             query?: {
                 cursor?: string;
                 limit?: number;
-                q?: string;
-                classroom_id?: string;
-                teacher_id?: string;
-                student_id?: string;
-                status?: string;
-                from?: string;
-                to?: string;
-                month?: string;
-                department?: string;
             };
             header?: never;
             path?: never;

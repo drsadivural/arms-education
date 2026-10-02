@@ -3197,68 +3197,6 @@
             "schema": {
               "type": "string"
             }
-          },
-          {
-            "name": "classroom_id",
-            "in": "query",
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            }
-          },
-          {
-            "name": "teacher_id",
-            "in": "query",
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            }
-          },
-          {
-            "name": "student_id",
-            "in": "query",
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            }
-          },
-          {
-            "name": "status",
-            "in": "query",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "from",
-            "in": "query",
-            "schema": {
-              "type": "string",
-              "format": "date"
-            }
-          },
-          {
-            "name": "to",
-            "in": "query",
-            "schema": {
-              "type": "string",
-              "format": "date"
-            }
-          },
-          {
-            "name": "month",
-            "in": "query",
-            "schema": {
-              "type": "string",
-              "pattern": "^\\d{4}-\\d{2}$"
-            }
-          },
-          {
-            "name": "department",
-            "in": "query",
-            "schema": {
-              "type": "string"
-            }
           }
         ]
       }
@@ -5091,75 +5029,6 @@
               "minimum": 1,
               "maximum": 100,
               "default": 30
-            }
-          },
-          {
-            "name": "q",
-            "in": "query",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "classroom_id",
-            "in": "query",
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            }
-          },
-          {
-            "name": "teacher_id",
-            "in": "query",
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            }
-          },
-          {
-            "name": "student_id",
-            "in": "query",
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            }
-          },
-          {
-            "name": "status",
-            "in": "query",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "from",
-            "in": "query",
-            "schema": {
-              "type": "string",
-              "format": "date"
-            }
-          },
-          {
-            "name": "to",
-            "in": "query",
-            "schema": {
-              "type": "string",
-              "format": "date"
-            }
-          },
-          {
-            "name": "month",
-            "in": "query",
-            "schema": {
-              "type": "string",
-              "pattern": "^\\d{4}-\\d{2}$"
-            }
-          },
-          {
-            "name": "department",
-            "in": "query",
-            "schema": {
-              "type": "string"
             }
           }
         ]
@@ -7556,7 +7425,7 @@
       "post": {
         "operationId": "post_voice_tool_calls",
         "summary": "許可音声ツール実行",
-        "description": "許可ロール: teacher/student。セッション所有・有効期限・ロール別allowlist・引数schema・call_id冪等をサーバーで検証し、REST APIと同じドメインサービスで実行する。業務上の失敗は success:false と data.error_code / data.message_ja で返す（モデルへ渡すため）。予約の申請・取消は prepare_* が返す action_token（120秒・本人/セッション/目的に紐付け、ハッシュのみ保存）を commit_* に渡した場合のみ成立し、トークンの消費と予約の変更は同一トランザクション。",
+        "description": "許可ロール: teacher/student。セッション所有・有効期限・ロール別allowlist・引数schema・call_id冪等をサーバーで検証し、REST APIと同じドメインサービスで実行する。業務上の失敗は success:false と data.error_code / data.message_ja で返す（モデルへ渡すため）。予約の申請・取消は prepare_* が返す action_token（120秒・本人/セッション/目的に紐付け、ハッシュのみ保存）を commit_* に渡した場合のみ成立し、トークンの消費と予約の変更は同一トランザクション。 data の形: prepare_* は VoicePrepareData、commit_* は VoiceCommitData、失敗時は VoiceToolFailureData。today_lessons {date, date_ja, lessons[VoiceCard], count, checked_at}、search_slots {date, date_ja, time_band, slots[VoiceCard], full_or_closed_count, checked_at}、get_reservations {reservations[VoiceCard] | reservation, checked_at}、get_progress {student_name, progress_percent, progress_ja, required_total, required_completed, programs[], units[], checked_at}。",
         "tags": [
           "voice"
         ],
@@ -15248,6 +15117,10 @@
               "string",
               "null"
             ]
+          },
+          "scanner_configured": {
+            "type": "boolean",
+            "description": "マルウェアスキャンサービスが設定されているか（falseの間はファイルが検査待ちのまま公開・取り込みできない）。"
           }
         },
         "required": [
@@ -15489,6 +15362,134 @@
           "checked_at"
         ],
         "additionalProperties": false
+      },
+      "VoiceCard": {
+        "type": "object",
+        "description": "授業・予約の要約（日時は日本時間）。",
+        "properties": {
+          "slot_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "reservation_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "title": {
+            "type": "string"
+          },
+          "date": {
+            "type": "string",
+            "format": "date"
+          },
+          "date_ja": {
+            "type": "string"
+          },
+          "start": {
+            "type": "string",
+            "description": "HH:mm"
+          },
+          "end": {
+            "type": "string"
+          },
+          "teacher_name": {
+            "type": "string"
+          },
+          "classroom_name": {
+            "type": "string"
+          },
+          "remaining": {
+            "type": "integer"
+          },
+          "status": {
+            "type": "string"
+          },
+          "status_ja": {
+            "type": "string"
+          },
+          "cancel_deadline": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "additionalProperties": true
+      },
+      "VoicePrepareData": {
+        "type": "object",
+        "description": "prepare_reservation / prepare_cancellation の data。確認カードに confirmation_ja を表示・読み上げ、利用者の明示同意後にのみ action_token を commit_* へ渡す。",
+        "properties": {
+          "action_token": {
+            "type": "string",
+            "minLength": 43
+          },
+          "expires_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "confirmation_ja": {
+            "type": "string"
+          },
+          "card": {
+            "$ref": "#/components/schemas/VoiceCard"
+          },
+          "checked_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "action_token",
+          "expires_at",
+          "confirmation_ja",
+          "card",
+          "checked_at"
+        ],
+        "additionalProperties": false
+      },
+      "VoiceCommitData": {
+        "type": "object",
+        "description": "commit_reservation / commit_cancellation の data。同じトークンの再送は記録済みの結果を返す。",
+        "properties": {
+          "reservation": {
+            "$ref": "#/components/schemas/VoiceCard"
+          },
+          "message_ja": {
+            "type": "string"
+          },
+          "checked_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "reservation",
+          "message_ja",
+          "checked_at"
+        ],
+        "additionalProperties": false
+      },
+      "VoiceToolFailureData": {
+        "type": "object",
+        "description": "success:false のときの data（業務エラー。モデルは message_ja を伝え、画面操作を案内する）。",
+        "properties": {
+          "error_code": {
+            "type": "string"
+          },
+          "message_ja": {
+            "type": "string"
+          },
+          "field_errors": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "error_code",
+          "message_ja"
+        ],
+        "additionalProperties": true
       },
       "ImportColumn": {
         "type": "object",

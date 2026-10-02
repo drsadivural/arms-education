@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { call, createTestContext, type Caller, type TestContext } from "../helpers/app";
-import { expectContract } from "../helpers/contract";
+import { expectComponent, expectContract } from "../helpers/contract";
 import { bookingWorld, createSlotViaApi, reserve, slotBody, type BookingWorld } from "../helpers/booking-fixtures";
 import type { RealtimeProvider, RealtimeSessionRequest } from "../../src/integrations/realtime";
 import { ApiError } from "../../src/http/errors";
@@ -140,6 +140,7 @@ describe("voice booking: search → prepare → explicit confirmation → commit
     expect(prepare.body.success).toBe(true);
     expect(prepare.body.data.confirmation_ja).toMatch(/田中講師のIT基礎を予約申請します。申請してよろしいですか？$/);
     expect(prepare.body.data.action_token.length).toBeGreaterThanOrEqual(43);
+    expectComponent(prepare.body.data, "VoicePrepareData");
     expect(await activeReservations(w.org.student.userId, slot.id)).toBe(0);
     // Only the hash of the token is stored.
     const stored = await ctx.admin.query("SELECT token_hash FROM app.voice_actions WHERE session_id = $1", [s.session_id]);
@@ -150,6 +151,7 @@ describe("voice booking: search → prepare → explicit confirmation → commit
     expect(commit.body.success).toBe(true);
     expect(commit.body.data.reservation.status).toBe("pending");
     expect(commit.body.data.message_ja).toBe("予約を申請しました。現在は承認待ちです。");
+    expectComponent(commit.body.data, "VoiceCommitData");
     expect(await activeReservations(w.org.student.userId, slot.id)).toBe(1);
 
     // Same call_id → recorded result; same token in a new call → recorded reservation, still one row.
@@ -171,6 +173,7 @@ describe("voice booking: search → prepare → explicit confirmation → commit
     const s = await startSession(w.student2);
     const fabricated = await tool(w.student2, s.session_id, "commit_reservation", { action_token: "x".repeat(43) });
     expect(fabricated.body).toMatchObject({ success: false, data: { error_code: "ACTION_TOKEN_INVALID" } });
+    expectComponent(fabricated.body.data, "VoiceToolFailureData");
 
     const prepare = await tool(w.student2, s.session_id, "prepare_reservation", { slot_id: slot.id });
     const token = prepare.body.data.action_token as string;

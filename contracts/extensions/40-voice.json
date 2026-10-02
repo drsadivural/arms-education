@@ -5,19 +5,62 @@
         "operationId": "post_voice_sessions",
         "summary": "OpenAI短期資格情報発行",
         "description": "許可ロール: teacher/student。日次上限（組織設定 voice_daily_quota_seconds）と1回の上限（voice_max_session_seconds）を超える場合は429 VOICE_QUOTA_EXCEEDED。短期秘密はこの応答でのみ返し保存しない。新しいセッションは同じ利用者の未終了セッションを終了させる。",
-        "tags": ["voice"],
-        "security": [{ "bearerAuth": [] }, { "sessionCookie": [] }],
+        "tags": [
+          "voice"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
         "parameters": [
-          { "name": "Idempotency-Key", "in": "header", "required": true, "schema": { "type": "string", "format": "uuid" } },
-          { "name": "X-CSRF-Token", "in": "header", "schema": { "type": "string" }, "description": "cookie認証の場合必須。" }
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "schema": {
+              "type": "string"
+            },
+            "description": "cookie認証の場合必須。"
+          }
         ],
         "responses": {
-          "200": { "description": "成功", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/VoiceSession" } } } },
-          "400": { "$ref": "#/components/responses/Error" },
-          "401": { "$ref": "#/components/responses/Error" },
-          "403": { "$ref": "#/components/responses/Error" },
-          "429": { "$ref": "#/components/responses/Error" },
-          "503": { "$ref": "#/components/responses/Error" }
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VoiceSession"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error"
+          }
         }
       }
     },
@@ -26,17 +69,55 @@
         "operationId": "post_voice_sessions_id_end",
         "summary": "音声終了・quota確定",
         "description": "許可ロール: teacher/student（本人のセッションのみ）。冪等。",
-        "tags": ["voice"],
-        "security": [{ "bearerAuth": [] }, { "sessionCookie": [] }],
+        "tags": [
+          "voice"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
         "parameters": [
-          { "name": "id", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } },
-          { "name": "X-CSRF-Token", "in": "header", "schema": { "type": "string" } }
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "schema": {
+              "type": "string"
+            }
+          }
         ],
         "responses": {
-          "200": { "description": "成功", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ActionResult" } } } },
-          "401": { "$ref": "#/components/responses/Error" },
-          "403": { "$ref": "#/components/responses/Error" },
-          "404": { "$ref": "#/components/responses/Error" }
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ActionResult"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          }
         }
       }
     },
@@ -44,23 +125,78 @@
       "post": {
         "operationId": "post_voice_tool_calls",
         "summary": "許可音声ツール実行",
-        "description": "許可ロール: teacher/student。セッション所有・有効期限・ロール別allowlist・引数schema・call_id冪等をサーバーで検証し、REST APIと同じドメインサービスで実行する。業務上の失敗は success:false と data.error_code / data.message_ja で返す（モデルへ渡すため）。予約の申請・取消は prepare_* が返す action_token（120秒・本人/セッション/目的に紐付け、ハッシュのみ保存）を commit_* に渡した場合のみ成立し、トークンの消費と予約の変更は同一トランザクション。",
-        "tags": ["voice"],
-        "security": [{ "bearerAuth": [] }, { "sessionCookie": [] }],
-        "parameters": [
-          { "name": "Idempotency-Key", "in": "header", "required": true, "schema": { "type": "string", "format": "uuid" } },
-          { "name": "X-CSRF-Token", "in": "header", "schema": { "type": "string" } }
+        "description": "許可ロール: teacher/student。セッション所有・有効期限・ロール別allowlist・引数schema・call_id冪等をサーバーで検証し、REST APIと同じドメインサービスで実行する。業務上の失敗は success:false と data.error_code / data.message_ja で返す（モデルへ渡すため）。予約の申請・取消は prepare_* が返す action_token（120秒・本人/セッション/目的に紐付け、ハッシュのみ保存）を commit_* に渡した場合のみ成立し、トークンの消費と予約の変更は同一トランザクション。 data の形: prepare_* は VoicePrepareData、commit_* は VoiceCommitData、失敗時は VoiceToolFailureData。today_lessons {date, date_ja, lessons[VoiceCard], count, checked_at}、search_slots {date, date_ja, time_band, slots[VoiceCard], full_or_closed_count, checked_at}、get_reservations {reservations[VoiceCard] | reservation, checked_at}、get_progress {student_name, progress_percent, progress_ja, required_total, required_completed, programs[], units[], checked_at}。",
+        "tags": [
+          "voice"
         ],
-        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/VoiceToolInput" } } } },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VoiceToolInput"
+              }
+            }
+          }
+        },
         "responses": {
-          "200": { "description": "成功（業務エラーは success:false）", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ActionResult" } } } },
-          "400": { "$ref": "#/components/responses/Error" },
-          "401": { "$ref": "#/components/responses/Error" },
-          "403": { "$ref": "#/components/responses/Error" },
-          "404": { "$ref": "#/components/responses/Error" },
-          "409": { "$ref": "#/components/responses/Error" },
-          "422": { "$ref": "#/components/responses/Error" },
-          "429": { "$ref": "#/components/responses/Error" }
+          "200": {
+            "description": "成功（業務エラーは success:false）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ActionResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error"
+          }
         }
       }
     },
@@ -69,12 +205,34 @@
         "operationId": "get_voice_quota",
         "summary": "本日の音声利用状況",
         "description": "許可ロール: teacher/student。組織タイムゾーンの当日分。未終了セッションは予約秒数で計上。",
-        "tags": ["voice"],
-        "security": [{ "bearerAuth": [] }, { "sessionCookie": [] }],
+        "tags": [
+          "voice"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
         "responses": {
-          "200": { "description": "成功", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/VoiceQuotaResponse" } } } },
-          "401": { "$ref": "#/components/responses/Error" },
-          "403": { "$ref": "#/components/responses/Error" }
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VoiceQuotaResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          }
         }
       }
     }
@@ -84,35 +242,220 @@
       "VoiceSession": {
         "type": "object",
         "properties": {
-          "session_id": { "type": "string", "format": "uuid" },
-          "client_secret": { "type": "string", "description": "OpenAI短期クライアント秘密。メモリ内でのみ使用し保存・記録しない。" },
-          "expires_at": { "type": "string", "format": "date-time", "description": "このセッションの最大終了時刻（quota予約）。" },
-          "client_secret_expires_at": { "type": "string", "format": "date-time", "description": "WebRTC接続開始に使える期限。" },
-          "model": { "type": "string" },
-          "voice": { "type": "string" },
-          "max_seconds": { "type": "integer" },
-          "tools": { "type": "array", "items": { "type": "string" } },
-          "quota_remaining_seconds": { "type": "integer" }
+          "session_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "client_secret": {
+            "type": "string",
+            "description": "OpenAI短期クライアント秘密。メモリ内でのみ使用し保存・記録しない。"
+          },
+          "expires_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "このセッションの最大終了時刻（quota予約）。"
+          },
+          "client_secret_expires_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "WebRTC接続開始に使える期限。"
+          },
+          "model": {
+            "type": "string"
+          },
+          "voice": {
+            "type": "string"
+          },
+          "max_seconds": {
+            "type": "integer"
+          },
+          "tools": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "quota_remaining_seconds": {
+            "type": "integer"
+          }
         },
-        "required": ["session_id", "client_secret", "expires_at", "model", "voice"],
+        "required": [
+          "session_id",
+          "client_secret",
+          "expires_at",
+          "model",
+          "voice"
+        ],
         "additionalProperties": false
       },
       "VoiceQuota": {
         "type": "object",
         "properties": {
-          "daily_quota_seconds": { "type": "integer" },
-          "max_session_seconds": { "type": "integer" },
-          "used_seconds": { "type": "integer" },
-          "remaining_seconds": { "type": "integer" }
+          "daily_quota_seconds": {
+            "type": "integer"
+          },
+          "max_session_seconds": {
+            "type": "integer"
+          },
+          "used_seconds": {
+            "type": "integer"
+          },
+          "remaining_seconds": {
+            "type": "integer"
+          }
         },
-        "required": ["daily_quota_seconds", "max_session_seconds", "used_seconds", "remaining_seconds"],
+        "required": [
+          "daily_quota_seconds",
+          "max_session_seconds",
+          "used_seconds",
+          "remaining_seconds"
+        ],
         "additionalProperties": false
       },
       "VoiceQuotaResponse": {
         "type": "object",
-        "properties": { "data": { "$ref": "#/components/schemas/VoiceQuota" }, "checked_at": { "type": "string", "format": "date-time" } },
-        "required": ["data", "checked_at"],
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/VoiceQuota"
+          },
+          "checked_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "data",
+          "checked_at"
+        ],
         "additionalProperties": false
+      },
+      "VoiceCard": {
+        "type": "object",
+        "description": "授業・予約の要約（日時は日本時間）。",
+        "properties": {
+          "slot_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "reservation_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "title": {
+            "type": "string"
+          },
+          "date": {
+            "type": "string",
+            "format": "date"
+          },
+          "date_ja": {
+            "type": "string"
+          },
+          "start": {
+            "type": "string",
+            "description": "HH:mm"
+          },
+          "end": {
+            "type": "string"
+          },
+          "teacher_name": {
+            "type": "string"
+          },
+          "classroom_name": {
+            "type": "string"
+          },
+          "remaining": {
+            "type": "integer"
+          },
+          "status": {
+            "type": "string"
+          },
+          "status_ja": {
+            "type": "string"
+          },
+          "cancel_deadline": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "additionalProperties": true
+      },
+      "VoicePrepareData": {
+        "type": "object",
+        "description": "prepare_reservation / prepare_cancellation の data。確認カードに confirmation_ja を表示・読み上げ、利用者の明示同意後にのみ action_token を commit_* へ渡す。",
+        "properties": {
+          "action_token": {
+            "type": "string",
+            "minLength": 43
+          },
+          "expires_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "confirmation_ja": {
+            "type": "string"
+          },
+          "card": {
+            "$ref": "#/components/schemas/VoiceCard"
+          },
+          "checked_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "action_token",
+          "expires_at",
+          "confirmation_ja",
+          "card",
+          "checked_at"
+        ],
+        "additionalProperties": false
+      },
+      "VoiceCommitData": {
+        "type": "object",
+        "description": "commit_reservation / commit_cancellation の data。同じトークンの再送は記録済みの結果を返す。",
+        "properties": {
+          "reservation": {
+            "$ref": "#/components/schemas/VoiceCard"
+          },
+          "message_ja": {
+            "type": "string"
+          },
+          "checked_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "reservation",
+          "message_ja",
+          "checked_at"
+        ],
+        "additionalProperties": false
+      },
+      "VoiceToolFailureData": {
+        "type": "object",
+        "description": "success:false のときの data（業務エラー。モデルは message_ja を伝え、画面操作を案内する）。",
+        "properties": {
+          "error_code": {
+            "type": "string"
+          },
+          "message_ja": {
+            "type": "string"
+          },
+          "field_errors": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "error_code",
+          "message_ja"
+        ],
+        "additionalProperties": true
       }
     }
   }

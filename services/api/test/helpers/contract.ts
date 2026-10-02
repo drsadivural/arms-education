@@ -31,3 +31,15 @@ export function expectContract(res: { status: number; body: unknown }, method: s
   const valid = validate(res.body);
   expect(valid, `${key} contract violation: ${ajv.errorsText(validate.errors)}\n${JSON.stringify(res.body).slice(0, 2000)}`).toBe(true);
 }
+
+/** Validates a value against a named component schema (e.g. voice tool result data shapes). */
+export function expectComponent(value: unknown, schemaName: string): void {
+  const key = `component ${schemaName}`;
+  let validate = cache.get(key);
+  if (!validate) {
+    validate = ajv.compile({ $ref: `openapi#/components/schemas/${schemaName}` });
+    cache.set(key, validate);
+  }
+  const valid = validate(value);
+  expect(valid, `${schemaName} violation: ${ajv.errorsText(validate.errors)}\n${JSON.stringify(value).slice(0, 2000)}`).toBe(true);
+}
