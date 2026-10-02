@@ -37,6 +37,8 @@ export default defineConfig({
   },
   build: { sourcemap: false, target: "es2022" },
   test: {
+    // globals: Testing Library registers automatic cleanup between tests.
+    globals: true,
     environment: "jsdom",
     include: ["test/**/*.test.{ts,tsx}"],
     setupFiles: ["test/setup.ts"],

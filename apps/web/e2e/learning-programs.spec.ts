@@ -65,7 +65,7 @@ test.describe("WEB-09 教育プログラム管理", () => {
 });
 
 test.describe("WEB-10 教育プログラム・教材を編集", () => {
-  test("下書きで単元・リンク・確認テスト・ファイル教材を登録し、検査待ちのファイルがあると公開できない", async ({ page }) => {
+  test("下書きで単元・リンク・確認テスト・ファイル教材を登録し、実スキャンで検査済みになったファイルを含めて公開できる", async ({ page }) => {
     await loginAs(page, "admin");
     const name = `E2E教材編集 ${uniq()}`;
     const program = await webApi<{ data: { id: string } }>(page, { method: "POST", path: "/programs", body: { name, description: "", department_name: "" } });
@@ -139,32 +139,31 @@ test.describe("WEB-10 教育プログラム・教材を編集", () => {
     await fileInput.setInputFiles({ name: "memo.txt", mimeType: "text/plain", buffer: Buffer.from("text") });
     await expect(mDialog.getByText(/PDF教材には \.pdf のファイルを選択してください。/)).toBeVisible();
     await fileInput.setInputFiles({ name: "security.pdf", mimeType: "application/pdf", buffer: PDF });
-    await expect(mDialog.getByText("検査待ち", { exact: true })).toBeVisible({ timeout: 20_000 });
-    await expect(mDialog.getByText(/ファイル検査サービスが接続されていないため「検査待ち」のままです。/)).toBeVisible();
+    // The local stack scans with ClamAV (infra/scanner): the quarantined file becomes 検査済み only on a real verdict.
+    await expect(mDialog.getByText("検査済み", { exact: true })).toBeVisible({ timeout: 60_000 });
     await mDialog.getByRole("button", { name: "教材を登録" }).click();
     await expect(page.getByText("教材を登録しました", { exact: true }).last()).toBeVisible();
     const pdfItem = page.getByRole("listitem").filter({ hasText: "セキュリティ資料" });
     await expect(pdfItem.getByText("security.pdf")).toBeVisible();
-    await expect(pdfItem.getByText("検査待ち", { exact: true })).toBeVisible();
+    await expect(pdfItem.getByText("検査済み", { exact: true })).toBeVisible();
 
-    // The scan verdict is required before the material can be published.
-    await pdfItem.getByRole("button", { name: "「セキュリティ資料」の公開準備" }).click();
-    await expect(pdfItem.getByRole("alert")).toContainText("ファイル検査サービスに接続できないため、教材の公開を停止しています。");
-    await expect(pdfItem.getByRole("alert")).toContainText("「セキュリティ資料」のファイル検査が完了していません。");
+    // Publish preparation for each material (the file is clean, the link is https, the quiz has questions).
+    for (const title of ["情報セキュリティ規程", "セキュリティ確認テスト", "セキュリティ資料"]) {
+      await page.getByRole("button", { name: `「${title}」の公開準備` }).click();
+      await expect(page.getByText("教材の公開準備ができました", { exact: true }).last()).toBeVisible();
+    }
 
-    // Version publish: the confirm dialog lists what gets fixed and shows the API blocker in Japanese.
+    // Version publish: the confirm dialog lists what gets fixed; afterwards the version is immutable.
     await expect(unitRow).toContainText("確認 + 80点以上");
     await page.getByRole("button", { name: "確認して公開" }).click();
     const pDialog = page.getByRole("alertdialog");
     await expect(pDialog).toContainText("単元 1件・教材 3件");
     await expect(pDialog).toContainText("確認テストの受験回数上限 2回・最新の点数を採用");
-    await pDialog.getByRole("button", { name: "公開する" }).click();
-    await expect(pDialog.getByRole("alert")).toContainText("ファイル検査サービスに接続できないため");
-    await expect(pDialog.getByRole("alert")).toContainText("「セキュリティ資料」のファイル検査が完了していません。");
     expect(await a11yDetails(page)).toEqual([]);
     await expectNoA11yViolations(page);
-    await pDialog.getByRole("button", { name: "キャンセル" }).click();
-    await expect(page.getByText("下書き v1：単元 1件・教材 3件")).toBeVisible();
+    await pDialog.getByRole("button", { name: "公開する" }).click();
+    await expect(page.getByText("v1 を公開しました", { exact: true })).toBeVisible();
+    await expect(page.getByRole("button", { name: "単元を追加" })).toHaveCount(0);
   });
 
   test("公開中は変更不可・新バージョン（コピー）作成・受講の割当（個人・クラス一括）", async ({ page }) => {
