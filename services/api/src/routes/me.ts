@@ -8,12 +8,13 @@ import { fail } from "../http/errors";
 import { readBody, requireIfMatch } from "../http/validation";
 import { action, ok } from "../http/respond";
 import { idempotent } from "../http/idempotency";
+import { requireRole } from "../auth/middleware";
 import { enqueueAfterCommit, newOutboxIds } from "../domain/notifications/outbox";
 
 export const meRoutes = new Hono<AppEnv>();
 
 /** GET /me — identity, organisation, preferences and (for students) classroom/teacher. */
-meRoutes.get("/me", async (c) => {
+meRoutes.get("/me", requireRole("admin", "teacher", "student"), async (c) => {
   const actor = c.get("actor");
   const selected = c.req.header("X-ARMS-Selected-Role") as Role | undefined;
   if (selected && selected !== actor.role) fail("ROLE_MISMATCH");
@@ -48,7 +49,7 @@ meRoutes.get("/me", async (c) => {
 });
 
 /** PATCH /me/preferences — theme and notification preference (If-Match: row_version; 0 = not yet saved). */
-meRoutes.patch("/me/preferences", async (c) => {
+meRoutes.patch("/me/preferences", requireRole("admin", "teacher", "student"), async (c) => {
   const actor = c.get("actor");
   const expected = requireIfMatch(c);
   const input = await readBody(c, PreferenceInput);
@@ -72,7 +73,7 @@ meRoutes.patch("/me/preferences", async (c) => {
 });
 
 /** POST /me/account-deletion — records a deletion request for administrator review (App Store requirement). */
-meRoutes.post("/me/account-deletion", async (c) => {
+meRoutes.post("/me/account-deletion", requireRole("admin", "teacher", "student"), async (c) => {
   const actor = c.get("actor");
   const input = await readBody(c, DeleteAccountInput);
   let outboxIds: string[] = [];

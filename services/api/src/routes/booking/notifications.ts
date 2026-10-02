@@ -25,7 +25,7 @@ const NotificationQuery = z.object({
 });
 
 /** GET /notifications — own notifications, newest first; status=unread|read filters. */
-notificationRoutes.get("/notifications", async (c) => {
+notificationRoutes.get("/notifications", requireRole("admin", "teacher", "student"), async (c) => {
   const actor = c.get("actor");
   const q = readQuery(c, NotificationQuery);
   const limit = parseLimit(q.limit);
@@ -54,7 +54,7 @@ notificationRoutes.get("/notifications", async (c) => {
 });
 
 /** POST /notifications/read-all — marks every unread notification of the caller as read. */
-notificationRoutes.post("/notifications/read-all", async (c) => {
+notificationRoutes.post("/notifications/read-all", requireRole("admin", "teacher", "student"), async (c) => {
   const actor = c.get("actor");
   const updated = await actorTx(c, (tx) =>
     tx.exec(sql`UPDATE app.notifications SET read_at = now() WHERE org_id = ${actor.orgId} AND user_id = ${actor.userId} AND read_at IS NULL`),
@@ -63,7 +63,7 @@ notificationRoutes.post("/notifications/read-all", async (c) => {
 });
 
 /** POST /notifications/{id}/read — own notifications only (others → 404). Idempotent. */
-notificationRoutes.post("/notifications/:id/read", async (c) => {
+notificationRoutes.post("/notifications/:id/read", requireRole("admin", "teacher", "student"), async (c) => {
   const actor = c.get("actor");
   const id = pathId(c);
   const row = await actorTx(c, (tx) =>
