@@ -20,6 +20,7 @@ import { periodLabel, periodQuery, readId, readList, readPeriod, readSearch, wit
 import { SLOT_STATE_OPTIONS, dateTimeFull } from "./format";
 import { useFilterParams } from "./ReservationTabs";
 import { SlotCancelDialog } from "./SlotCancelDialog";
+import { DANGER_TEXT, DangerChip } from "./tone";
 
 /** Admins manage every slot; a teacher manages only the slots they teach (others in their classrooms are read-only). */
 export function canManageSlot(slot: Pick<LessonSlot, "teacher_id" | "state">, user: { id: string; isAdmin: boolean }): boolean {
@@ -50,7 +51,7 @@ function SlotCard({ slot }: { slot: LessonSlot }) {
       <span className="block text-muted">{slot.teacher_name}</span>
       <span className="mt-1 flex flex-wrap items-center gap-1">
         <SlotStateBadge state={slot.state} />
-        {full ? <span className="rounded-md bg-danger-soft px-1.5 py-0.5 text-[11px] font-medium text-danger">満席</span> : null}
+        {full ? <DangerChip>満席</DangerChip> : null}
       </span>
       <span className="mt-1 block">{seatsText(slot)}</span>
       {slot.pending_count ? <span className="block text-warning">承認待ち {slot.pending_count}件</span> : null}
@@ -160,7 +161,7 @@ export function SlotsTab() {
           ) : (
             <span className="tabular-nums">
               {row.original.capacity} / 残{row.original.remaining}
-              {row.original.remaining === 0 ? <span className="ml-1 text-xs font-medium text-danger">（満席）</span> : null}
+              {row.original.remaining === 0 ? <span className={`ml-1 text-xs font-medium ${DANGER_TEXT}`}>（満席）</span> : null}
             </span>
           ),
       },
@@ -172,7 +173,8 @@ export function SlotsTab() {
         cell: ({ row }) => {
           const s = row.original;
           const context = <span className="sr-only">（{s.title} {fmt.slotRange(s.starts_at, s.ends_at)}）</span>;
-          const link = "inline-flex min-h-8 items-center px-1 text-xs font-medium text-primary underline-offset-2 hover:underline";
+          const base = "relative inline-flex min-h-8 items-center px-1 text-xs font-medium underline-offset-2 hover:underline";
+          const link = `${base} text-primary`;
           if (!canManageSlot(s, user)) {
             return (
               <Link to={`/bookings/slots/${s.id}`} className={link}>
@@ -182,7 +184,7 @@ export function SlotsTab() {
             );
           }
           return (
-            <div className="flex flex-wrap items-center gap-2">
+            <div className="relative flex flex-wrap items-center gap-2">
               <Link to={`/bookings/slots/${s.id}`} className={link}>
                 編集
                 {context}
@@ -191,7 +193,7 @@ export function SlotsTab() {
                 予約
                 {context}
               </Link>
-              <button type="button" className={`${link} text-danger disabled:opacity-50`} disabled={!online} onClick={() => setCancelId(s.id)}>
+              <button type="button" className={`${base} ${DANGER_TEXT} disabled:opacity-50`} disabled={!online} onClick={() => setCancelId(s.id)}>
                 取消
                 {context}
               </button>

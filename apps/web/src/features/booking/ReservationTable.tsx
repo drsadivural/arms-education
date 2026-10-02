@@ -9,14 +9,15 @@ import type { Reservation } from "@arms/contracts";
 import { fmt } from "../../lib/format";
 import { useOnline } from "../../lib/online";
 import { Button } from "../../components/ui/Button";
-import { BookingStatusBadge } from "./badges";
+import { BookingStatusBadge, DANGER_TEXT } from "./tone";
 import { DataTable, type ColumnDef } from "../../components/ui/DataTable";
 import { ReasonViewDialog, RejectDialog, RemoveDialog, useApproveAction } from "./decisions";
 import { dateTimeFull } from "./format";
 
 type DialogKind = "reject" | "remove" | "reason";
 
-const linkClass = "inline-flex min-h-8 items-center px-1 text-xs font-medium text-primary underline-offset-2 hover:underline";
+const actionBase = "inline-flex min-h-8 items-center px-1 text-xs font-medium underline-offset-2 hover:underline";
+const linkClass = `${actionBase} text-primary`;
 
 /** Hidden context so repeated buttons (承認, 却下, …) have distinct accessible names per row. */
 function RowContext({ r }: { r: Reservation }) {
@@ -87,13 +88,14 @@ export function ReservationTable({
       );
       if (variant === "requests" && r.status === "approved") {
         items.push(
-          <button key="remove" type="button" className={`${linkClass} text-danger disabled:opacity-50`} disabled={!online} onClick={() => setDialog({ kind: "remove", id: r.id })}>
+          <button key="remove" type="button" className={`${actionBase} ${DANGER_TEXT} disabled:opacity-50`} disabled={!online} onClick={() => setDialog({ kind: "remove", id: r.id })}>
             削除
             <RowContext r={r} />
           </button>,
         );
       }
-      return <div className="flex flex-wrap items-center gap-2">{items}</div>;
+      // `relative` keeps the sr-only row context inside the table scroller (no page overflow at 390 px).
+      return <div className="relative flex flex-wrap items-center gap-2">{items}</div>;
     };
     const cols: ColumnDef<Reservation, unknown>[] = [
       {

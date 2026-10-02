@@ -17,7 +17,7 @@ import { useIdempotentMutation } from "../../lib/query";
 import { Button } from "../../components/ui/Button";
 import { ConfirmDialog, Dialog } from "../../components/ui/Dialog";
 import { Textarea } from "../../components/ui/Field";
-import { BookingStatusBadge } from "./badges";
+import { BookingStatusBadge, DANGER_TEXT } from "./tone";
 import { useToast } from "../../components/ui/Toast";
 import { bookingKeys, invalidateBooking } from "./api";
 import { dateTimeFull } from "./format";
@@ -96,7 +96,7 @@ export function useApproveAction() {
 export function DecisionError({ error }: { error: unknown }) {
   if (!error) return null;
   return (
-    <div role="alert" className="rounded-[var(--radius-control)] border border-danger/40 bg-danger-soft px-3 py-2 text-xs text-danger">
+    <div role="alert" className={`rounded-[var(--radius-control)] border border-danger/40 bg-danger-soft px-3 py-2 text-xs ${DANGER_TEXT}`}>
       {decisionErrorMessage(error)}
     </div>
   );

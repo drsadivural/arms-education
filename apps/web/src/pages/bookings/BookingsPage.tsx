@@ -18,7 +18,7 @@ function PendingBadge() {
   if (!pending.data || pending.data.count === 0) return null;
   const text = `${pending.data.count}${pending.data.more ? "+" : ""}`;
   return (
-    <span className="ml-2 inline-flex min-w-6 items-center justify-center rounded-full bg-primary-soft px-1.5 text-xs font-bold text-primary">
+    <span className="relative ml-2 inline-flex min-w-6 items-center justify-center rounded-full bg-primary-soft px-1.5 text-xs font-bold text-primary">
       <span aria-hidden>{text}</span>
       <span className="sr-only">（承認待ち {text}件）</span>
     </span>

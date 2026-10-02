@@ -83,8 +83,9 @@ export function defaultDeadline(date: string, time: string): { deadline_date: st
 }
 
 const required = (message: string) => z.string().trim().min(1, { message });
-const dateField = required("日付を入力してください。").refine((v) => parseDateOnly(v) !== null, { message: "日付を正しく入力してください（例: 2026-10-05）。" });
-const timeField = required("時刻を入力してください。").regex(TIME_RE, { message: "時刻を HH:MM 形式で入力してください（例: 14:00）。" });
+// Format checks skip empty input so a missing value reports only 「…を入力してください。」.
+const dateField = required("日付を入力してください。").refine((v) => v === "" || parseDateOnly(v) !== null, { message: "日付を正しく入力してください（例: 2026-10-05）。" });
+const timeField = required("時刻を入力してください。").refine((v) => v === "" || TIME_RE.test(v), { message: "時刻を HH:MM 形式で入力してください（例: 14:00）。" });
 
 /** Client-side validation with the same Japanese messages as the API (final validation is the server's). */
 export const SlotFormSchema = z

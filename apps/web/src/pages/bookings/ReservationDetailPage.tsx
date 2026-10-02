@@ -14,7 +14,7 @@ import { Button } from "../../components/ui/Button";
 import { Card, CardHeader } from "../../components/ui/Card";
 import { ErrorState, LastFetched, LoadingRows, Notice } from "../../components/ui/Feedback";
 import { PageHeader } from "../../components/ui/PageHeader";
-import { BookingStatusBadge } from "../../features/booking/badges";
+import { BookingStatusBadge, dangerSoftButton } from "../../features/booking/tone";
 import { useToast } from "../../components/ui/Toast";
 import { useReservation } from "../../features/booking/api";
 import { DecisionError, REASON_ERROR, ReasonField, RemoveDialog, decisionErrorMessage, reservationCaption, useApproveAction, useReservationDecision } from "../../features/booking/decisions";
@@ -159,16 +159,16 @@ function DecisionPanel({ r }: { r: Reservation }) {
         <div className="border-t border-line pt-4">
           <h3 className="text-sm font-bold">予約を削除</h3>
           <p className="mt-1 text-xs text-muted">通常一覧から非表示にします。操作履歴は保持します。</p>
-          <Button
-            variant="secondary"
-            className="mt-3 border-danger/40 bg-danger-soft text-danger hover:bg-danger-soft"
+          <button
+            type="button"
+            className={`mt-3 ${dangerSoftButton}`}
             disabled={!online}
             onClick={() => {
               if (requireReason()) setRemoveOpen(true);
             }}
           >
             削除する
-          </Button>
+          </button>
         </div>
         {!online ? <p className="text-xs text-warning">オフラインのため操作できません。</p> : null}
       </div>

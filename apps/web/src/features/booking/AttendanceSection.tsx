@@ -9,7 +9,7 @@ import { ATTENDANCE_LABELS, ERROR_CATALOG, type AttendanceState } from "@arms/co
 import { ApiError, api } from "../../lib/api";
 import { useOnline } from "../../lib/online";
 import { useIdempotentMutation } from "../../lib/query";
-import { BookingAttendanceBadge } from "./badges";
+import { AttendanceBadge } from "../../components/ui/Badge";
 import { Button } from "../../components/ui/Button";
 import { Card, CardHeader } from "../../components/ui/Card";
 import { EmptyState, ErrorState, InlineError, LastFetched, LoadingRows, Notice } from "../../components/ui/Feedback";
@@ -104,7 +104,7 @@ function AttendanceEditor({ slotId, items, editable, checkedAt }: { slotId: stri
                     社員番号 {i.employee_number}
                     {i.attendance_state ? (
                       <span className="ml-2 inline-flex items-center gap-1">
-                        記録済み <BookingAttendanceBadge state={i.attendance_state} />
+                        記録済み <AttendanceBadge state={i.attendance_state} />
                         {i.recorded_by_name ? `（${i.recorded_by_name}・${dateTimeFull(i.recorded_at)}）` : null}
                       </span>
                     ) : (

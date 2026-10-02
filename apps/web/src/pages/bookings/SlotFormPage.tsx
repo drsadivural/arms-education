@@ -38,6 +38,7 @@ import {
 import { AttendanceSection } from "../../features/booking/AttendanceSection";
 import { CANCEL_BEFORE_PRESETS, cancelBeforeLabel, dateTimeFull, slotRangeFull } from "../../features/booking/format";
 import { SlotCancelDialog } from "../../features/booking/SlotCancelDialog";
+import { DANGER_TEXT, dangerSoftButton } from "../../features/booking/tone";
 import { canManageSlot } from "../../features/booking/SlotTabs";
 import {
   EMPTY_SLOT_FORM,
@@ -142,7 +143,7 @@ function ErrorBanner({ error, onReload }: { error: unknown; onReload(): void }) 
   else if (code === "SLOT_TIME_CONFLICT") help = <p className="mt-1">同じ講師またはクラスの別の授業と時間が重なっています。日付・時刻を変更してください。</p>;
   else if (code === "VALIDATION_FAILED") help = <p className="mt-1">赤字の項目を修正してください。</p>;
   return (
-    <div role="alert" className="rounded-[var(--radius-control)] border border-danger/40 bg-danger-soft px-4 py-3 text-xs text-danger">
+    <div role="alert" className={`rounded-[var(--radius-control)] border border-danger/40 bg-danger-soft px-4 py-3 text-xs ${DANGER_TEXT}`}>
       <p className="font-bold">{errorMessage(error)}</p>
       {help}
       {requestId && error instanceof ApiError && error.status >= 500 ? <p className="mt-1 opacity-80">問い合わせ番号: {requestId}</p> : null}
@@ -499,9 +500,9 @@ function ReservationSummaryCard({ slot, onCancel }: { slot: LessonSlot; onCancel
         <Link to={`/bookings?slot=${slot.id}&period=all`} className="text-sm text-primary underline-offset-2 hover:underline">
           この授業の予約を見る
         </Link>
-        <Button variant="secondary" className="border-danger/40 bg-danger-soft text-danger hover:bg-danger-soft" disabled={!online} onClick={onCancel}>
+        <button type="button" className={dangerSoftButton} disabled={!online} onClick={onCancel}>
           授業を取消
-        </Button>
+        </button>
       </div>
     </Card>
   );

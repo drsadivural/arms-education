@@ -27,6 +27,12 @@ test.beforeAll(async ({ browser }) => {
   await saveLogin(browser, "teacher", TEACHER_STATE);
 });
 
+/**
+ * Days ahead for seeded lessons. Each repeat/retry of a test shifts its lessons by two weeks so reruns against the
+ * same organisation never hit the teacher's time-overlap constraint.
+ */
+const day = (n: number) => n + 14 * (test.info().repeatEachIndex + 4 * test.info().retry);
+
 /** A slot of the fixture teacher in the fixture classroom, `days` ahead at a distinct hour. */
 async function seedSlot(page: Page, opts: { days: number; start: string; end: string; title?: string; meetingUrl?: string; capacity?: number }) {
   const f = fixture();
@@ -34,7 +40,7 @@ async function seedSlot(page: Page, opts: { days: number; start: string; end: st
     classroomId: f.classroomId,
     teacherId: f.teacher.id,
     title: opts.title ?? `IT基礎 ${uniq()}`,
-    date: jstDate(opts.days),
+    date: jstDate(day(opts.days)),
     start: opts.start,
     end: opts.end,
     meetingUrl: opts.meetingUrl,
@@ -46,6 +52,9 @@ async function seedStudent(page: Page, name: string) {
   const f = fixture();
   return createStudent(page, { classroomId: f.classroomId, teacherId: f.teacher.id, name });
 }
+
+/** Toast title/description (Radix also mirrors toasts into a hidden live region, hence the exact match). */
+const toast = (page: Page, text: string) => page.getByText(text, { exact: true });
 
 const requestsTable = (page: Page) => page.getByRole("table", { name: "予約申請の一覧" });
 const rowOf = (page: Page, text: string) => requestsTable(page).getByRole("row").filter({ hasText: text });
@@ -73,7 +82,7 @@ test.describe("オンライン予約システム（管理者）", () => {
     await expectAccessible(page);
 
     await row.getByRole("button", { name: /^承認/ }).click();
-    await expect(page.getByText("予約を承認しました")).toBeVisible();
+    await expect(toast(page, "予約を承認しました")).toBeVisible();
     await expect(row.getByText("承認済み")).toBeVisible();
     await expect(row.getByRole("button", { name: /^承認/ })).toHaveCount(0);
   });
@@ -94,7 +103,7 @@ test.describe("オンライン予約システム（管理者）", () => {
     await dialog.getByLabel(/却下の理由/).fill("講師の日程変更のため");
     await dialog.getByRole("button", { name: "却下する" }).click();
     await expect(dialog).toBeHidden();
-    await expect(page.getByText("予約申請を却下しました")).toBeVisible();
+    await expect(toast(page, "予約申請を却下しました")).toBeVisible();
     await expect(row.getByText("却下", { exact: true })).toBeVisible();
 
     await row.getByRole("button", { name: /^理由を見る/ }).click();
@@ -122,7 +131,7 @@ test.describe("オンライン予約システム（管理者）", () => {
     await confirm.getByLabel(/削除の理由/).fill("受講者から欠席の連絡があったため");
     await confirm.getByRole("button", { name: "削除する" }).click();
     await expect(confirm).toBeHidden();
-    await expect(page.getByText("予約を削除しました")).toBeVisible();
+    await expect(toast(page, "予約を削除しました")).toBeVisible();
     await expect(row).toHaveCount(0);
 
     await page.getByRole("tab", { name: "履歴" }).click();
@@ -157,7 +166,7 @@ test.describe("オンライン予約システム（管理者）", () => {
     await expect(page.getByLabel(/却下・削除の理由/)).toBeFocused();
 
     await page.getByRole("button", { name: "承認する" }).click();
-    await expect(page.getByText("予約を承認しました")).toBeVisible();
+    await expect(toast(page, "予約を承認しました")).toBeVisible();
     await expect(page.getByText("この予約は「承認済み」です。承認・却下は承認待ちの申請にのみ行えます。")).toBeVisible();
     await expect(page.getByRole("link", { name: /https:\/\/meet\.example\.invalid\/arms-e2e/ })).toBeVisible();
     await expect(page.getByText(/承認 · 承認済み/)).toBeVisible();
@@ -166,7 +175,7 @@ test.describe("オンライン予約システム（管理者）", () => {
   test("授業・予約枠を追加し、重複時間と編集の競合を日本語で案内する", async ({ page }) => {
     const f = fixture();
     const title = `ビジネスマナー ${uniq()}`;
-    const date = jstDate(5);
+    const date = jstDate(day(5));
     await page.goto("/bookings/slots/new");
     await expect(page.getByRole("heading", { level: 1, name: "授業・予約枠を追加" })).toBeVisible();
     await page.getByLabel(/授業名/).fill(title);
@@ -183,7 +192,7 @@ test.describe("オンライン予約システム（管理者）", () => {
     await page.getByLabel("オンライン授業URL").fill("https://meet.example.invalid/manner");
     await expectAccessible(page);
     await page.getByRole("button", { name: "枠を登録" }).click();
-    await expect(page.getByText("授業・予約枠を登録しました")).toBeVisible();
+    await expect(toast(page, "授業・予約枠を登録しました")).toBeVisible();
     await expect(page).toHaveURL(/\/bookings\/slots\/[0-9a-f-]{36}$/);
     await expect(page.getByRole("heading", { level: 1, name: "授業・予約枠を編集" })).toBeVisible();
     const slotId = page.url().split("/").pop() ?? "";
@@ -229,8 +238,8 @@ test.describe("オンライン予約システム（管理者）", () => {
     await expect(page.getByLabel(/授業名/)).toHaveValue(`${title}（別の担当者が変更）`);
     await page.getByLabel(/^定員/).fill("12");
     await page.getByRole("button", { name: "変更を保存" }).click();
-    await expect(page.getByText("授業・予約枠を保存しました")).toBeVisible();
-    await expect(page.getByText("定員").locator("..").getByText("12名")).toBeVisible();
+    await expect(toast(page, "授業・予約枠を保存しました")).toBeVisible();
+    await expect(page.locator("dt", { hasText: /^定員$/ }).locator("xpath=following-sibling::dd[1]")).toHaveText("12名");
   });
 
   test("授業カレンダーと空き枠管理に枠が表示され、授業を取消すと予約も取消済みになる", async ({ page }) => {
@@ -238,7 +247,7 @@ test.describe("オンライン予約システム（管理者）", () => {
     const student = await seedStudent(page, `佐藤 玲奈 ${uniq()}`);
     await requestReservation(student, slot.id);
 
-    await page.goto(`/bookings?tab=calendar&week=${jstDate(2)}`);
+    await page.goto(`/bookings?tab=calendar&week=${jstDate(day(2))}`);
     const card = page.getByRole("link", { name: new RegExp(slot.title) });
     await expect(card).toBeVisible();
     await expect(card).toContainText("残席 4 / 定員 5");
@@ -257,8 +266,8 @@ test.describe("オンライン予約システム（管理者）", () => {
     await expect(confirm.getByText(/承認待ち1件・承認済み0件の予約はすべて取消済みになり/)).toBeVisible();
     await confirm.getByLabel(/取消の理由/).fill("講師の体調不良のため");
     await confirm.getByRole("button", { name: "授業を取消" }).click();
-    await expect(page.getByText("授業を取り消しました")).toBeVisible();
-    await expect(page.getByText("1件の予約を取消済みにし、受講者へ通知しました。")).toBeVisible();
+    await expect(toast(page, "授業を取り消しました")).toBeVisible();
+    await expect(toast(page, "1件の予約を取消済みにし、受講者へ通知しました。")).toBeVisible();
 
     await page.getByRole("tab", { name: "履歴" }).click();
     const historyRow = page.getByRole("table", { name: "予約の履歴" }).getByRole("row").filter({ hasText: student.name });
@@ -309,12 +318,14 @@ test.describe("講師の予約判断とお知らせ", () => {
       await page.reload();
       await expect(item).toBeVisible({ timeout: 2_000 });
     }).toPass({ timeout: 45_000 });
-    await expect(item.getByText("予約申請が届きました")).toBeVisible();
-    await expect(item.getByText("未読")).toBeVisible();
+    await expect(item.getByRole("heading", { name: /予約申請が届きました/ })).toBeVisible();
+    await expect(item.getByText("未読", { exact: true })).toBeVisible();
     await expectAccessible(page);
 
-    await page.getByRole("radio", { name: /未読/ }).check({ force: true });
+    // The radio input is visually hidden; users click its visible label.
+    await page.locator("label").filter({ hasText: /^未読（/ }).click();
     await expect(page).toHaveURL(/status=unread/);
+    await expect(page.getByRole("radio", { name: /未読/ })).toBeChecked();
     await expect(item).toBeVisible();
 
     const markRead = page.waitForResponse((r) => r.url().includes("/api/v1/notifications/") && r.url().endsWith("/read") && r.request().method() === "POST");
@@ -325,7 +336,7 @@ test.describe("講師の予約判断とお知らせ", () => {
 
     // A teacher may decide reservations of their own lessons.
     await page.getByRole("button", { name: "承認する" }).click();
-    await expect(page.getByText("予約を承認しました")).toBeVisible();
+    await expect(toast(page, "予約を承認しました")).toBeVisible();
 
     await page.goto("/notifications?status=unread");
     await expect(page.getByRole("listitem").filter({ hasText: student.name })).toHaveCount(0);
@@ -334,7 +345,7 @@ test.describe("講師の予約判断とお知らせ", () => {
     const readAll = page.getByRole("button", { name: "すべて既読にする" });
     if (await readAll.isEnabled()) {
       await readAll.click();
-      await expect(page.getByText("すべて既読にしました")).toBeVisible();
+      await expect(toast(page, "すべて既読にしました")).toBeVisible();
     }
     await expect(readAll).toBeDisabled();
     await expect(page.getByRole("link", { name: "通知 0件未読" })).toBeVisible();
