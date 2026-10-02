@@ -46,6 +46,12 @@ Queue `arms-notifications-production`(+`-dlq`)、Secrets `WEB_SESSION_ENCRYPTION
 6. **初期管理者**: `sadi@ayonix.com`（組織「H&A研修センター」）作成済み。メール設定後、ログイン画面「パスワードをお忘れですか？」→ メールのリンクでパスワード設定 →
    認証アプリ（TOTP）登録。
 
+## デモアカウント（2026-10-03 作成、`scripts/admin/seed-demo.mjs`）
+組織「H&A研修センター」に、講師 `sadi+teacher@ayonix.com`（デモ 講師）・受講者 `sadi+student@ayonix.com`（デモ 受講者）、
+【デモ】クラス・【デモ】教育プログラム（リンク・確認テスト・課題）・授業枠3件を作成。管理者 `sadi@ayonix.com` と同じ初期パスワードを設定
+（パスワードはリポジトリに記録しない。本番運用前に各自パスワード再設定で変更すること）。不要になったら「ユーザー管理」で停止する。
+iOS は講師・受講者のみログインできる（管理者は Web）。
+
 ## 運用
 - 状態確認: `cd /opt/arms-production && docker compose ps`、`systemctl status cloudflared-arms-production`、`curl https://arms-scan.ayonix.com/health`。
 - 再起動: `docker compose restart <service>`（データは名前付きボリューム `arms-prod_arms-prod-pg` に保持）。
