@@ -97,6 +97,44 @@ export const THEME_LABELS = { light: "ライト", dark: "ダーク", system: "�
 
 // ---- area: admin (append below) ----
 
+/** Account (membership) state in user management, teacher and student lists. */
+export const ACCOUNT_STATUS_LABELS = { active: "有効", inactive: "停止中" } as const;
+
+/** Student enrolment state (Student.active). */
+export const STUDENT_STATUS_LABELS = { active: "在籍", inactive: "在籍終了" } as const;
+
+export const CLASSROOM_STATUS_LABELS = { active: "開講中", archived: "アーカイブ済み" } as const;
+
+export const ACCOUNT_DELETION_STATE_LABELS = { requested: "申請中", reviewing: "確認中", completed: "対応完了" } as const;
+
+export const WEEKDAY_LABELS = ["日", "月", "火", "水", "木", "金", "土"] as const;
+
+/** Japanese names of audit event types written by authentication and the admin area (WEB-19). */
+export const ADMIN_EVENT_LABELS = {
+  "auth.login": "ログイン",
+  "auth.logout": "ログアウト",
+  "auth.mfa_verified": "二段階認証",
+  "teacher.created": "講師の登録",
+  "teacher.updated": "講師情報の変更",
+  "teacher.archived": "講師の停止",
+  "student.created": "新入社員の登録",
+  "student.updated": "新入社員情報の変更",
+  "student.archived": "新入社員の在籍終了",
+  "student.transferred": "クラス・担当講師の変更",
+  "classroom.created": "クラスの作成",
+  "classroom.updated": "クラスの変更",
+  "classroom.archived": "クラスのアーカイブ",
+  "settings.updated": "設定の変更",
+  "user.invited": "管理者の招待",
+  "invitation.sent": "招待メール送信",
+  "invitation.failed": "招待メール送信失敗",
+  "user.disabled": "アカウント停止",
+  "user.enabled": "アカウント再開",
+  "account.deletion_requested": "本人削除申請",
+  "account.deletion_completed": "本人削除申請の対応完了",
+  "notification.retry_requested": "通知の手動再送",
+} as const;
+
 // ---- area: learning (append below) ----
 
 // ---- area: booking & notifications (append below) ----

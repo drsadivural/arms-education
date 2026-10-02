@@ -46,7 +46,8 @@ CREATE INDEX device_tokens_hash ON app.device_tokens (org_id, token_hash);
 CREATE INDEX notifications_unread ON app.notifications (org_id, user_id, created_at DESC) WHERE read_at IS NULL;
 CREATE INDEX reservations_slot_created ON app.reservations (org_id, slot_id, created_at);
 CREATE INDEX reservations_created ON app.reservations (org_id, created_at DESC, id);
-CREATE INDEX lesson_slots_teacher_time ON app.lesson_slots (org_id, teacher_id, starts_at);
+-- Also created by 010 (same definition); kept idempotent for independent application order.
+CREATE INDEX IF NOT EXISTS lesson_slots_teacher_time ON app.lesson_slots (org_id, teacher_id, starts_at);
 CREATE INDEX lesson_slots_classroom_time ON app.lesson_slots (org_id, classroom_id, starts_at);
 
 -- ---------------------------------------------------------------------------------------------

@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "ARMS API",
-    "version": "1.0.0+arms.2",
+    "version": "1.0.0+arms.3",
     "description": "ARMS日本語研修システムのAPI契約。ID/権限/組織はサーバーから決定、typed DTOと日本語エラーを使用。"
   },
   "servers": [
@@ -296,7 +296,7 @@
       "get": {
         "operationId": "get_dashboard",
         "summary": "集計ダッシュボード",
-        "description": "許可ロール: admin/teacher。組織・本人・担当範囲は認証情報とDBから決定する。",
+        "description": "許可ロール: admin/teacher。講師は担当範囲（担当受講者・担当クラス・自分の授業枠）のみ集計する。部署（受講者の所属部署）とクラスで絞り込める。",
         "tags": [
           "dashboard"
         ],
@@ -306,6 +306,26 @@
           },
           {
             "sessionCookie": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "department",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "maxLength": 100
+            },
+            "description": "受講者の所属部署（完全一致）。受講者数・進捗・承認待ち予約に適用。"
+          },
+          {
+            "name": "classroom_id",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "クラス。全指標に適用。"
           }
         ],
         "responses": {
@@ -350,7 +370,7 @@
       "get": {
         "operationId": "get_teachers",
         "summary": "講師一覧",
-        "description": "許可ロール: admin/teacher。組織・本人・担当範囲は認証情報とDBから決定する。",
+        "description": "許可ロール: admin/teacher（講師は閲覧のみ）。講師番号順。classroom_ids/student_countはDB集計。",
         "tags": [
           "teachers"
         ],
@@ -362,42 +382,6 @@
             "sessionCookie": []
           }
         ],
-        "responses": {
-          "200": {
-            "description": "成功",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/TeacherPage"
-                }
-              }
-            }
-          },
-          "400": {
-            "$ref": "#/components/responses/Error"
-          },
-          "401": {
-            "$ref": "#/components/responses/Error"
-          },
-          "403": {
-            "$ref": "#/components/responses/Error"
-          },
-          "404": {
-            "$ref": "#/components/responses/Error"
-          },
-          "409": {
-            "$ref": "#/components/responses/Error"
-          },
-          "422": {
-            "$ref": "#/components/responses/Error"
-          },
-          "429": {
-            "$ref": "#/components/responses/Error"
-          },
-          "503": {
-            "$ref": "#/components/responses/Error"
-          }
-        },
         "parameters": [
           {
             "name": "cursor",
@@ -420,7 +404,29 @@
             "name": "q",
             "in": "query",
             "schema": {
-              "type": "string"
+              "type": "string",
+              "maxLength": 100
+            },
+            "description": "氏名・ふりがな・メール・講師番号の部分一致"
+          },
+          {
+            "name": "department",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "maxLength": 100
+            },
+            "description": "所属部署（完全一致）"
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "active",
+                "inactive"
+              ]
             }
           },
           {
@@ -429,77 +435,8 @@
             "schema": {
               "type": "string",
               "format": "uuid"
-            }
-          },
-          {
-            "name": "teacher_id",
-            "in": "query",
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            }
-          },
-          {
-            "name": "student_id",
-            "in": "query",
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            }
-          },
-          {
-            "name": "status",
-            "in": "query",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "from",
-            "in": "query",
-            "schema": {
-              "type": "string",
-              "format": "date"
-            }
-          },
-          {
-            "name": "to",
-            "in": "query",
-            "schema": {
-              "type": "string",
-              "format": "date"
-            }
-          },
-          {
-            "name": "month",
-            "in": "query",
-            "schema": {
-              "type": "string",
-              "pattern": "^\\d{4}-\\d{2}$"
-            }
-          },
-          {
-            "name": "department",
-            "in": "query",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ]
-      },
-      "post": {
-        "operationId": "post_teachers",
-        "summary": "講師追加",
-        "description": "許可ロール: admin。組織・本人・担当範囲は認証情報とDBから決定する。",
-        "tags": [
-          "teachers"
-        ],
-        "security": [
-          {
-            "bearerAuth": []
-          },
-          {
-            "sessionCookie": []
+            },
+            "description": "担当（主・補助）クラス"
           }
         ],
         "responses": {
@@ -537,7 +474,23 @@
           "503": {
             "$ref": "#/components/responses/Error"
           }
-        },
+        }
+      },
+      "post": {
+        "operationId": "post_teachers",
+        "summary": "講師追加（招待）",
+        "description": "許可ロール: admin。Auth providerのユーザー作成→DBプロフィール作成→招待メール送信をinvitation_jobsで追跡するsaga。同じIdempotency-Keyの再送は同じジョブを再開し、Authユーザーを二重に作成しない。招待メールの送信に失敗してもプロフィールは作成済みで、invitation.state=failed（再送可能）を返す。",
+        "tags": [
+          "teachers"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
         "parameters": [
           {
             "name": "Idempotency-Key",
@@ -565,6 +518,42 @@
                 "$ref": "#/components/schemas/TeacherInput"
               }
             }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TeacherCreateResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error"
           }
         }
       }
@@ -808,7 +797,7 @@
       "get": {
         "operationId": "get_students",
         "summary": "新入社員一覧",
-        "description": "許可ロール: admin/teacher。組織・本人・担当範囲は認証情報とDBから決定する。",
+        "description": "許可ロール: admin/teacher。講師は担当受講者（担当講師が本人、または担当クラスの在籍者）のみ。社員番号順。",
         "tags": [
           "students"
         ],
@@ -820,42 +809,6 @@
             "sessionCookie": []
           }
         ],
-        "responses": {
-          "200": {
-            "description": "成功",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/StudentPage"
-                }
-              }
-            }
-          },
-          "400": {
-            "$ref": "#/components/responses/Error"
-          },
-          "401": {
-            "$ref": "#/components/responses/Error"
-          },
-          "403": {
-            "$ref": "#/components/responses/Error"
-          },
-          "404": {
-            "$ref": "#/components/responses/Error"
-          },
-          "409": {
-            "$ref": "#/components/responses/Error"
-          },
-          "422": {
-            "$ref": "#/components/responses/Error"
-          },
-          "429": {
-            "$ref": "#/components/responses/Error"
-          },
-          "503": {
-            "$ref": "#/components/responses/Error"
-          }
-        },
         "parameters": [
           {
             "name": "cursor",
@@ -878,8 +831,10 @@
             "name": "q",
             "in": "query",
             "schema": {
-              "type": "string"
-            }
+              "type": "string",
+              "maxLength": 100
+            },
+            "description": "氏名・ふりがな・社員番号・メールの部分一致"
           },
           {
             "name": "classroom_id",
@@ -898,66 +853,25 @@
             }
           },
           {
-            "name": "student_id",
+            "name": "department",
             "in": "query",
             "schema": {
               "type": "string",
-              "format": "uuid"
-            }
+              "maxLength": 100
+            },
+            "description": "所属部署（完全一致）"
           },
           {
             "name": "status",
             "in": "query",
             "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "from",
-            "in": "query",
-            "schema": {
               "type": "string",
-              "format": "date"
-            }
-          },
-          {
-            "name": "to",
-            "in": "query",
-            "schema": {
-              "type": "string",
-              "format": "date"
-            }
-          },
-          {
-            "name": "month",
-            "in": "query",
-            "schema": {
-              "type": "string",
-              "pattern": "^\\d{4}-\\d{2}$"
-            }
-          },
-          {
-            "name": "department",
-            "in": "query",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ]
-      },
-      "post": {
-        "operationId": "post_students",
-        "summary": "新入社員追加",
-        "description": "許可ロール: admin。組織・本人・担当範囲は認証情報とDBから決定する。",
-        "tags": [
-          "students"
-        ],
-        "security": [
-          {
-            "bearerAuth": []
-          },
-          {
-            "sessionCookie": []
+              "enum": [
+                "active",
+                "inactive"
+              ]
+            },
+            "description": "在籍状態"
           }
         ],
         "responses": {
@@ -995,7 +909,23 @@
           "503": {
             "$ref": "#/components/responses/Error"
           }
-        },
+        }
+      },
+      "post": {
+        "operationId": "post_students",
+        "summary": "新入社員追加（招待）",
+        "description": "許可ロール: admin。講師追加と同じ招待saga。講師は選択クラスに割り当てられた有効な講師であること（422 TEACHER_CLASSROOM_MISMATCH / TEACHER_INACTIVE）。定員はDBで保証（409 CLASSROOM_FULL）。",
+        "tags": [
+          "students"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
         "parameters": [
           {
             "name": "Idempotency-Key",
@@ -1023,6 +953,42 @@
                 "$ref": "#/components/schemas/StudentInput"
               }
             }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StudentCreateResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error"
           }
         }
       }
@@ -1266,7 +1232,7 @@
       "get": {
         "operationId": "get_classrooms",
         "summary": "クラス一覧",
-        "description": "許可ロール: admin/teacher。組織・本人・担当範囲は認証情報とDBから決定する。",
+        "description": "許可ロール: admin/teacher。講師は担当（主・補助）クラスのみ。研修開始日の新しい順。student_countは在籍中の受講者数をDB集計。",
         "tags": [
           "classrooms"
         ],
@@ -1276,6 +1242,53 @@
           },
           {
             "sessionCookie": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "cursor",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 30
+            }
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "maxLength": 100
+            },
+            "description": "クラス名の部分一致"
+          },
+          {
+            "name": "teacher_id",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "active",
+                "archived"
+              ]
+            }
           }
         ],
         "responses": {
@@ -1313,95 +1326,7 @@
           "503": {
             "$ref": "#/components/responses/Error"
           }
-        },
-        "parameters": [
-          {
-            "name": "cursor",
-            "in": "query",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "limit",
-            "in": "query",
-            "schema": {
-              "type": "integer",
-              "minimum": 1,
-              "maximum": 100,
-              "default": 30
-            }
-          },
-          {
-            "name": "q",
-            "in": "query",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "classroom_id",
-            "in": "query",
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            }
-          },
-          {
-            "name": "teacher_id",
-            "in": "query",
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            }
-          },
-          {
-            "name": "student_id",
-            "in": "query",
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            }
-          },
-          {
-            "name": "status",
-            "in": "query",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "from",
-            "in": "query",
-            "schema": {
-              "type": "string",
-              "format": "date"
-            }
-          },
-          {
-            "name": "to",
-            "in": "query",
-            "schema": {
-              "type": "string",
-              "format": "date"
-            }
-          },
-          {
-            "name": "month",
-            "in": "query",
-            "schema": {
-              "type": "string",
-              "pattern": "^\\d{4}-\\d{2}$"
-            }
-          },
-          {
-            "name": "department",
-            "in": "query",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ]
+        }
       },
       "post": {
         "operationId": "post_classrooms",
@@ -2339,7 +2264,7 @@
       "get": {
         "operationId": "get_classrooms_id_students",
         "summary": "クラス在籍者",
-        "description": "許可ロール: admin/teacher。組織・本人・担当範囲は認証情報とDBから決定する。",
+        "description": "許可ロール: admin/teacher（担当クラスのみ。担当外・他組織は404）。",
         "tags": [
           "classrooms"
         ],
@@ -2349,6 +2274,71 @@
           },
           {
             "sessionCookie": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 30
+            }
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "maxLength": 100
+            },
+            "description": "氏名・ふりがな・社員番号・メールの部分一致"
+          },
+          {
+            "name": "teacher_id",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "department",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "maxLength": 100
+            },
+            "description": "所属部署（完全一致）"
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "active",
+                "inactive"
+              ]
+            }
           }
         ],
         "responses": {
@@ -2386,111 +2376,14 @@
           "503": {
             "$ref": "#/components/responses/Error"
           }
-        },
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            }
-          },
-          {
-            "name": "cursor",
-            "in": "query",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "limit",
-            "in": "query",
-            "schema": {
-              "type": "integer",
-              "minimum": 1,
-              "maximum": 100,
-              "default": 30
-            }
-          },
-          {
-            "name": "q",
-            "in": "query",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "classroom_id",
-            "in": "query",
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            }
-          },
-          {
-            "name": "teacher_id",
-            "in": "query",
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            }
-          },
-          {
-            "name": "student_id",
-            "in": "query",
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            }
-          },
-          {
-            "name": "status",
-            "in": "query",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "from",
-            "in": "query",
-            "schema": {
-              "type": "string",
-              "format": "date"
-            }
-          },
-          {
-            "name": "to",
-            "in": "query",
-            "schema": {
-              "type": "string",
-              "format": "date"
-            }
-          },
-          {
-            "name": "month",
-            "in": "query",
-            "schema": {
-              "type": "string",
-              "pattern": "^\\d{4}-\\d{2}$"
-            }
-          },
-          {
-            "name": "department",
-            "in": "query",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ]
+        }
       }
     },
     "/classrooms/{id}/teachers": {
       "get": {
         "operationId": "get_classrooms_id_teachers",
         "summary": "選択可能講師",
-        "description": "許可ロール: admin/teacher。組織・本人・担当範囲は認証情報とDBから決定する。",
+        "description": "許可ロール: admin/teacher（担当クラスのみ）。クラスに割り当てられた有効な講師（主担当が先頭）。1クラスの講師数は最大51名のため全件を返し next_cursor は常にnull。新入社員フォームの担当講師候補に使用。",
         "tags": [
           "classrooms"
         ],
@@ -2500,6 +2393,17 @@
           },
           {
             "sessionCookie": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
           }
         ],
         "responses": {
@@ -2537,104 +2441,7 @@
           "503": {
             "$ref": "#/components/responses/Error"
           }
-        },
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            }
-          },
-          {
-            "name": "cursor",
-            "in": "query",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "limit",
-            "in": "query",
-            "schema": {
-              "type": "integer",
-              "minimum": 1,
-              "maximum": 100,
-              "default": 30
-            }
-          },
-          {
-            "name": "q",
-            "in": "query",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "classroom_id",
-            "in": "query",
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            }
-          },
-          {
-            "name": "teacher_id",
-            "in": "query",
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            }
-          },
-          {
-            "name": "student_id",
-            "in": "query",
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            }
-          },
-          {
-            "name": "status",
-            "in": "query",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "from",
-            "in": "query",
-            "schema": {
-              "type": "string",
-              "format": "date"
-            }
-          },
-          {
-            "name": "to",
-            "in": "query",
-            "schema": {
-              "type": "string",
-              "format": "date"
-            }
-          },
-          {
-            "name": "month",
-            "in": "query",
-            "schema": {
-              "type": "string",
-              "pattern": "^\\d{4}-\\d{2}$"
-            }
-          },
-          {
-            "name": "department",
-            "in": "query",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ]
+        }
       }
     },
     "/programs/{id}/versions": {
@@ -5989,7 +5796,7 @@
       "get": {
         "operationId": "get_settings_users",
         "summary": "ユーザー管理",
-        "description": "許可ロール: admin。組織・本人・担当範囲は認証情報とDBから決定する。",
+        "description": "許可ロール: admin。組織のすべてのアカウント（ロール・有効状態・招待状態）。",
         "tags": [
           "settings"
         ],
@@ -5999,6 +5806,58 @@
           },
           {
             "sessionCookie": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "cursor",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 30
+            }
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "maxLength": 100
+            },
+            "description": "氏名・メールの部分一致"
+          },
+          {
+            "name": "role",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "admin",
+                "teacher",
+                "student"
+              ]
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "active",
+                "inactive",
+                "invite_failed"
+              ]
+            }
           }
         ],
         "responses": {
@@ -6036,102 +5895,14 @@
           "503": {
             "$ref": "#/components/responses/Error"
           }
-        },
-        "parameters": [
-          {
-            "name": "cursor",
-            "in": "query",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "limit",
-            "in": "query",
-            "schema": {
-              "type": "integer",
-              "minimum": 1,
-              "maximum": 100,
-              "default": 30
-            }
-          },
-          {
-            "name": "q",
-            "in": "query",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "classroom_id",
-            "in": "query",
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            }
-          },
-          {
-            "name": "teacher_id",
-            "in": "query",
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            }
-          },
-          {
-            "name": "student_id",
-            "in": "query",
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            }
-          },
-          {
-            "name": "status",
-            "in": "query",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "from",
-            "in": "query",
-            "schema": {
-              "type": "string",
-              "format": "date"
-            }
-          },
-          {
-            "name": "to",
-            "in": "query",
-            "schema": {
-              "type": "string",
-              "format": "date"
-            }
-          },
-          {
-            "name": "month",
-            "in": "query",
-            "schema": {
-              "type": "string",
-              "pattern": "^\\d{4}-\\d{2}$"
-            }
-          },
-          {
-            "name": "department",
-            "in": "query",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ]
+        }
       }
     },
     "/settings/users/invite": {
       "post": {
         "operationId": "post_settings_users_invite",
-        "summary": "ユーザー招待",
-        "description": "許可ロール: admin。組織・本人・担当範囲は認証情報とDBから決定する。",
+        "summary": "管理者の招待",
+        "description": "許可ロール: admin。管理者アカウントのみ招待する。講師・受講者はプロフィール（講師番号・社員番号・クラス等）が必須のため、講師管理・新入社員管理から登録する（role=teacher/studentは422）。講師追加と同じ招待saga。",
         "tags": [
           "settings"
         ],
@@ -6143,6 +5914,35 @@
             "sessionCookie": []
           }
         ],
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "schema": {
+              "type": "string"
+            },
+            "description": "cookie認証の場合必須。Bearer専用iOSには不要。"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UserInvite"
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
             "description": "成功",
@@ -6177,35 +5977,6 @@
           },
           "503": {
             "$ref": "#/components/responses/Error"
-          }
-        },
-        "parameters": [
-          {
-            "name": "Idempotency-Key",
-            "in": "header",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            }
-          },
-          {
-            "name": "X-CSRF-Token",
-            "in": "header",
-            "schema": {
-              "type": "string"
-            },
-            "description": "cookie認証の場合必須。Bearer専用iOSには不要。"
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/UserInvite"
-              }
-            }
           }
         }
       }
@@ -6369,7 +6140,7 @@
       "get": {
         "operationId": "get_events",
         "summary": "監査ログ",
-        "description": "許可ロール: admin。組織・本人・担当範囲は認証情報とDBから決定する。",
+        "description": "許可ロール: admin。detailsは秘密情報（token/secret/password/meeting_url/answer_key/transcript等のキー）を除去して返す。from/toは組織タイムゾーン（JST）の日付。",
         "tags": [
           "events"
         ],
@@ -6379,6 +6150,75 @@
           },
           {
             "sessionCookie": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "cursor",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 30
+            }
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "maxLength": 100
+            },
+            "description": "イベント種別・操作者名の部分一致"
+          },
+          {
+            "name": "event_type",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "maxLength": 100
+            },
+            "description": "イベント種別の前方一致（例: reservation. ）"
+          },
+          {
+            "name": "actor_id",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "entity_id",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "date"
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "date"
+            }
           }
         ],
         "responses": {
@@ -6416,95 +6256,7 @@
           "503": {
             "$ref": "#/components/responses/Error"
           }
-        },
-        "parameters": [
-          {
-            "name": "cursor",
-            "in": "query",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "limit",
-            "in": "query",
-            "schema": {
-              "type": "integer",
-              "minimum": 1,
-              "maximum": 100,
-              "default": 30
-            }
-          },
-          {
-            "name": "q",
-            "in": "query",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "classroom_id",
-            "in": "query",
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            }
-          },
-          {
-            "name": "teacher_id",
-            "in": "query",
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            }
-          },
-          {
-            "name": "student_id",
-            "in": "query",
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            }
-          },
-          {
-            "name": "status",
-            "in": "query",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "from",
-            "in": "query",
-            "schema": {
-              "type": "string",
-              "format": "date"
-            }
-          },
-          {
-            "name": "to",
-            "in": "query",
-            "schema": {
-              "type": "string",
-              "format": "date"
-            }
-          },
-          {
-            "name": "month",
-            "in": "query",
-            "schema": {
-              "type": "string",
-              "pattern": "^\\d{4}-\\d{2}$"
-            }
-          },
-          {
-            "name": "department",
-            "in": "query",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ]
+        }
       }
     },
     "/uploads": {
@@ -8124,6 +7876,396 @@
         }
       }
     },
+    "/events/deliveries": {
+      "get": {
+        "operationId": "get_event_deliveries",
+        "summary": "通知配信状況",
+        "description": "許可ロール: admin。outboxの配信状況（読み取り専用）。state=failedで送信失敗のみ。",
+        "tags": [
+          "events"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "cursor",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 30
+            }
+          },
+          {
+            "name": "state",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "pending",
+                "processing",
+                "delivered",
+                "failed"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeliveryPage"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/events/deliveries/{id}/retry": {
+      "post": {
+        "operationId": "post_event_delivery_retry",
+        "summary": "通知の手動再送",
+        "description": "許可ロール: admin。送信失敗（failed）の配信のみ送信待ちに戻す。監査に記録する。",
+        "tags": [
+          "events"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "schema": {
+              "type": "string"
+            },
+            "description": "cookie認証の場合必須。Bearer専用iOSには不要。"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ActionResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/settings/users/{id}/enable": {
+      "post": {
+        "operationId": "post_settings_users_enable",
+        "summary": "アカウント再開",
+        "description": "許可ロール: admin。membershipを有効に戻し、Auth providerのログイン停止を解除する。受講者の在籍状態は変更しない。",
+        "tags": [
+          "settings"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "schema": {
+              "type": "string"
+            },
+            "description": "cookie認証の場合必須。Bearer専用iOSには不要。"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ActionResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/settings/account-deletion-requests": {
+      "get": {
+        "operationId": "get_account_deletion_requests",
+        "summary": "本人削除申請一覧",
+        "description": "許可ロール: admin。POST /me/account-deletion で作成された申請。",
+        "tags": [
+          "settings"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "cursor",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 30
+            }
+          },
+          {
+            "name": "state",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "requested",
+                "reviewing",
+                "completed"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountDeletionRequestPage"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/settings/account-deletion-requests/{id}/complete": {
+      "post": {
+        "operationId": "post_account_deletion_request_complete",
+        "summary": "本人削除申請の対応完了",
+        "description": "許可ロール: admin。アカウントを停止（membership無効・Webセッション失効・Auth providerでログイン停止）し、申請をcompletedにする。研修記録は保持する。",
+        "tags": [
+          "settings"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "schema": {
+              "type": "string"
+            },
+            "description": "cookie認証の場合必須。Bearer専用iOSには不要。"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ActionResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
     "/notifications/read-all": {
       "post": {
         "operationId": "post_notifications_read_all",
@@ -8335,28 +8477,63 @@
             "maxLength": 100
           },
           "kana": {
-            "type": "string"
+            "type": "string",
+            "maxLength": 100
           },
           "email": {
             "type": "string",
-            "format": "email"
+            "format": "email",
+            "maxLength": 254,
+            "description": "登録後は変更できない（Auth providerのログインIDのため）。"
           },
           "teacher_number": {
             "type": "string",
-            "minLength": 1
+            "minLength": 1,
+            "maxLength": 50
           },
           "department_name": {
-            "type": "string"
+            "type": "string",
+            "maxLength": 100
           },
           "specialties": {
             "type": "array",
             "items": {
-              "type": "string"
-            }
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 50
+            },
+            "maxItems": 20
           },
           "availability": {
             "type": "object",
-            "additionalProperties": true
+            "properties": {
+              "weekdays": {
+                "type": "array",
+                "items": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 6
+                },
+                "minItems": 1,
+                "maxItems": 7,
+                "description": "0=日曜〜6=土曜"
+              },
+              "start_time": {
+                "type": "string",
+                "pattern": "^([01][0-9]|2[0-3]):[0-5][0-9]$"
+              },
+              "end_time": {
+                "type": "string",
+                "pattern": "^([01][0-9]|2[0-3]):[0-5][0-9]$"
+              }
+            },
+            "required": [
+              "weekdays",
+              "start_time",
+              "end_time"
+            ],
+            "additionalProperties": false,
+            "description": "稼働曜日と時間帯（任意）"
           },
           "active": {
             "type": "boolean"
@@ -9035,39 +9212,97 @@
         "properties": {
           "organization_name": {
             "type": "string",
-            "minLength": 1
+            "minLength": 1,
+            "maxLength": 200
           },
           "booking_cancel_before_seconds": {
             "type": "integer",
-            "minimum": 0
+            "minimum": 0,
+            "maximum": 2592000
           },
           "booking_pending_ttl_seconds": {
             "type": "integer",
-            "minimum": 1
+            "minimum": 1,
+            "maximum": 1209600
           },
           "voice_daily_quota_seconds": {
             "type": "integer",
-            "minimum": 0
+            "minimum": 0,
+            "maximum": 86400
           },
           "voice_max_session_seconds": {
             "type": "integer",
-            "minimum": 60
+            "minimum": 60,
+            "maximum": 3600
           },
           "holidays": {
             "type": "array",
             "items": {
               "type": "string",
               "format": "date"
-            }
+            },
+            "maxItems": 366
           },
           "notifications_enabled": {
             "type": "boolean"
+          },
+          "require_admin_mfa": {
+            "type": "boolean"
+          },
+          "default_theme": {
+            "type": "string",
+            "enum": [
+              "light",
+              "dark",
+              "system"
+            ]
+          },
+          "departments": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 100
+            },
+            "maxItems": 100
+          },
+          "business_hours": {
+            "type": "object",
+            "properties": {
+              "weekdays": {
+                "type": "array",
+                "items": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 6
+                },
+                "minItems": 1,
+                "maxItems": 7,
+                "description": "0=日曜〜6=土曜"
+              },
+              "start_time": {
+                "type": "string",
+                "pattern": "^([01][0-9]|2[0-3]):[0-5][0-9]$"
+              },
+              "end_time": {
+                "type": "string",
+                "pattern": "^([01][0-9]|2[0-3]):[0-5][0-9]$"
+              }
+            },
+            "required": [
+              "weekdays",
+              "start_time",
+              "end_time"
+            ],
+            "additionalProperties": false,
+            "description": "営業時間（曜日と時間帯）"
           }
         },
         "required": [
           "organization_name"
         ],
-        "additionalProperties": false
+        "additionalProperties": false,
+        "description": "省略した項目は変更しない。予約設定の変更は新しい申請・授業枠にのみ適用し、既存の予約は変更しない。"
       },
       "AttendanceInput": {
         "type": "object",
@@ -9398,6 +9633,9 @@
           "display_name": {
             "type": "string"
           },
+          "kana": {
+            "type": "string"
+          },
           "email": {
             "type": "string",
             "format": "email"
@@ -9414,18 +9652,93 @@
               "type": "string"
             }
           },
+          "availability": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "properties": {
+              "weekdays": {
+                "type": "array",
+                "items": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 6
+                },
+                "minItems": 1,
+                "maxItems": 7,
+                "description": "0=日曜〜6=土曜"
+              },
+              "start_time": {
+                "type": "string",
+                "pattern": "^([01][0-9]|2[0-3]):[0-5][0-9]$"
+              },
+              "end_time": {
+                "type": "string",
+                "pattern": "^([01][0-9]|2[0-3]):[0-5][0-9]$"
+              }
+            },
+            "required": [
+              "weekdays",
+              "start_time",
+              "end_time"
+            ],
+            "additionalProperties": false,
+            "description": "稼働曜日と時間帯"
+          },
           "classroom_ids": {
             "type": "array",
             "items": {
               "type": "string",
               "format": "uuid"
+            },
+            "description": "担当（主・補助）している未アーカイブのクラス"
+          },
+          "classrooms": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "is_primary": {
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "id",
+                "name",
+                "is_primary"
+              ],
+              "additionalProperties": false
             }
           },
           "student_count": {
-            "type": "integer"
+            "type": "integer",
+            "description": "担当講師として割り当てられた在籍中の受講者数（DB集計）"
           },
           "active": {
             "type": "boolean"
+          },
+          "invitation_state": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "pending",
+              "auth_created",
+              "profile_created",
+              "sent",
+              "failed",
+              null
+            ],
+            "description": "最新の招待ジョブの状態（招待ジョブがない移行ユーザー等はnull）。failed=送信失敗（再送可能）。"
           },
           "row_version": {
             "type": "integer"
@@ -9434,13 +9747,17 @@
         "required": [
           "id",
           "display_name",
+          "kana",
           "email",
           "teacher_number",
           "department_name",
           "specialties",
+          "availability",
           "classroom_ids",
+          "classrooms",
           "student_count",
           "active",
+          "invitation_state",
           "row_version"
         ],
         "additionalProperties": false
@@ -9525,9 +9842,15 @@
             "type": "string",
             "format": "uuid"
           },
+          "classroom_name": {
+            "type": "string"
+          },
           "teacher_id": {
             "type": "string",
             "format": "uuid"
+          },
+          "teacher_name": {
+            "type": "string"
           },
           "training_starts_on": {
             "type": "string",
@@ -9538,7 +9861,8 @@
             "format": "date"
           },
           "active": {
-            "type": "boolean"
+            "type": "boolean",
+            "description": "在籍状態（定員の集計対象）"
           },
           "row_version": {
             "type": "integer"
@@ -9547,7 +9871,23 @@
             "type": [
               "integer",
               "null"
-            ]
+            ],
+            "description": "受講者の全enrollmentの進捗率の平均を四捨五入。enrollmentがない場合null。"
+          },
+          "invitation_state": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "pending",
+              "auth_created",
+              "profile_created",
+              "sent",
+              "failed",
+              null
+            ],
+            "description": "最新の招待ジョブの状態（招待ジョブがない移行ユーザー等はnull）。failed=送信失敗（再送可能）。"
           }
         },
         "required": [
@@ -9560,12 +9900,15 @@
           "department_name",
           "joined_on",
           "classroom_id",
+          "classroom_name",
           "teacher_id",
+          "teacher_name",
           "training_starts_on",
           "training_due_on",
           "active",
           "row_version",
-          "progress_percent"
+          "progress_percent",
+          "invitation_state"
         ],
         "additionalProperties": false
       },
@@ -9640,6 +9983,9 @@
             "type": "string",
             "format": "uuid"
           },
+          "primary_teacher_name": {
+            "type": "string"
+          },
           "assistant_teacher_ids": {
             "type": "array",
             "items": {
@@ -9654,8 +10000,44 @@
               "format": "uuid"
             }
           },
+          "programs": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "program_id": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "version_number": {
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "id",
+                "program_id",
+                "name",
+                "version_number"
+              ],
+              "additionalProperties": false
+            }
+          },
           "student_count": {
-            "type": "integer"
+            "type": "integer",
+            "description": "在籍中の受講者数。保存値ではなく毎回DBで集計する。"
+          },
+          "average_progress_percent": {
+            "type": [
+              "integer",
+              "null"
+            ]
           },
           "archived": {
             "type": "boolean"
@@ -9671,9 +10053,12 @@
           "starts_on",
           "ends_on",
           "primary_teacher_id",
+          "primary_teacher_name",
           "assistant_teacher_ids",
           "program_version_ids",
+          "programs",
           "student_count",
+          "average_progress_percent",
           "archived",
           "row_version"
         ],
@@ -10485,14 +10870,25 @@
             "type": "string",
             "format": "uuid"
           },
+          "actor_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
           "actor_name": {
-            "type": "string"
+            "type": "string",
+            "description": "操作者の氏名。システム処理は「システム」。"
           },
           "event_type": {
             "type": "string"
           },
           "entity_id": {
-            "type": "string",
+            "type": [
+              "string",
+              "null"
+            ],
             "format": "uuid"
           },
           "created_at": {
@@ -10501,11 +10897,13 @@
           },
           "details": {
             "type": "object",
-            "additionalProperties": true
+            "additionalProperties": true,
+            "description": "秘密情報のキーを除去済み"
           }
         },
         "required": [
           "id",
+          "actor_id",
           "actor_name",
           "event_type",
           "entity_id",
@@ -11801,7 +12199,7 @@
         "type": "object",
         "properties": {
           "data": {
-            "$ref": "#/components/schemas/SettingsInput"
+            "$ref": "#/components/schemas/Settings"
           },
           "row_version": {
             "type": "integer"
@@ -12056,6 +12454,326 @@
         },
         "required": [
           "data",
+          "checked_at"
+        ],
+        "additionalProperties": false
+      },
+      "TeacherCreateResponse": {
+        "type": "object",
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/Teacher"
+          },
+          "invitation": {
+            "$ref": "#/components/schemas/InviteResult"
+          },
+          "checked_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "data",
+          "invitation",
+          "checked_at"
+        ],
+        "additionalProperties": false
+      },
+      "StudentCreateResponse": {
+        "type": "object",
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/Student"
+          },
+          "invitation": {
+            "$ref": "#/components/schemas/InviteResult"
+          },
+          "checked_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "data",
+          "invitation",
+          "checked_at"
+        ],
+        "additionalProperties": false
+      },
+      "Settings": {
+        "type": "object",
+        "properties": {
+          "organization_name": {
+            "type": "string"
+          },
+          "timezone": {
+            "type": "string"
+          },
+          "booking_cancel_before_seconds": {
+            "type": "integer"
+          },
+          "booking_pending_ttl_seconds": {
+            "type": "integer"
+          },
+          "voice_daily_quota_seconds": {
+            "type": "integer"
+          },
+          "voice_max_session_seconds": {
+            "type": "integer"
+          },
+          "holidays": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "date"
+            }
+          },
+          "notifications_enabled": {
+            "type": "boolean"
+          },
+          "require_admin_mfa": {
+            "type": "boolean"
+          },
+          "default_theme": {
+            "type": "string",
+            "enum": [
+              "light",
+              "dark",
+              "system"
+            ]
+          },
+          "departments": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "business_hours": {
+            "type": "object",
+            "properties": {
+              "weekdays": {
+                "type": "array",
+                "items": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 6
+                },
+                "minItems": 1,
+                "maxItems": 7,
+                "description": "0=日曜〜6=土曜"
+              },
+              "start_time": {
+                "type": "string",
+                "pattern": "^([01][0-9]|2[0-3]):[0-5][0-9]$"
+              },
+              "end_time": {
+                "type": "string",
+                "pattern": "^([01][0-9]|2[0-3]):[0-5][0-9]$"
+              }
+            },
+            "required": [
+              "weekdays",
+              "start_time",
+              "end_time"
+            ],
+            "additionalProperties": false,
+            "description": "営業時間"
+          }
+        },
+        "required": [
+          "organization_name",
+          "timezone",
+          "booking_cancel_before_seconds",
+          "booking_pending_ttl_seconds",
+          "voice_daily_quota_seconds",
+          "voice_max_session_seconds",
+          "holidays",
+          "notifications_enabled",
+          "require_admin_mfa",
+          "default_theme",
+          "departments",
+          "business_hours"
+        ],
+        "additionalProperties": false
+      },
+      "AccountDeletionRequest": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "user_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "display_name": {
+            "type": "string"
+          },
+          "email": {
+            "type": "string",
+            "format": "email"
+          },
+          "role": {
+            "type": "string",
+            "enum": [
+              "admin",
+              "teacher",
+              "student"
+            ]
+          },
+          "user_active": {
+            "type": "boolean"
+          },
+          "reason": {
+            "type": "string"
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "requested",
+              "reviewing",
+              "completed"
+            ]
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "user_id",
+          "display_name",
+          "email",
+          "role",
+          "user_active",
+          "reason",
+          "state",
+          "created_at"
+        ],
+        "additionalProperties": false
+      },
+      "AccountDeletionRequestPage": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AccountDeletionRequest"
+            }
+          },
+          "next_cursor": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "checked_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "items",
+          "next_cursor",
+          "checked_at"
+        ],
+        "additionalProperties": false
+      },
+      "Delivery": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "event_type": {
+            "type": "string"
+          },
+          "entity_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "processing",
+              "delivered",
+              "failed"
+            ]
+          },
+          "attempts": {
+            "type": "integer"
+          },
+          "last_error_code": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "配信処理が記録した直近のエラーコード（記録列がない環境ではnull）"
+          },
+          "next_attempt_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "locked_until": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "delivered_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "event_type",
+          "entity_id",
+          "state",
+          "attempts",
+          "last_error_code",
+          "next_attempt_at",
+          "locked_until",
+          "delivered_at",
+          "created_at"
+        ],
+        "additionalProperties": false
+      },
+      "DeliveryPage": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Delivery"
+            }
+          },
+          "next_cursor": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "checked_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "items",
+          "next_cursor",
           "checked_at"
         ],
         "additionalProperties": false
