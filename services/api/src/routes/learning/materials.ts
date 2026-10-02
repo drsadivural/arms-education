@@ -308,7 +308,7 @@ async function loadQuestions(tx: Tx, orgId: string, materialId: string): Promise
   return rows.map((r) => ({ ...r, points: num(r.points) }));
 }
 
-function quizDto(m: MaterialRow, questions: QuizQuestionRow[], attempts: { used: number; max: number | null; latest: number | null }) {
+function quizDto(m: MaterialRow, questions: QuizQuestionRow[], attemptsUsed: number) {
   const policy = parsePolicy(m.policy);
   const passScore = effectivePassScore(numOrNull(m.pass_score));
   const score = effectiveQuizScore(policy, numOrNull(m.my_max_score ?? null), numOrNull(m.my_latest_score ?? null));
@@ -317,8 +317,8 @@ function quizDto(m: MaterialRow, questions: QuizQuestionRow[], attempts: { used:
     title: m.title,
     // Answer keys are never part of this DTO.
     questions: questions.map((q) => ({ id: q.id, prompt: q.prompt, choices: q.choices.map((ch) => ({ id: ch.id, label: ch.label })) })),
-    attempts_used: attempts.used,
-    attempts_remaining: Math.max(0, policy.max_quiz_attempts - attempts.used),
+    attempts_used: attemptsUsed,
+    attempts_remaining: Math.max(0, policy.max_quiz_attempts - attemptsUsed),
     pass_score: passScore,
     max_attempts: policy.max_quiz_attempts,
     score_policy: policy.quiz_score_policy,
@@ -350,7 +350,7 @@ materialRoutes.put("/materials/:id/quiz-definition", requireRole("admin", "teach
       const total = input.questions.reduce((s, q) => s + q.points, 0);
       await audit(tx, actor.orgId, actor.userId, "quiz.defined", id, { question_count: input.questions.length, total_points: total });
       const fresh = await loadMaterialRow(tx, actor.orgId, id);
-      return { status: 200, body: quizDto(fresh, await loadQuestions(tx, actor.orgId, id), { used: 0, max: null, latest: null }) };
+      return { status: 200, body: quizDto(fresh, await loadQuestions(tx, actor.orgId, id), 0) };
     }),
   );
   return ok(c, result.body);
@@ -386,7 +386,7 @@ materialRoutes.get("/materials/:id/quiz", requireRole("student"), async (c) => {
     if (m.kind !== "quiz") fail("MATERIAL_KIND_MISMATCH");
     const questions = await loadQuestions(tx, actor.orgId, id);
     if (questions.length === 0) fail("QUIZ_NOT_DEFINED");
-    return quizDto(m, questions, { used: num(m.my_attempts), max: null, latest: null });
+    return quizDto(m, questions, num(m.my_attempts));
   });
   return ok(c, dto);
 });
