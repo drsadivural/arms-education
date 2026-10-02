@@ -294,3 +294,21 @@ describe("database boundary", () => {
     }
   });
 });
+
+describe("cookie Secure flag follows the app origin", () => {
+  it("refuses a non-HTTPS APP_ORIGIN in staging/production", async () => {
+    const { loadConfig, ConfigError } = await import("../src/env");
+    const base = {
+      SUPABASE_URL: "https://x.invalid",
+      SUPABASE_PUBLISHABLE_KEY: "k",
+      SUPABASE_AUTH_ISSUER: "i",
+      SUPABASE_AUTH_AUDIENCE: "a",
+      SUPABASE_ADMIN_SECRET: "s",
+      WEB_SESSION_ENCRYPTION_KEY: Buffer.alloc(32, 1).toString("base64"),
+      HYPERDRIVE: { connectionString: "postgres://x" } as never,
+    };
+    expect(() => loadConfig({ ...base, APP_ENV: "production", APP_ORIGIN: "http://arms.example.com" })).toThrow(ConfigError);
+    expect(loadConfig({ ...base, APP_ENV: "production", APP_ORIGIN: "https://arms.example.com" }).cookieSecure).toBe(true);
+    expect(loadConfig({ APP_ENV: "development", APP_ORIGIN: "http://localhost:5188" }).cookieSecure).toBe(false);
+  });
+});

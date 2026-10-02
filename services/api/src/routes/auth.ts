@@ -14,7 +14,7 @@ import { action } from "../http/respond";
 import { rateLimit } from "../http/rate-limit";
 
 
-const cookieOptions = (maxAge: number) => ({ path: "/", httpOnly: true, secure: true, sameSite: "Strict" as const, maxAge });
+const cookieOptions = (secure: boolean, maxAge: number) => ({ path: "/", httpOnly: true, secure, sameSite: "Strict" as const, maxAge });
 
 interface SessionInfoParams {
   userId: string;
@@ -100,7 +100,7 @@ authRoutes.post("/auth/login", async (c) => {
     const email = await tx.one<{ email: string }>(sql`SELECT email FROM app.users WHERE id = ${verified.userId}`);
     return { ...s, email: email.email };
   });
-  setCookie(c, SESSION_COOKIE, created.sessionId, cookieOptions(SESSION_TTL_SECONDS));
+  setCookie(c, SESSION_COOKIE, created.sessionId, cookieOptions(deps.config.cookieSecure, SESSION_TTL_SECONDS));
   return sessionInfo(c, {
     userId: verified.userId,
     displayName: m.display_name,
@@ -203,7 +203,7 @@ authRoutes.post("/auth/logout", cookieOnly, async (c) => {
       VALUES (${actor.orgId}, ${actor.userId}, 'auth.logout', ${actor.userId}, '{}'::jsonb)`);
   });
   await c.get("deps").auth.signOut(secrets.accessToken);
-  deleteCookie(c, SESSION_COOKIE, { path: "/", secure: true, httpOnly: true, sameSite: "Strict" });
+  deleteCookie(c, SESSION_COOKIE, { path: "/", secure: c.get("deps").config.cookieSecure, httpOnly: true, sameSite: "Strict" });
   return action(c);
 });
 

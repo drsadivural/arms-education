@@ -19,7 +19,7 @@ afterAll(async () => ctx.close());
 async function get(path: string, headers: Record<string, string>) {
   const res = await ctx.app.request(`/api/v1${path}`, { headers });
   const bytes = new Uint8Array(await res.arrayBuffer());
-  return { status: res.status, headers: res.headers, bytes, text: new TextDecoder("utf-8", { ignoreBOM: true }).decode(bytes) };
+  return { status: res.status, headers: res.headers, bytes, text: new TextDecoder("utf-8", { fatal: false, ignoreBOM: true }).decode(bytes) };
 }
 
 describe("GET /events/export.csv", () => {

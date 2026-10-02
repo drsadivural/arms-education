@@ -61,6 +61,8 @@ export interface Bindings {
 export interface Config {
   env: "development" | "test" | "staging" | "production";
   appOrigin: string;
+  /** Session cookies carry `Secure` whenever the app origin is HTTPS (always in staging/production). */
+  cookieSecure: boolean;
   timezone: string;
   supabase: {
     authUrl: string;
@@ -106,9 +108,13 @@ export function loadConfig(env: Bindings): Config {
   const sessionKey = env.WEB_SESSION_ENCRYPTION_KEY ?? "";
   if (sessionKey && base64Length(sessionKey) !== 32) throw new ConfigError("WEB_SESSION_ENCRYPTION_KEY must be 32 bytes (base64)");
   const appOrigin = (env.APP_ORIGIN ?? "http://localhost:5188").replace(/\/$/, "");
+  if ((appEnv === "staging" || appEnv === "production") && !appOrigin.startsWith("https://")) {
+    throw new ConfigError("APP_ORIGIN must be an https:// origin in staging/production");
+  }
   return {
     env: appEnv,
     appOrigin,
+    cookieSecure: appOrigin.startsWith("https://"),
     timezone: env.DEFAULT_TIMEZONE ?? "Asia/Tokyo",
     supabase: {
       authUrl,

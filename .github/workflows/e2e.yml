@@ -1,0 +1,43 @@
+name: E2E (Web, Chromium/Firefox/WebKit)
+on:
+  push:
+  pull_request:
+permissions:
+  contents: read
+concurrency:
+  group: e2e-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  web-e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Browsers (with OS dependencies)
+        run: pnpm --filter @arms/web exec playwright install --with-deps chromium firefox webkit
+      - name: Local stack (PostgreSQL, PgBouncer, Supabase Auth, MinIO, Mailpit) with generated local-only keys
+        run: |
+          node infra/local/setup.mjs
+          docker compose -f infra/local/compose.yaml up -d
+          for i in $(seq 1 60); do curl -sf http://localhost:9999/health && break; sleep 2; done
+      - name: Migrations, runtime role and first administrator
+        run: node infra/local/bootstrap.mjs ci-admin@arms.local "ci-$(openssl rand -hex 12)A1"
+      - name: Playwright (starts wrangler dev + vite)
+        working-directory: apps/web
+        env:
+          E2E_ALL_BROWSERS: '1'
+        run: pnpm exec playwright test
+      - if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: |
+            apps/web/playwright-report
+            apps/web/test-results
+          retention-days: 7

@@ -102,7 +102,7 @@ async function authenticateCookie(c: AppContext, cookie: string): Promise<{ acto
   const now = deps.now();
 
   const expire = async (): Promise<never> => {
-    deleteCookie(c, SESSION_COOKIE, { path: "/", secure: true, httpOnly: true, sameSite: "Strict" });
+    deleteCookie(c, SESSION_COOKIE, { path: "/", secure: c.get("deps").config.cookieSecure, httpOnly: true, sameSite: "Strict" });
     fail("SESSION_EXPIRED");
   };
 
@@ -155,7 +155,7 @@ async function authenticateCookie(c: AppContext, cookie: string): Promise<{ acto
   const m = memberships.find((x) => x.org_id === session.org_id);
   if (!m || !m.active) {
     await db.tx({}, (tx) => revokeWebSession(tx, sessionHash));
-    deleteCookie(c, SESSION_COOKIE, { path: "/", secure: true, httpOnly: true, sameSite: "Strict" });
+    deleteCookie(c, SESSION_COOKIE, { path: "/", secure: c.get("deps").config.cookieSecure, httpOnly: true, sameSite: "Strict" });
     fail("ACCOUNT_DISABLED");
   }
   if (m.role !== session.role) return expire();
