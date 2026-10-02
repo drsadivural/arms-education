@@ -35,7 +35,7 @@
 | Apple Developer Team・Bundle ID・APNs鍵（p8）・署名・配布方式 | iOSビルド署名・TestFlight・プッシュ通知 | 未提供 |
 
 ## 4. 実機・実環境でのみ検証可能な項目（未検証）
-- iOSアプリ本体（SwiftUI）: macOS CI（`.github/workflows/ios.yml`、Xcode 16.4）でビルドとSimulator上のアプリ単体テスト9件・ARMSKit 176件が合格済み（2026-10-03）。未検証なのは archive署名・TestFlight と、実機でのマイク・WebRTC音声・AirPods・電話割込み・Dynamic Type・VoiceOver、ファイル選択・アップロード。
+- iOSアプリ本体（SwiftUI）: macOS CI（`.github/workflows/ios.yml`、Xcode 16.4）でビルドとSimulator上のアプリ単体テスト8件・ARMSKit 183件が合格済み（2026-10-03、Supabase廃止後）。未検証なのは archive署名・TestFlight と、実機でのマイク・WebRTC音声・AirPods・電話割込み・Dynamic Type・VoiceOver、ファイル選択・アップロード。
 - APNs（WorkersからのHTTP/2送信を含む）とプッシュからのディープリンク。
 - 本番相当環境での負荷（API p95、予約変更p95、同時100利用）。ローカルの並行試験結果は `tests/results/` を参照。
 - 既存システムの実CSV/Excelエクスポートによる移行リハーサル（提供された画像のみからは移行しない）。

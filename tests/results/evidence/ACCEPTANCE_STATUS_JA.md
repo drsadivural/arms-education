@@ -26,10 +26,10 @@ S3互換ストレージは2026-10-02の検証時はMinIO。MinIOの公開イメ�
 ## パイプライン
 | 項目 | 状況 | 内容 |
 |---|---|---|
-| Web: typecheck・lint・unit・build・Playwright（Chromium/WebKit/Firefox）・axe | 検証済み | 単体113件、E2E 53件×3エンジン（各エンジン別実行、WebKitは公式Playwrightイメージ）、全画面でaxe（WCAG 2.2 AA自動チェック、ダーク・390px含む）。GitHub Actions（commit `2c3e2e4`、run 37048827603）でも3エンジンとも53件合格・再試行なし |
+| Web: typecheck・lint・unit・build・Playwright（Chromium/WebKit/Firefox）・axe | 検証済み | 単体113件、E2E 53件×3エンジン（各エンジン別実行、WebKitは公式Playwrightイメージ）、全画面でaxe（WCAG 2.2 AA自動チェック、ダーク・390px含む）。GitHub Actions（commit `2c3e2e4`、run 37048827603）でも3エンジンとも53件合格・再試行なし。Supabase廃止後（commit `69cbe0a`、run 37074174191）は Chromium 53・Firefox 53 合格、WebKit は52件合格＋1件が再試行で合格（`booking-screens.spec.ts` のお知らせ既読表示。初回失敗の原因は未特定） |
 | DB: clean migration・RLSロール・制約・予約競合 | 検証済み | APIテストは実行ごとに新規DBへ全マイグレーション適用、実行ロールで437件。down migrationは採用せず「バックアップ復元＋差分調整」（`docs/dev/OPERATIONS_JA.md`） |
 | API: 契約→全endpointの401/403/200/4xx→負荷→秘密/PII | 検証済み（負荷はローカル） | 全レスポンスをOpenAPI（Ajv）で検証、秘密スキャン、ログのredaction。負荷のp95目標はステージングで再測定が必要 |
-| iOS: xcodebuild simulator test→実機→archive→TestFlight | 一部（simulatorまで） | GitHub Actions `ios.yml`（run 37046165229、macOS・Xcode 16.4）でSwiftUIアプリのビルド成功・アプリ単体テスト9件合格（iOS Simulator）、ARMSKit 176件合格（ライブ5件はスキップ）。Linuxでもライブ契約5件合格。実機・archive署名・TestFlightは未検証（Apple署名情報未提供） |
+| iOS: xcodebuild simulator test→実機→archive→TestFlight | 一部（simulatorまで） | GitHub Actions `ios.yml`（Supabase廃止後の run 37074174197、macOS・Xcode 16.4）でSwiftUIアプリのビルド成功・アプリ単体テスト8件合格（iOS Simulator）、ARMSKit 183件合格（ライブ5件はスキップ）。Linuxでもライブ契約5件合格。実機・archive署名・TestFlightは未検証（Apple署名情報未提供） |
 
 ## 再実行方法
 `README.md` の「テスト・品質確認」と `apps/web/playwright.config.ts`、`apps/ios/ARMSKit/Scripts/live-contract-test.sh`、`tests/load/reservations.mjs` を参照。
