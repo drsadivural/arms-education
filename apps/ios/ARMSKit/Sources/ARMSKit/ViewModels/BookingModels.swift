@@ -48,6 +48,13 @@ public final class BookingModel {
       await context.fetch(cacheKey: key, checkedAt: { $0.checkedAt }) { () async throws in
         try await api.collectPage(maxPages: 5, query: query, API.lessonSlots)
       })
+    // If the selected day has nothing, jump to the first upcoming day of this month that has a free slot.
+    if slotsForSelectedDate.isEmpty {
+      let candidates = (0..<month.numberOfDays).map { month.firstDay.adding(days: $0) }
+      if let first = candidates.first(where: { $0 >= today && hasBookableSlots(on: $0) }) {
+        selectedDate = first
+      }
+    }
   }
 
   public func showMonth(_ newMonth: YearMonth) async {

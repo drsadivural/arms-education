@@ -231,13 +231,15 @@ final class APIClientTests: XCTestCase {
     let t = MockTransport()
     let tokens = StubTokens()
     tokens.signedIn = false
+    let expired = SessionExpiryFlag()
     do {
-      _ = try await makeClient(t, tokens: tokens).send(API.me(selectedRole: nil))
+      _ = try await makeClient(t, tokens: tokens, expired: expired).send(API.me(selectedRole: nil))
       XCTFail("expected error")
     } catch {
       XCTAssertEqual(error, .notSignedIn)
     }
     XCTAssertTrue(t.requests.isEmpty)
+    XCTAssertEqual(expired.count, 1)
   }
 
   func testContractMismatchIsDecodingError() async {

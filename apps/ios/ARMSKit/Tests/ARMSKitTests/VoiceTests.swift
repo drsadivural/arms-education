@@ -326,6 +326,8 @@ final class VoiceConversationTests: XCTestCase {
     guard case .committed(_, let message) = conv.confirmation.state else { return XCTFail("not committed") }
     XCTAssertEqual(message, "予約を申請しました。現在、担当講師の承認待ちです。")
     XCTAssertFalse(message.contains("確定"), "a pending request is never described as confirmed")
+    conv.dismissConfirmationResult()
+    XCTAssertEqual(conv.confirmation.state, .none)
   }
 
   func testExpiredCardRefusesCommit() async throws {

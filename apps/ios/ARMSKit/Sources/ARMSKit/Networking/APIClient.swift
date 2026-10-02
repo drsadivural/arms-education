@@ -115,8 +115,11 @@ public final class APIClient: Sendable {
       do {
         headers["Authorization"] = "Bearer \(try await tokens.accessToken())"
       } catch let error as ARMSError {
+        // The stored session can no longer be refreshed: the user must sign in again.
+        if error == .notSignedIn { await onSessionExpired() }
         throw error
       } catch {
+        await onSessionExpired()
         throw .notSignedIn
       }
       if let org = organization.organizationId { headers["X-ARMS-Org"] = org }

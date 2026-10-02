@@ -252,6 +252,7 @@ public final class VoiceSessionController {
   public func sendText(_ text: String) { conversation?.sendText(text) }
   public func confirmByButton() async { await conversation?.confirmByButton() }
   public func requestChange() { conversation?.requestChange() }
+  public func dismissConfirmationResult() { conversation?.dismissConfirmationResult() }
 
   // MARK: Events
 

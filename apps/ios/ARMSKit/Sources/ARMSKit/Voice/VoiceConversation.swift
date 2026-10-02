@@ -309,6 +309,14 @@ public final class VoiceConversation {
     queueSystemMessage("利用者は確認内容を変更したいと言っています。申請は送信していません。希望の日時や授業を改めて確認してください。")
   }
 
+  /// Closes a resolved card (committed / failed / expired) after the user has read the result.
+  public func dismissConfirmationResult() {
+    switch confirmation.state {
+    case .committed, .failed, .expired: confirmation.reset()
+    default: break
+    }
+  }
+
   /// 「この内容で申請する」 button: explicit confirmation and direct commit via the API.
   public func confirmByButton() async {
     guard case .awaiting(let card) = confirmation.state else { return }
