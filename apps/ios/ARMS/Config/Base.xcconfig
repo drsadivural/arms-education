@@ -1,0 +1,25 @@
+// ARMS iOS build settings shared by Debug and Release.
+//
+// Connection values are customer inputs (templates/config-inputs.json) and are NOT committed.
+// Put them in ARMS/Config/Local.xcconfig (git-ignored; copy Local.xcconfig.example) or pass them
+// as xcodebuild build settings in CI. In .xcconfig files "//" starts a comment, so write URLs as
+// https:/$()/example.com
+//
+// API_BASE_URL              ARMS Workers API origin (https; "/api/v1" is appended when no path is given)
+// SUPABASE_URL              Supabase project URL (Auth is used at <SUPABASE_URL>/auth/v1)
+// SUPABASE_PUBLISHABLE_KEY  Supabase publishable (public) key — never a secret/service key
+// TERMS_URL / PRIVACY_POLICY_URL  Pages shown from 設定 > サポート
+// BUNDLE_ID / DEVELOPMENT_TEAM    Customer-owned Apple identifiers
+
+API_BASE_URL =
+SUPABASE_URL =
+SUPABASE_PUBLISHABLE_KEY =
+TERMS_URL =
+PRIVACY_POLICY_URL =
+
+BUNDLE_ID = com.example.arms
+DEVELOPMENT_TEAM =
+MARKETING_VERSION = 1.0.0
+CURRENT_PROJECT_VERSION = 1
+
+#include? "Local.xcconfig"
