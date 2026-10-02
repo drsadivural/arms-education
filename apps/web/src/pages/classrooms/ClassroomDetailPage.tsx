@@ -220,12 +220,26 @@ function ClassroomView({ classroom, checkedAt, reload }: { classroom?: Classroom
   const prev = trend[trend.length - 2]?.percent;
   const delta = typeof last === "number" && typeof prev === "number" ? last - prev : null;
   const title = isNew ? "クラスを追加" : `${classroom.name}の詳細`;
+  const crumbs = [{ label: "クラスルーム管理", to: "/classrooms" }, { label: isNew ? "クラスを追加" : classroom.name }];
+
+  // The teacher and program choices change the form's height when they arrive. Showing the form only once they have
+  // keeps its buttons (including the destructive 「クラスをアーカイブ」) from moving under the pointer.
+  if (activeTeachers.isLoading || assignedTeachers.isLoading || programOptions.programs.isLoading) {
+    return (
+      <div>
+        <PageHeader title={title} crumbs={crumbs} />
+        <Card>
+          <LoadingRows rows={8} label="クラスを読み込み中です" />
+        </Card>
+      </div>
+    );
+  }
 
   return (
     <div>
       <PageHeader
         title={title}
-        crumbs={[{ label: "クラスルーム管理", to: "/classrooms" }, { label: isNew ? "クラスを追加" : classroom.name }]}
+        crumbs={crumbs}
         description={
           isNew ? "新規登録：クラスの名称・定員・期間・担当講師・教育プログラムを登録します。" : readOnly ? "閲覧のみ：クラス設定を表示しています。" : "編集：クラス設定を変更します。在籍人数はDBで集計した値です。"
         }
