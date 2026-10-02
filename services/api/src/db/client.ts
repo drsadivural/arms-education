@@ -126,6 +126,13 @@ export class RequestDb {
           this.broken = true;
         });
         const code = (e as { code?: string }).code;
+        if (this.broken && this.lease) {
+          // The connection state is unknown: discard it; a retry (if any) gets a fresh one.
+          const lease = this.lease;
+          this.lease = null;
+          this.broken = false;
+          await lease.release(true).catch(() => undefined);
+        }
         if (code && RETRYABLE.has(code) && attempt < retries) {
           await new Promise((r) => setTimeout(r, 20 * 2 ** attempt + Math.random() * 30));
           continue;

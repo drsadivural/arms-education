@@ -8,6 +8,7 @@ import { fail } from "../http/errors";
 import { readBody, requireIfMatch } from "../http/validation";
 import { action, ok } from "../http/respond";
 import { idempotent } from "../http/idempotency";
+import { enqueueAfterCommit, newOutboxIds } from "../domain/notifications/outbox";
 
 export const meRoutes = new Hono<AppEnv>();
 
@@ -74,6 +75,7 @@ meRoutes.patch("/me/preferences", async (c) => {
 meRoutes.post("/me/account-deletion", async (c) => {
   const actor = c.get("actor");
   const input = await readBody(c, DeleteAccountInput);
+  let outboxIds: string[] = [];
   const result = await actorTx(c, (tx) =>
     idempotent(c, tx, input, async () => {
       const open = await tx.maybeOne<{ id: string; state: string }>(sql`
@@ -87,8 +89,10 @@ meRoutes.post("/me/account-deletion", async (c) => {
         VALUES (${actor.orgId}, ${actor.userId}, 'account.deletion_requested', ${created.id}, ${json({ user_id: actor.userId })}::jsonb)`);
       await tx.exec(sql`INSERT INTO app.outbox(org_id, event_type, entity_id, payload)
         VALUES (${actor.orgId}, 'account.deletion_requested', ${created.id}, ${json({ user_id: actor.userId })}::jsonb)`);
+      outboxIds = await newOutboxIds(tx, actor.orgId);
       return { status: 200, body: { request_id: created.id, state: created.state } };
     }),
   );
+  await enqueueAfterCommit(c, c.get("deps"), actor.orgId, outboxIds);
   return action(c, result.body);
 });

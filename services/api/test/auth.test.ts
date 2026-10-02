@@ -77,7 +77,9 @@ describe("web login (BFF)", () => {
     // The cookie value is never stored in the DB (only its SHA-256), and tokens are encrypted at rest.
     const { rows } = await ctx.admin.query("SELECT id, encrypted_provider_tokens FROM app.web_sessions WHERE user_id = $1", [org.teacher.userId]);
     expect(rows.some((r) => r.id === cookie)).toBe(false);
-    expect(rows.every((r) => !String(r.encrypted_provider_tokens).includes("eyJ"))).toBe(true);
+    // Stored tokens are AES-GCM ciphertext ("v1.<iv>.<ct>"), never the JWT itself.
+    expect(rows.every((r) => /^v1\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/.test(String(r.encrypted_provider_tokens)))).toBe(true);
+    expect(rows.every((r) => !/eyJ[A-Za-z0-9_-]+\.eyJ/.test(String(r.encrypted_provider_tokens)))).toBe(true);
 
     const session = await call(ctx, null, "GET", "/auth/session", { headers: { Cookie: `arms_session=${cookie}` } });
     expect(session.status).toBe(200);

@@ -72,6 +72,9 @@ export const ERROR_CATALOG = {
   VOICE_UNAVAILABLE: { status: 503, message_ja: "現在、音声機能を利用できません。画面から操作してください。" },
   NOT_CONFIGURED: { status: 503, message_ja: "この機能は必要な外部サービスが未設定のため利用できません。管理者にお問い合わせください。" },
 
+  CLASSROOM_ARCHIVED: { status: 422, message_ja: "アーカイブ済みのクラスには登録できません。" },
+  RELATED_IN_USE: { status: 409, message_ja: "関連するデータがあるため、削除・変更できません。" },
+
   // ---- area: admin (append new codes directly below this line) ----
   TEACHER_IS_PRIMARY: { status: 409, message_ja: "主担当のクラスがあるため停止できません。先にクラスの主担当講師を変更してください。" },
   TEACHER_HAS_FUTURE_SLOTS: { status: 409, message_ja: "今後の授業枠があるため停止できません。先に授業枠の講師変更または取消を行ってください。" },

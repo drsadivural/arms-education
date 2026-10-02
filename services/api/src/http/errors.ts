@@ -85,9 +85,9 @@ export function mapDbError(e: unknown): ApiError | null {
     case "23P01":
       return new ApiError(e.table === "reservations" ? "TIME_CONFLICT" : "SLOT_TIME_CONFLICT", { cause: e });
     case "23503":
-      if ((e.constraint ?? "").includes("classroom_id_teacher_id") || e.table === "student_profiles" || e.table === "lesson_slots") {
-        return new ApiError("TEACHER_CLASSROOM_MISMATCH", { cause: e });
-      }
+      // "update or delete on table X violates foreign key …": the row is still referenced.
+      if (/^update or delete on table/.test(e.message ?? "")) return new ApiError("RELATED_IN_USE", { cause: e });
+      if ((e.constraint ?? "").includes("classroom_id_teacher_id")) return new ApiError("TEACHER_CLASSROOM_MISMATCH", { cause: e });
       return new ApiError("VALIDATION_FAILED", { message_ja: "関連するデータが見つかりません。選択内容を確認してください。", cause: e });
     case "23514":
     case "23502":
