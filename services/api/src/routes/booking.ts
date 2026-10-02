@@ -1,5 +1,12 @@
 import { Hono } from "hono";
 import type { AppEnv } from "../context";
+import { slotRoutes } from "./booking/slots";
+import { reservationRoutes } from "./booking/reservations";
+import { notificationRoutes } from "./booking/notifications";
 
 /** Lesson slots, reservations, attendance, today's lessons, notifications and devices (WEB-13〜15, IOS-07〜11, IOS-15〜17). */
 export const bookingRoutes = new Hono<AppEnv>();
+
+bookingRoutes.route("/", slotRoutes);
+bookingRoutes.route("/", reservationRoutes);
+bookingRoutes.route("/", notificationRoutes);

@@ -290,6 +290,7 @@ export const SlotInput = z
     booking_closes_at: zDateTime,
     meeting_url: zHttpsUrl.optional(),
     cancel_before_seconds: z.int().min(0).max(60 * 60 * 24 * 30).optional(),
+    state: z.enum(["open", "closed"]).optional(),
   })
   .refine((v) => new Date(v.ends_at) > new Date(v.starts_at), { path: ["ends_at"], message: "終了時刻は開始時刻より後にしてください。" })
   .refine((v) => new Date(v.booking_closes_at) <= new Date(v.starts_at), {
@@ -352,6 +353,19 @@ export type ProgressRecordInputT = z.infer<typeof ProgressRecordInput>;
 // ---- area: learning (append below) ----
 
 // ---- area: booking & notifications (append below) ----
+
+export const RESERVATION_STATUSES = ["pending", "approved", "rejected", "cancelled", "expired", "removed"] as const;
+export const SLOT_STATES = ["open", "closed", "cancelled"] as const;
+export const RESERVATION_SORTS = ["starts_at", "-starts_at", "-created_at"] as const;
+export const NOTIFICATION_FILTERS = ["all", "unread", "read"] as const;
+
+/** Decision reasons: required (1〜1,000 characters after trimming) for reject/remove. */
+export function isValidDecisionReason(reason: string | undefined | null): reason is string {
+  return typeof reason === "string" && reason.trim().length >= 1 && reason.trim().length <= 1000;
+}
+
+/** sha256(lower-case hex device token) as hex — the identifier used by DELETE /devices/{token_hash}. */
+export const zDeviceTokenHash = z.string().regex(/^[0-9a-f]{64}$/, { message: "端末識別子の形式が正しくありません。" });
 
 // ---- area: voice (append below) ----
 

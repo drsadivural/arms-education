@@ -101,6 +101,52 @@ export const THEME_LABELS = { light: "ライト", dark: "ダーク", system: "�
 
 // ---- area: booking & notifications (append below) ----
 
+/** External notification channels (in-app notifications are always created). */
+export const NOTIFICATION_CHANNEL_LABELS = { in_app: "アプリ内", email: "メール", push: "プッシュ通知" } as const;
+export type NotificationChannel = keyof typeof NOTIFICATION_CHANNEL_LABELS;
+
+export const NOTIFICATION_DELIVERY_STATE_LABELS = {
+  pending: "送信待ち（再試行あり）",
+  sent: "送信済み",
+  failed: "送信失敗",
+  skipped: "送信対象外",
+  invalid_token: "無効な端末",
+} as const;
+export type NotificationDeliveryState = keyof typeof NOTIFICATION_DELIVERY_STATE_LABELS;
+
+/** Reasons recorded (as codes) when an external delivery is skipped or fails; shown on WEB-19. */
+export const NOTIFICATION_DELIVERY_ERROR_LABELS = {
+  NOT_CONFIGURED: "送信サービス未設定",
+  OPTED_OUT: "利用者が通知を停止",
+  ORG_DISABLED: "組織で通知を停止",
+  NO_ADDRESS: "宛先なし",
+  MAIL_RATE_LIMITED: "メール送信の流量制限",
+  MAIL_PROVIDER_UNAVAILABLE: "メール送信サービス障害",
+  MAIL_AUTH_FAILED: "メール送信サービスの認証エラー（設定を確認）",
+  MAIL_REJECTED: "メール送信を拒否されました",
+  APNS_RETRY: "APNs一時障害",
+  APNS_REJECTED: "APNsが通知を拒否",
+  APNS_INVALID_TOKEN: "端末トークン無効",
+  TOKEN_UNREADABLE: "端末トークンを復号できません",
+  NO_NOTIFICATION_RULE: "通知対象外のイベント",
+  DISPATCH_ERROR: "通知処理エラー",
+} as const;
+
+/** Reservation decision actions as shown on confirmation dialogs (docs/04). */
+export const RESERVATION_ACTION_LABELS = {
+  approve: "承認",
+  reject: "却下",
+  cancel: "取消",
+  remove: "削除（履歴を保持）",
+} as const;
+export type ReservationAction = keyof typeof RESERVATION_ACTION_LABELS;
+
+/** Confirmation text for soft deletion (docs/04 「予約を削除し、履歴を保持します」). */
+export const RESERVATION_REMOVE_CONFIRM_JA = "予約を削除し、履歴を保持します";
+
+/** Attendance may be recorded from this many seconds before the lesson starts. */
+export const ATTENDANCE_OPENS_BEFORE_SECONDS = 30 * 60;
+
 // ---- area: voice (append below) ----
 
 // ---- area: imports & exports (append below) ----
