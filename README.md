@@ -8,15 +8,24 @@ Web・iOS対応の企業向け新入社員教育・研修管理プラットフ�
 | Web管理画面（管理者・講師） | React 19 / TypeScript / Vite / Tailwind v4 / Radix / TanStack Query・Table | `apps/web` |
 | API・BFF・定期処理・通知キュー | Cloudflare Workers / Hono / Zod / pg（Hyperdrive経由） | `services/api` |
 | データベース | PostgreSQL（Supabase）/ RLS / 予約トランザクション関数 | `db/` |
-| 認証 | Supabase Auth（招待制、管理者TOTP MFA、非対称JWT） | `services/api/src/auth` |
+| 認証 | Supabase Auth（招待制、管理者TOTP MFA、非対称JWT、日本語メールテンプレート） | `services/api/src/auth`, `infra/supabase` |
 | iOSアプリ（受講者・講師） | SwiftUI / ARMSKit（Swift Package）/ WebRTC / APNs | `apps/ios` |
+| AI音声 | OpenAI Realtime（WebRTC・短期秘密）、サーバー側のツール実行・確認トークン | `services/api/src/domain/voice`, `apps/web/src/features/voice`, `apps/ios/ARMS/Voice` |
 | 契約 | OpenAPI 3.1（原本 + 拡張）/ 共有Zodスキーマ / 日本語エラー | `contracts/`, `packages/contracts` |
+
+## 実装範囲（要約）
+- **Web（固定8メニュー）**: ダッシュボード、講師管理、新入社員管理、クラスルーム管理、教育プログラム管理（版・単元・教材・確認テスト・検疫アップロード）、
+  社員教育進捗管理（旧画面の列・月移動・CSV/PDF出力・訂正履歴）、オンライン予約システム（申請一覧・承認/理由付き却下/削除・授業カレンダー・空き枠・出欠）、
+  設定（システム設定・データ移植・ユーザー管理・ログ/イベント・個人設定）。ログイン（利用区分照合・管理者MFA・パスワード再設定）、招待リンクからのパスワード設定、お知らせ、AI音声（講師）。
+- **iOS**: IOS-01〜18（受講者/講師ログイン、ホーム、進捗、予約申請・確認・取消、今日の授業、教材・テスト・課題、AI音声、お知らせ、出欠、担当授業の予約判断、設定）。
+- **API**: 契約原本の全88操作＋拡張28操作（計116、変更記録は `contracts/CHANGELOG_JA.md`）。予約の定員・冪等・時間重複はDBで保証、全書込みに監査ログ、通知はoutbox→Queue→メール/APNs。
+- **移行**: CSV（UTF-8/BOM/CP932）のマッピング・ドライラン・確定・取り消し（`docs/08`）。
 
 ## 最初に読む
 - 要件・仕様: `docs/01〜10_*_JA.md`（原本）、開発規約: `docs/dev/CONVENTIONS.md`、エージェント規約: `AGENTS.md`
-- API契約の変更記録: `contracts/CHANGELOG_JA.md`
+- デプロイ手順: `docs/09_DEPLOYMENT_JA.md` ＋ `docs/dev/DEPLOY_STEPS.md`、運用: `docs/dev/OPERATIONS_JA.md`
 - 外部サービス等の未確定値・未検証範囲: `docs/BLOCKERS_JA.md`
-- 検証結果の記録: `tests/results/README.md`
+- 受入条件の検証状況と証拠: `tests/results/evidence/ACCEPTANCE_STATUS_JA.md`（実行記録の一覧は `tests/results/README.md`）
 
 ## ローカル開発
 
@@ -24,6 +33,9 @@ Web・iOS対応の企業向け新入社員教育・研修管理プラットフ�
 
 ```bash
 pnpm install
+```
+
+```bash
 node infra/local/setup.mjs
 ```
 
@@ -32,7 +44,7 @@ docker compose -f infra/local/compose.yaml up -d
 ```
 
 ```bash
-node infra/local/bootstrap.mjs admin@arms.local 'ローカル用の管理者パスワード'
+node infra/local/bootstrap.mjs admin@arms.local 'ローカル用の管理者パスワード1'
 ```
 
 ```bash
@@ -43,10 +55,11 @@ pnpm dev:api
 pnpm dev:web
 ```
 
-- Web: http://localhost:5188 （Viteが `/api` を Wrangler dev :8787 へプロキシ）
-- Supabase Auth（GoTrue）: http://localhost:9999 、送信メールの確認（Mailpit）: http://localhost:8025
-- MinIO（R2のS3互換API代替）: http://localhost:9101
-- `setup.mjs` はローカル専用の鍵（GoTrue ES256署名鍵、セッション暗号鍵など）を `infra/local/.env.local` と `services/api/.dev.vars` に生成します。これらはGit管理外です。
+- Web: http://localhost:5188 （Viteが `/api` を wrangler dev :8787 へプロキシ）
+- ローカルスタック: PostgreSQL :55433、PgBouncer :55434（Hyperdrive相当）、Supabase Auth（GoTrue）:9999、MinIO（R2のS3互換）:9100/:9101、
+  ClamAV＋スキャンアダプター :9200（実マルウェア検査）、Mailpit :8025（送信メールの確認）
+- `setup.mjs` はローカル専用の鍵（GoTrue ES256署名鍵、セッション暗号鍵、スキャナー鍵など）を `infra/local/.env.local` と `services/api/.dev.vars` に生成します（Git管理外）。
+- 初回ログイン時、管理者は認証アプリ（TOTP）の登録を求められます。
 
 ## テスト・品質確認
 
@@ -66,9 +79,15 @@ pnpm test
 pnpm build
 ```
 
-- APIテストは実行ごとに新しいPostgreSQLデータベースを作成し、本番と同じ **NOSUPERUSER / NOBYPASSRLS** の実行ロールで、全レスポンスをOpenAPI契約と照合します（`TEST_DATABASE_ADMIN_URL` で接続先を変更可能）。
-- `pnpm check:package` はハンドオフ原本の契約・SQL検証（PGlite）を再実行します。
-- iOS: `apps/ios/README.md` を参照（ARMSKitはLinux/macOSで `swift test`、アプリ本体はmacOS CIでビルド）。
+```bash
+cd apps/web && npx playwright test
+```
+
+- `pnpm test`: API 423件（実行ごとに新規DB、NOSUPERUSER/NOBYPASSRLSの実行ロール、全レスポンスをOpenAPIで検証。接続先は `TEST_DATABASE_ADMIN_URL`）、Web単体 113件、契約 43件。
+- Playwright: 53件（ローカルスタックで実行。`E2E_ALL_BROWSERS=1` と `--project=firefox|webkit` で他エンジン。エンジンごとに別実行）。
+- iOS: `cd apps/ios/ARMSKit && swift test`（176件）、ローカルAPIとのライブ契約試験 `apps/ios/ARMSKit/Scripts/live-contract-test.sh`。アプリ本体はmacOS CI（`.github/workflows/ios.yml`）。詳細は `apps/ios/README.md`。
+- 負荷・並行: `node tests/load/reservations.mjs 100`。秘密スキャン: `pnpm secrets:scan`。ハンドオフ原本の検証: `pnpm check:package`。
 
 ## デプロイ
-`docs/09_DEPLOYMENT_JA.md` の手順に従い、`services/api/wrangler.jsonc` の staging / production 環境へ `pnpm --filter @arms/api deploy:staging` 等でデプロイします。Hyperdrive ID・R2・Queue・Secrets は環境ごとに作成・登録が必要です（`docs/BLOCKERS_JA.md`）。
+`docs/09_DEPLOYMENT_JA.md` と `docs/dev/DEPLOY_STEPS.md` に従い、`services/api/wrangler.jsonc` の staging / production 環境へ
+`pnpm --filter @arms/api deploy:staging` 等でデプロイします。Hyperdrive ID・R2・Queue・Secrets・スキャンサービス・Apple署名は環境ごとの準備が必要です（`docs/BLOCKERS_JA.md`）。

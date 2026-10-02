@@ -1,7 +1,7 @@
 # 外部値・外部検証のブロッカー
 
-実装はローカル環境（PostgreSQL 17、Supabase Auth＝GoTrue v2.180、MinIO、Mailpit、wrangler dev／workerd）で
-動作確認している。以下は顧客・運用側の値や契約、実機が必要なため **未接続・未検証** の項目。
+実装はローカル環境（PostgreSQL 17、PgBouncer、Supabase Auth＝GoTrue v2.180、MinIO、ClamAV、Mailpit、wrangler dev／workerd）で
+動作確認している（検証状況は `tests/results/evidence/ACCEPTANCE_STATUS_JA.md`）。以下は顧客・運用側の値や契約、実機が必要なため **未接続・未検証** の項目。
 不足値を架空値で埋めて「接続成功」とはしていない（該当機能は `NOT_CONFIGURED` 応答または公開停止になる）。
 
 ## 1. デプロイ先の値（`templates/config-inputs.json`）
@@ -9,7 +9,7 @@
 |---|---|---|---|
 | Cloudflareアカウント・APIトークン（最小権限） | GitHub Environment Secrets | staging/本番デプロイ | 未提供。`wrangler.jsonc` の staging/production は Hyperdrive ID が `REPLACE_WITH_*` のため、意図的にデプロイ不可。 |
 | Hyperdrive（キャッシュ無効） `wrangler hyperdrive create … --caching-disabled` | wrangler.jsonc | API全体 | 未作成 |
-| R2バケット（private）・S3互換アクセスキー（`R2_S3_ENDPOINT` `R2_ACCESS_KEY_ID` `R2_SECRET_ACCESS_KEY`） | Workers vars / Secrets | 教材アップロード・ダウンロード（署名URL） | 未作成。ローカルはMinIOで検証 |
+| R2バケット（private）・S3互換アクセスキー（`R2_S3_ENDPOINT` `R2_ACCESS_KEY_ID` `R2_SECRET_ACCESS_KEY`）・バケットCORS（APP_ORIGINからのPUT/GET） | Workers vars / Secrets | 教材・課題・移行ファイルのアップロード、出力ファイルのダウンロード（署名URL） | 未作成。ローカルはMinIOで検証。PDF出力用フォントの配置が必要（`docs/dev/DEPLOY_STEPS.md`） |
 | Queue `arms-notifications-*` と DLQ | wrangler.jsonc | 通知の即時配送（未設定でも1分ごとのcronで配送） | 未作成 |
 | 本番ドメイン・`APP_ORIGIN` | Workers vars | CSRF/Origin検証・招待メールのリンク | 未提供。既存ayonixドメインは割り当てていない |
 
@@ -27,12 +27,12 @@
 | 項目 | 影響 | 現状 |
 |---|---|---|
 | OpenAI APIキー（Realtime利用可否、`gpt-realtime-2.1`、voice `marin`） | AI音声 | 未提供。実通信・日本語聴感・割込み・料金は未検証 |
-| マルウェアスキャンサービス（`MALWARE_SCAN_URL`/`_API_KEY`） | 教材ファイルの公開（未接続の間は公開停止） | 未提供 |
+| マルウェアスキャンサービス（`MALWARE_SCAN_URL`/`_API_KEY`） | 教材ファイルの公開・課題ファイル・CSV移行（未接続の間は公開・取り込み停止） | 本番のサービス未決定。同梱の ClamAV アダプター（`infra/scanner/`）をVM/コンテナで運用する選択肢あり（ローカルでEICAR検出・クリーン判定を確認済み） |
 | 通知メール送信サービス（`MAIL_PROVIDER_URL`/`_API_KEY`/`MAIL_FROM`、送信ドメイン認証） | 予約通知メール（アプリ内通知は常に作成） | 未提供 |
 | Apple Developer Team・Bundle ID・APNs鍵（p8）・署名・配布方式 | iOSビルド署名・TestFlight・プッシュ通知 | 未提供 |
 
 ## 4. 実機・実環境でのみ検証可能な項目（未検証）
-- iOSアプリ本体のビルド・テスト（macOS/Xcodeが必要。Linuxでは `ARMSKit` のみ `swift test` 済み）、実機でのマイク・WebRTC音声・AirPods・電話割込み・Dynamic Type・VoiceOver。
+- iOSアプリ本体（SwiftUI）のビルド・テスト（macOS/Xcodeが必要。`.github/workflows/ios.yml` で初回ビルド）。Linuxでは `ARMSKit` の176件と、ローカルAPIに対するライブ契約試験5件が合格。実機でのマイク・WebRTC音声・AirPods・電話割込み・Dynamic Type・VoiceOver、ファイル選択・アップロード。
 - APNs（WorkersからのHTTP/2送信を含む）とプッシュからのディープリンク。
 - 本番相当環境での負荷（API p95、予約変更p95、同時100利用）。ローカルの並行試験結果は `tests/results/` を参照。
 - 既存システムの実CSV/Excelエクスポートによる移行リハーサル（提供された画像のみからは移行しない）。
