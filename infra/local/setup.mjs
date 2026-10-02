@@ -28,7 +28,12 @@ const serviceRoleJwt = `${header}.${payload}.${createHmac("sha256", hsSecret).up
 // Like hosted Supabase: user tokens are signed with the ES256 key; the HS256 secret is a verify-only key that
 // lets the local service_role admin token authenticate. The ARMS API itself only accepts asymmetric tokens.
 const legacyKey = { kty: "oct", k: Buffer.from(hsSecret).toString("base64url"), alg: "HS256", kid: "arms-local-legacy-hs256", key_ops: ["verify"] };
-writeFileSync(envFile, `GOTRUE_JWT_SECRET=${hsSecret}\nGOTRUE_JWT_KEYS=${JSON.stringify([signingKey, legacyKey])}\nGOTRUE_JWT_VALID_METHODS=ES256,HS256\n`, { mode: 0o600 });
+const scannerKey = randomBytes(32).toString("base64url");
+writeFileSync(
+  envFile,
+  `GOTRUE_JWT_SECRET=${hsSecret}\nGOTRUE_JWT_KEYS=${JSON.stringify([signingKey, legacyKey])}\nGOTRUE_JWT_VALID_METHODS=ES256,HS256\nSCANNER_API_KEY=${scannerKey}\n`,
+  { mode: 0o600 },
+);
 writeFileSync(
   devVars,
   [
@@ -48,6 +53,8 @@ writeFileSync(
     "R2_BUCKET_NAME=arms-materials",
     "R2_ACCESS_KEY_ID=arms-minio",
     "R2_SECRET_ACCESS_KEY=arms-minio-dev-pw",
+    "MALWARE_SCAN_URL=http://127.0.0.1:9200",
+    `MALWARE_SCAN_API_KEY=${scannerKey}`,
     "",
   ].join("\n"),
   { mode: 0o600 },

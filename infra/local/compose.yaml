@@ -97,6 +97,26 @@ services:
       /bin/sh -c "until mc alias set local http://minio:9000 arms-minio arms-minio-dev-pw; do sleep 1; done;
       mc mb --ignore-existing local/arms-materials; mc anonymous set none local/arms-materials"
 
+  # Real malware scanning for local development: ClamAV (signatures updated by freshclam on start) behind the
+  # ARMS scanner-protocol adapter (infra/scanner/server.mjs). Without a scanner, files are never published.
+  clamav:
+    image: clamav/clamav:1.4
+    ports: ["127.0.0.1:3310:3310"]
+    volumes: ["arms-clamav:/var/lib/clamav"]
+
+  scanner:
+    image: node:22-alpine
+    # Host networking so the adapter can fetch MinIO presigned URLs (127.0.0.1:9100) and call back the local API.
+    network_mode: host
+    depends_on: [clamav]
+    command: ["node", "/app/server.mjs"]
+    volumes: ["../scanner:/app:ro"]
+    env_file: [.env.local]
+    environment:
+      PORT: "9200"
+      CLAMD_HOST: 127.0.0.1
+      CLAMD_PORT: "3310"
+
   mailpit:
     image: axllent/mailpit:v1.27
     ports: ["127.0.0.1:8025:8025", "127.0.0.1:1025:1025"]
@@ -104,3 +124,4 @@ services:
 volumes:
   arms-pg: {}
   arms-minio: {}
+  arms-clamav: {}
