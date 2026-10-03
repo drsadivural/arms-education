@@ -1,0 +1,13 @@
+{
+  "rules": [
+    {
+      "allowed": {
+        "origins": ["https://arms.ayonix.com"],
+        "methods": ["GET", "PUT", "HEAD"],
+        "headers": ["content-type"]
+      },
+      "exposeHeaders": ["ETag", "Content-Length", "Content-Disposition", "Content-Type"],
+      "maxAgeSeconds": 3600
+    }
+  ]
+}

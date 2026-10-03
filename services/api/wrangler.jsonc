@@ -80,6 +80,15 @@
         "APP_ENV": "production",
         "APP_ORIGIN": "https://arms.ayonix.com",
         "DEFAULT_TIMEZONE": "Asia/Tokyo",
+        // Resend (invitation / password-reset / notification e-mail). The API key is the secret MAIL_PROVIDER_API_KEY;
+        // until it is set, e-mail is NOT_CONFIGURED. The sender domain must be verified in Resend.
+        "MAIL_PROVIDER_URL": "https://api.resend.com",
+        "MAIL_FROM": "ARMS 新入社員研修システム <noreply@ayonix.com>",
+        // ClamAV scanner adapter on the ARMS host via Cloudflare Tunnel (infra/production); key: MALWARE_SCAN_API_KEY.
+        "MALWARE_SCAN_URL": "https://arms-scan.ayonix.com",
+        // R2 S3 API for presigned uploads/downloads; keys: R2_ACCESS_KEY_ID / R2_SECRET_ACCESS_KEY (secrets).
+        "R2_S3_ENDPOINT": "https://8e1ad5d05c20ef6ebdcc8c0040a6dddc.r2.cloudflarestorage.com",
+        "R2_BUCKET_NAME": "arms-materials-production",
         "OPENAI_REALTIME_MODEL": "gpt-realtime-2.1",
         "OPENAI_REALTIME_VOICE": "marin",
         "VOICE_MAX_SESSION_SECONDS": "600",
@@ -87,9 +96,9 @@
         "BOOKING_PENDING_TTL_SECONDS": "86400",
         "BOOKING_CANCEL_BEFORE_SECONDS": "86400"
       },
-      // No production database exists yet (docs/BLOCKERS_JA.md). Until it does, the API answers 503 NOT_CONFIGURED
-      // and scheduled jobs are skipped. Once created (wrangler hyperdrive create arms-production … --caching-disabled), add:
-      //   "hyperdrive": [{ "binding": "HYPERDRIVE", "id": "<production hyperdrive id>" }],
+      // PostgreSQL on the ARMS host, reached through the Workers VPC service "arms-production-db" over the Cloudflare
+      // Tunnel "arms-production" (infra/production/README_JA.md). Caching disabled: every read must be current.
+      "hyperdrive": [{ "binding": "HYPERDRIVE", "id": "b25480f13d16428cbad8fee3af1a7e76" }],
       "r2_buckets": [{ "binding": "R2_MATERIALS", "bucket_name": "arms-materials-production" }],
       "queues": {
         "producers": [{ "binding": "NOTIFICATION_QUEUE", "queue": "arms-notifications-production" }],

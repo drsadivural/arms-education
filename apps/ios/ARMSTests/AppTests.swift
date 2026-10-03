@@ -32,6 +32,12 @@ final class AppConfigurationTests: XCTestCase {
       "https://x.example.com/custom/v1")
   }
 
+  /// iOS terminates the app on the first Face ID prompt when this key is missing.
+  func testFaceIDUsageDescriptionIsDeclared() throws {
+    let text = try XCTUnwrap(Bundle.main.object(forInfoDictionaryKey: "NSFaceIDUsageDescription") as? String)
+    XCTAssertTrue(text.contains("Face ID"))
+  }
+
 }
 
 @MainActor

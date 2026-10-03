@@ -1,0 +1,61 @@
+# ARMS production services on the ARMS host (Tencent Cloud VM, Singapore), reached by Cloudflare only through the
+# Cloudflare Tunnel "arms-production" (infra/production/cloudflared.yml):
+#   - PostgreSQL 17 (TLS, loopback only) ← Hyperdrive via a Workers VPC service (TCP through the tunnel)
+#   - ClamAV + ARMS scanner adapter (loopback only) ← https://arms-scan.ayonix.com via the tunnel (Bearer key)
+# Installed under /opt/arms-production by infra/production/install.sh; secrets live in /opt/arms-production/.env
+# (mode 600, never committed). Runbook: infra/production/README_JA.md.
+name: arms-prod
+services:
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    command:
+      - postgres
+      - -c
+      - ssl=on
+      - -c
+      - ssl_cert_file=/var/lib/postgresql/tls/server.crt
+      - -c
+      - ssl_key_file=/var/lib/postgresql/tls/server.key
+      - -c
+      - max_connections=200
+      - -c
+      - password_encryption=scram-sha-256
+      - -c
+      - log_min_duration_statement=2000
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set in .env}
+      POSTGRES_DB: arms
+    ports: ["127.0.0.1:55532:5432"]
+    volumes:
+      - arms-prod-pg:/var/lib/postgresql/data
+      - ./pg-tls:/var/lib/postgresql/tls:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d arms"]
+      interval: 5s
+      retries: 30
+    shm_size: 256mb
+
+  clamav:
+    image: clamav/clamav:1.4
+    restart: unless-stopped
+    ports: ["127.0.0.1:3311:3310"]
+    volumes: ["arms-prod-clamav:/var/lib/clamav"]
+
+  scanner:
+    image: node:22-alpine
+    restart: unless-stopped
+    depends_on: [clamav]
+    command: ["node", "/app/server.mjs"]
+    volumes: ["./scanner:/app:ro"]
+    environment:
+      PORT: "9201"
+      CLAMD_HOST: clamav
+      CLAMD_PORT: "3310"
+      SCANNER_API_KEY: ${SCANNER_API_KEY:?set in .env}
+    ports: ["127.0.0.1:9201:9201"]
+
+volumes:
+  arms-prod-pg: {}
+  arms-prod-clamav: {}

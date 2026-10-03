@@ -17,6 +17,9 @@ struct RootView: View {
       OrganizationPickerView(choices: choices)
     case .signedIn(let me):
       MainTabView(me: me)
+        .modifier(BiometricOfferAlert())
+    case .locked(let kind):
+      BiometricLockView(kind: kind)
     case .restoreFailed(let message):
       RestoreFailedView(message: message)
     }
@@ -33,6 +36,51 @@ private struct LaunchView: View {
     .padding(ARMSMetrics.gutter)
     .frame(maxWidth: .infinity, maxHeight: .infinity)
     .armsScreen()
+  }
+}
+
+/// Face ID / Touch ID lock: the stored session is used only after the biometric check (prompted on appear).
+private struct BiometricLockView: View {
+  @Environment(AppModel.self) private var app
+  let kind: BiometryKind
+
+  var body: some View {
+    VStack(alignment: .leading, spacing: 16) {
+      BrandHeader(subtitle: "新入社員研修システム")
+      ARMSCard {
+        Label("\(kind.labelJa)でログイン", systemImage: kind.systemImage)
+          .font(.headline)
+          .foregroundStyle(ARMSColor.text)
+        Text("前回ログインしたアカウントで続けます。").font(.subheadline).foregroundStyle(ARMSColor.muted)
+        if let message = app.session.message { MessageBanner(kind: .error, text: message) }
+        PrimaryButton(title: "\(kind.labelJa)でログイン", systemImage: kind.systemImage, isLoading: app.session.isWorking) {
+          Task { await app.unlock() }
+        }
+        SecondaryButton(title: "パスワードでログイン") {
+          Task { await app.signOut() }
+        }
+      }
+      Spacer()
+    }
+    .padding(ARMSMetrics.gutter)
+    .armsScreen()
+    .task { await app.unlock() }
+  }
+}
+
+/// After a password sign-in: 「次回から Face ID でログインしますか？」 (once per user; also in 設定).
+private struct BiometricOfferAlert: ViewModifier {
+  @Environment(AppModel.self) private var app
+
+  func body(content: Content) -> some View {
+    @Bindable var session = app.session
+    let label = session.biometricAvailability.kind?.labelJa ?? "Face ID"
+    content.alert("次回から\(label)でログインしますか？", isPresented: $session.offerBiometricLogin) {
+      Button("有効にする") { Task { await session.setBiometricLogin(enabled: true) } }
+      Button("今はしない", role: .cancel) { session.declineBiometricLogin() }
+    } message: {
+      Text("パスワードの代わりに\(label)で本人確認してログインします。設定画面からいつでも変更できます。")
+    }
   }
 }
 

@@ -144,7 +144,11 @@ describe("web login (BFF)", () => {
     } finally {
       ctx.clock.now = null;
     }
-    const events = await ctx.admin.query("SELECT event_type FROM app.audit_events WHERE actor_id = $1 AND event_type LIKE 'auth.mfa%' ORDER BY created_at", [org.admin.userId]);
+    // Events written in one transaction share created_at (transaction time): break ties by name.
+    const events = await ctx.admin.query(
+      "SELECT event_type FROM app.audit_events WHERE actor_id = $1 AND event_type LIKE 'auth.mfa%' ORDER BY created_at, event_type",
+      [org.admin.userId],
+    );
     expect(events.rows.map((r) => r.event_type)).toEqual(["auth.mfa_enrolled", "auth.mfa_verified", "auth.mfa_verified"]);
   });
 

@@ -33,6 +33,8 @@
 	</array>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
+	<key>NSFaceIDUsageDescription</key>
+	<string>ARMSへのログイン時に本人確認のためFace IDを使用します。</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>予約や研修内容を日本語で音声操作するためにマイクを使用します。</string>
 	<key>NSAppTransportSecurity</key>

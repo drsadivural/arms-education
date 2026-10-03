@@ -23,6 +23,8 @@ final class AppModel {
   private let push: PushRegistration
   @ObservationIgnored private var pendingDeepLink: DeepLink?
   @ObservationIgnored private var pendingDeviceToken: Data?
+  /// When the app went to the background (biometric re-lock after SessionStore.relockAfterSeconds).
+  @ObservationIgnored private var backgroundedAt: Date?
   private(set) var voice: VoiceSessionController?
   /// Identity the voice controller was built for (rebuilt when another user or role signs in).
   @ObservationIgnored private var voiceOwner: (id: String, role: Role)?
@@ -42,7 +44,7 @@ final class AppModel {
       baseURL: configuration.apiBaseURL, transport: URLSessionTransport(), tokens: auth,
       onSessionExpired: { await relay.fire() })
     let context = AppContext(api: api, cache: Self.makeCache(), keyValues: keyValues)
-    let session = SessionStore(auth: auth, context: context)
+    let session = SessionStore(auth: auth, context: context, biometrics: LocalBiometrics())
     relay.store = session
     self.context = context
     self.session = session
@@ -78,6 +80,13 @@ final class AppModel {
   func signIn(email: String, password: String) async {
     await session.signIn(email: email, password: password)
     await afterSignInIfNeeded()
+  }
+
+  /// Face ID / Touch ID on the lock screen.
+  func unlock() async {
+    await session.unlock()
+    // A cancelled check keeps the lock: navigation and voice state stay as they were.
+    if session.me != nil { await afterSignInIfNeeded() }
   }
 
   func chooseOrganization(_ choice: OrganizationChoice) async {
@@ -138,13 +147,19 @@ final class AppModel {
       isOnline: { [weak context] in context?.isOnline ?? false })
   }
 
-  /// Scene phase handling: foreground re-fetches reservations/progress; background stops voice.
+  /// Scene phase handling: foreground re-fetches reservations/progress (or re-locks with Face ID after a long
+  /// absence); background stops voice.
   func scenePhaseChanged(isActive: Bool, isBackground: Bool) async {
+    if isActive, let since = backgroundedAt {
+      backgroundedAt = nil
+      session.lockAfterBackground(seconds: Date().timeIntervalSince(since))
+    }
     if isActive, session.me != nil {
       context.requestRefresh()
       await session.refreshMe()
       await refreshNotificationAuthorization()
     } else if isBackground {
+      backgroundedAt = backgroundedAt ?? Date()
       await voice?.handleBackground()
     }
   }
